@@ -5358,6 +5358,7 @@ void Sema::CodeCompleteTag(Scope *S, unsigned TagSpec) {
     break;
 
   case DeclSpec::TST_struct:
+  case DeclSpec::TST_Tstruct:
   case DeclSpec::TST_class:
   case DeclSpec::TST_interface:
     Filter = &ResultBuilder::IsClassOrStruct;

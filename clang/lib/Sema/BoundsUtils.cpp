@@ -1,4 +1,4 @@
-//===----------- BoundsUtils.cpp: Utility functions for bounds ----------===//
+//===----------- Utils.cpp: Utility functions for bounds ----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -40,7 +40,7 @@ BoundsExpr *BoundsUtil::CreateBoundsForArrayType(Sema &S, QualType T,
                                                  bool IncludeNullTerminator) {
   const IncompleteArrayType *IAT = S.Context.getAsIncompleteArrayType(T);
   if (IAT) {
-    if (IAT->getKind() == CheckedArrayKind::NtChecked)
+    if (IAT->getKind() == CheckCBox_ArrayKind::NtChecked)
       return S.Context.getPrebuiltCountZero();
     else
       return CreateBoundsAlwaysUnknown(S);
@@ -53,7 +53,7 @@ BoundsExpr *BoundsUtil::CreateBoundsForArrayType(Sema &S, QualType T,
   // Null-terminated arrays of size n have bounds of count(n - 1).
   // The null terminator is excluded from the count.
   if (!IncludeNullTerminator &&
-      CAT->getKind() == CheckedArrayKind::NtChecked) {
+      CAT->getKind() == CheckCBox_ArrayKind::NtChecked) {
     assert(size.uge(1) && "must have at least one element");
     size = size - 1;
   }
@@ -125,7 +125,7 @@ BoundsExpr *BoundsUtil::ExpandToRange(Sema &S, Expr *Base, BoundsExpr *B) {
       Base = S.MakeAssignmentImplicitCastExplicit(Base);
       if (K == BoundsExpr::ByteCount) {
         ResultTy = S.Context.getPointerType(S.Context.CharTy,
-                                            CheckedPointerKind::Array);
+                                            CheckCBox_PointerKind::Array);
         // When bounds are pretty-printed as source code, the cast needs
         // to appear in the source code for the code to be correct, so
         // use an explicit cast operation.
@@ -141,7 +141,7 @@ BoundsExpr *BoundsUtil::ExpandToRange(Sema &S, Expr *Base, BoundsExpr *B) {
         LowerBound = Base;
         if (ResultTy->isCheckedPointerPtrType()) {
           ResultTy = S.Context.getPointerType(ResultTy->getPointeeType(),
-            CheckedPointerKind::Array);
+            CheckCBox_PointerKind::Array);
           // The bounds-safe interface argument is false because casts
           // between checked pointer types are always allowed by type
           // checking.

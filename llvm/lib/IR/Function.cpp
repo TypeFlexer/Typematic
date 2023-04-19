@@ -1258,6 +1258,92 @@ Function *Intrinsic::getDeclaration(Module *M, ID id, ArrayRef<Type*> Tys) {
           .getCallee());
 }
 
+Function* Intrinsic::SandboxTaintedMemCheckFunction(Module *M){
+  Type* VOIDPtr= const_cast<PointerType*>(Type::getInt8PtrTy(M->getContext()));
+  Type* RetTyp = (Type::getInt1Ty(M->getContext()));
+  return cast<Function>(M->getOrInsertFunction("CacheUpdateandCheck",
+                                               RetTyp, VOIDPtr)
+      .getCallee());
+}
+
+Function* Intrinsic::SandboxRegisterTaintedFunction(Module *M){
+  Type* VOIDPtr= const_cast<PointerType*>(Type::getInt8PtrTy(M->getContext()));
+  Type* RetTyp = (Type::getInt1Ty(M->getContext()));
+  return cast<Function>(M->getOrInsertFunction("registerTaintedFunction",
+                                               RetTyp, VOIDPtr)
+      .getCallee());
+}
+
+Function* Intrinsic::SandboxRegisterCallbackFunction(Module *M){
+  Type* VOIDPtr= const_cast<PointerType*>(Type::getInt8PtrTy(M->getContext()));
+  Type* RetTyp = (Type::getInt1Ty(M->getContext()));
+  return cast<Function>(M->getOrInsertFunction("registerCallbackFunction",
+                                               RetTyp, VOIDPtr)
+                            .getCallee());
+}
+
+Function* Intrinsic::SandboxUNRegisterCallbackFunction(Module *M){
+  Type* VOIDPtr= const_cast<PointerType*>(Type::getInt8PtrTy(M->getContext()));
+  Type* RetTyp = (Type::getInt1Ty(M->getContext()));
+  return cast<Function>(M->getOrInsertFunction("unregisterCallback",
+                                               RetTyp, VOIDPtr)
+                            .getCallee());
+}
+
+Function* Intrinsic::CreateIsLegalCallEdgeCheckInternal(Module *M) {
+  Type *RetTyp = (Type::getInt1Ty(M->getContext()));
+  Type *VOIDPtr =
+      const_cast<PointerType *>(Type::getInt8PtrTy(M->getContext()));
+  return cast<Function>(M->getOrInsertFunction("checkCallStackIntegrityForTaintedFunction",
+                                               RetTyp, VOIDPtr)
+                            .getCallee());
+}
+Function* Intrinsic::SandboxCondlTaintedO2PtrFunction(Module *M) {
+  Type *RetVOIDPtr =
+      const_cast<PointerType *>(Type::getInt8PtrTy(M->getContext()));
+  Type *I64Ty = Type::getInt64Ty(M->getContext());
+  return cast<Function>(
+      M->getOrInsertFunction("c_ConditionalTaintedOff2Ptr", RetVOIDPtr, I64Ty)
+          .getCallee());
+}
+
+Function* Intrinsic::SandboxTaintedPtr2OFunction(Module *M) {
+  Type *RetVOIDPtr =
+      const_cast<PointerType *>(Type::getInt8PtrTy(M->getContext()));
+  Type *I32Ty = Type::getInt32Ty(M->getContext());
+  return cast<Function>(
+      M->getOrInsertFunction("c_TPtoO", I32Ty, RetVOIDPtr)
+          .getCallee());
+}
+
+Function* Intrinsic::Offset2Pointer(Module *M){
+    Type* RetVOIDPtr = const_cast<PointerType*>(Type::getInt8PtrTy(M->getContext()));
+    Type *I32Ty = Type::getInt32Ty(M->getContext());
+    return cast<Function>(M->getOrInsertFunction("c_fetch_pointer_from_offset",
+                                                 RetVOIDPtr, I32Ty).getCallee());
+}
+
+Function* Intrinsic::InitSbx(Module *M){
+  //get void type
+  Type* VoidTy = Type::getVoidTy(M->getContext());
+  return cast<Function>(M->getOrInsertFunction("sbx_init",
+                                               VoidTy).getCallee());
+}
+
+Function* Intrinsic::fetchSbxHeapAddress(Module *M){
+  //get void type
+  Type* Int64Ty = Type::getInt64Ty(M->getContext());
+  return cast<Function>(M->getOrInsertFunction("c_fetch_sandbox_heap_address",
+                                               Int64Ty).getCallee());
+}
+
+Function* Intrinsic::fetchSbxHeapBound(Module *M){
+  //get void type
+  Type* Int64Ty = Type::getInt64Ty(M->getContext());
+  return cast<Function>(M->getOrInsertFunction("c_fetch_sandbox_heap_bound",
+                                               Int64Ty).getCallee());
+}
+
 // This defines the "Intrinsic::getIntrinsicForGCCBuiltin()" method.
 #define GET_LLVM_INTRINSIC_FOR_GCC_BUILTIN
 #include "llvm/IR/IntrinsicImpl.inc"

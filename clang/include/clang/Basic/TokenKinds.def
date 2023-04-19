@@ -307,6 +307,7 @@ KEYWORD(signed                      , KEYALL)
 UNARY_EXPR_OR_TYPE_TRAIT(sizeof, SizeOf, KEYALL)
 KEYWORD(static                      , KEYALL)
 KEYWORD(struct                      , KEYALL)
+KEYWORD(Tstruct                     , KEYALL)
 KEYWORD(switch                      , KEYALL)
 KEYWORD(typedef                     , KEYALL)
 KEYWORD(union                       , KEYALL)
@@ -322,6 +323,11 @@ KEYWORD(_Complex                    , KEYALL)
 KEYWORD(_Generic                    , KEYALL)
 KEYWORD(_Imaginary                  , KEYALL)
 KEYWORD(_Noreturn                   , KEYALL)
+KEYWORD(_Tainted                    , KEYALL)
+KEYWORD(_Decoy                      , KEYALL)
+KEYWORD(_Callback                   , KEYALL)
+KEYWORD(_Mirror                     , KEYALL)
+KEYWORD(_TLIB                       , KEYALL)
 KEYWORD(_Static_assert              , KEYALL)
 KEYWORD(_Thread_local               , KEYALL)
 KEYWORD(__func__                    , KEYALL)
@@ -705,11 +711,19 @@ KEYWORD(_Itype_for_any             , KEYCHECKEDC)
 KEYWORD(_Current_expr_value        , KEYCHECKEDC)
 KEYWORD(_Return_value              , KEYCHECKEDC)
 KEYWORD(_Bounds_only               , KEYCHECKEDC)
+KEYWORD(_Relax                     , KEYCHECKEDC)
 KEYWORD(_Exists                    , KEYCHECKEDC)
 KEYWORD(_Pack                      , KEYCHECKEDC)
 KEYWORD(_Unpack                    , KEYCHECKEDC)
 KEYWORD(_And                       , KEYCHECKEDC)
 KEYWORD(_Bundled                   , KEYCHECKEDC)
+
+//CheckCBox Extension for tainted types (as of now, ditto)
+KEYWORD(_TPtr, KEYCHECKEDC)
+KEYWORD(_TArray_ptr, KEYCHECKEDC)
+KEYWORD(_TNt_array_ptr, KEYCHECKEDC)
+KEYWORD(_Tainted_Assume_bounds_cast , KEYCHECKEDC)
+KEYWORD(_Tainted_Dynamic_bounds_cast , KEYCHECKEDC)
 
 // Borland Extensions which should be disabled in strict conformance mode.
 ALIAS("_pascal"      , __pascal   , KEYBORLAND)
@@ -900,6 +914,21 @@ PRAGMA_ANNOTATION(pragma_attribute)
 // The lexer produces these so that they only take effect when the parser
 // handles #pragma CHECKED_SCOPE ... directives.
 ANNOTATION(pragma_checked_scope)
+
+// Annotations for TLIB pragma directives for checkcbox
+// The lexer produces these so that they only take effect when the parser
+// handles #pragma TLIB ... directives.
+ANNOTATION(pragma_tlib_scope)
+
+// Annotations for TAINTED_SCOPE pragma directives for checkcbox
+// The lexer produces these so that they only take effect when the parser
+// handles #pragma TAINTED_SCOPE ... directives.
+ANNOTATION(pragma_tainted_scope)
+
+// Annotations for MIRROR_SCOPE pragma directives for checkcbox
+// The lexer produces these so that they only take effect when the parser
+// handles #pragma MIRROR_SCOPE ... directives.
+ANNOTATION(pragma_mirror_scope)
 
 // Annotations for module import translated from #include etc.
 ANNOTATION(module_include)

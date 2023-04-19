@@ -398,8 +398,8 @@ void TypePrinter::printComplexAfter(const ComplexType *T, raw_ostream &OS) {
 
 void TypePrinter::printPointerBefore(const PointerType *T, raw_ostream &OS) {
   IncludeStrongLifetimeRAII Strong(Policy);
-  CheckedPointerKind kind = T->getKind();
-  if (kind == CheckedPointerKind::Unchecked) {
+  CheckCBox_PointerKind kind = T->getKind();
+  if (kind == CheckCBox_PointerKind::Unchecked) {
     SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);
     printBefore(T->getPointeeType(), OS);
     // Handle things like 'int (*A)[4];' correctly.
@@ -410,17 +410,26 @@ void TypePrinter::printPointerBefore(const PointerType *T, raw_ostream &OS) {
   }
   else {
     switch (T->getKind()) {
-      case CheckedPointerKind::Unchecked:
+      case CheckCBox_PointerKind::Unchecked:
         llvm_unreachable("should have been handled already");
         break;
-      case CheckedPointerKind::Ptr:
+      case CheckCBox_PointerKind::Ptr:
         OS << "_Ptr<";
         break;
-      case CheckedPointerKind::Array:
+      case CheckCBox_PointerKind::Array:
         OS << "_Array_ptr<";
         break;
-      case CheckedPointerKind::NtArray:
+      case CheckCBox_PointerKind::NtArray:
         OS << "_Nt_array_ptr<";
+        break;
+      case CheckCBox_PointerKind::t_ptr:
+        OS << "_TPtr<";
+        break;
+      case CheckCBox_PointerKind::t_array:
+        OS << "_TArray_ptr<";
+        break;
+      case CheckCBox_PointerKind::t_nt_array:
+        OS << "_TNt_array_ptr<";
         break;
     }
     print(T->getPointeeType(), OS, StringRef());
@@ -430,7 +439,7 @@ void TypePrinter::printPointerBefore(const PointerType *T, raw_ostream &OS) {
 }
 
 void TypePrinter::printPointerAfter(const PointerType *T, raw_ostream &OS) {
-  if (T->getKind() == CheckedPointerKind::Unchecked) {
+  if (T->getKind() == CheckCBox_PointerKind::Unchecked) {
     IncludeStrongLifetimeRAII Strong(Policy);
     SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);
     // Handle things like 'int (*A)[4];' correctly.
@@ -1082,6 +1091,8 @@ void TypePrinter::printFunctionAfter(const FunctionType::ExtInfo &Info,
 
   if (Info.getNoReturn())
     OS << " __attribute__((noreturn))";
+  if(Info.getTainted())
+    OS << "__attribute__((tainted))";
   if (Info.getCmseNSCall())
     OS << " __attribute__((cmse_nonsecure_call))";
   if (Info.getProducesResult())

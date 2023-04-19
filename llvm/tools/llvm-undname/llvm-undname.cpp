@@ -40,6 +40,7 @@ cl::opt<bool> NoCallingConvention("no-calling-convention", cl::Optional,
 cl::opt<bool> NoReturnType("no-return-type", cl::Optional,
                            cl::desc("skip return types"), cl::Hidden,
                            cl::init(false));
+
 cl::opt<bool> NoMemberType("no-member-type", cl::Optional,
                            cl::desc("skip member types"), cl::Hidden,
                            cl::init(false));

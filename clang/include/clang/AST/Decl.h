@@ -645,6 +645,7 @@ protected:
 
 public:
   QualType getType() const { return DeclType; }
+  QualType getTypeRef() { return DeclType;}
   void setType(QualType newType) { DeclType = newType; }
 
   /// Determine whether this symbol is weakly-imported,
@@ -1976,6 +1977,14 @@ public:
     TK_DependentFunctionTemplateSpecialization
   };
 
+  bool Tainted = false;
+
+  bool Callback = false;
+
+  bool Mirror = false;
+
+  bool TLIB = false;
+
   /// Stashed information about a defaulted function definition whose body has
   /// not yet been lazily generated.
   class DefaultedFunctionInfo final
@@ -2196,6 +2205,10 @@ public:
   }
 
   void setGenericFunctionFlag(bool f) { FunctionDeclBits.IsGenericFunction = f; }
+  void setTaintedFunctionFlag(bool f = false) { this->Tainted = f; }
+  void setCallbackFunctionFlag(bool f = false) { this->Callback = f; }
+  void setMirrorFunctionFlag(bool f = false) { this->Mirror = f; }
+  void setTLIBFunctionFlag(bool f = false) { this->TLIB = f; }
   bool isGenericFunction() const { return FunctionDeclBits.IsGenericFunction; }
 
   void setItypeGenericFunctionFlag(bool f) { FunctionDeclBits.IsItypeGenericFunction = f; }
@@ -2543,6 +2556,22 @@ public:
   /// Determines whether this function is known to be 'noreturn', through
   /// an attribute on its declaration or its type.
   bool isNoReturn() const;
+
+  /// Determines whether this function is known to be 'tainted', through
+  /// an attribute on its declaration or its type.
+  bool isTainted() const {return this->Tainted;}
+
+  /// Determines whether this function is known to be 'callback', through
+  /// an attribute on its declaration or its type.
+  bool isCallback() const {return this->Callback;}
+
+  /// Determines whether this function is known to be 'mirror', through
+  /// an attribute on its declaration or its type.
+  bool isMirror() const {return this->Mirror;};
+
+  /// Determines whether this function is known to be 'Tainted LIB', through
+  /// an attribute on its declaration or its type.
+  bool isTLIB() const {return this->TLIB;};
 
   /// True if the function was a definition but its body was skipped.
   bool hasSkippedBody() const { return FunctionDeclBits.HasSkippedBody; }
@@ -3636,7 +3665,8 @@ public:
 
   void setTagKind(TagKind TK) { TagDeclBits.TagDeclKind = TK; }
 
-  bool isStruct() const { return getTagKind() == TTK_Struct; }
+  bool isStruct() const { return (getTagKind() == TTK_Struct) || (getTagKind() == TTK_Tstruct); }
+  bool isTaintedStruct() const { return (getTagKind() == TTK_Tstruct);}
   bool isInterface() const { return getTagKind() == TTK_Interface; }
   bool isClass()  const { return getTagKind() == TTK_Class; }
   bool isUnion()  const { return getTagKind() == TTK_Union; }

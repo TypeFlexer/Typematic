@@ -6094,6 +6094,16 @@ ExpectedStmt ASTNodeImporter::VisitCompoundStmt(CompoundStmt *S) {
       *ToLBracLocOrErr, *ToRBracLocOrErr,
       S->getWrittenCheckedSpecifier(), 
       S->getCheckedSpecifier(),
+      S->getCheckedSpecifierLoc(),
+      S->getWrittenTaintedSpecifier(),
+      S->getTaintedScopeSpecifier(),
+      S->getTaintedSpecifierLoc(),
+      S->getWrittenMirrorSpecifier(),
+      S->getMirrorScopeSpecifier(),
+      S->getMirrorSpecifierLoc(),
+      S->getWrittenTLIBSpecifier(),
+      S->getTLIBScopeSpecifier(),
+      S->getTLIBSpecifierLoc(),
       *ToCheckedSpecifierLocOrErr, *ToSpecifierModifierorErr);
 }
 

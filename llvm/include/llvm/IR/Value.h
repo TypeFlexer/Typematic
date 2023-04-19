@@ -244,7 +244,15 @@ public:
 
   /// All values are typed, get the type of this value.
   Type *getType() const { return VTy; }
+  /// Function to check if two types are Decoy Copies of each other.
+  /// Returns The Decoy Type of the Two.
+  /// If the Two Types are not Decoy Copies, returns NULL
+  Type* AreDecoyCopies(Type* T1, Type* T2, int* DecoyedOp);
 
+  void ApplyDecoyCopy(Type* T1, Type* T2);
+
+  /// All values are typed, get the type of this value.
+  void setType(llvm::Type* Val) { VTy = Val; }
   /// All values hold a context through their type.
   LLVMContext &getContext() const;
 

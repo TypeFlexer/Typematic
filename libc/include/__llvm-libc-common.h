@@ -20,6 +20,18 @@
 #undef _Noreturn
 #define _Noreturn [[noreturn]]
 
+#undef _Tainted
+#define _Tainted [[tainted]]
+
+#undef _Callback
+#define _Callback [[callback]]
+
+#undef _Mirror
+#define _Mirror [[mirror]]
+
+#undef _TLIB
+#define _TLIB [[TLIB]]
+
 #else // not __cplusplus
 
 #undef __BEGIN_C_DECLS

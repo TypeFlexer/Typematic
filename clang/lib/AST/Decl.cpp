@@ -3254,7 +3254,6 @@ bool FunctionDecl::isNoReturn() const {
   return false;
 }
 
-
 MultiVersionKind FunctionDecl::getMultiVersionKind() const {
   if (hasAttr<TargetAttr>())
     return MultiVersionKind::Target;

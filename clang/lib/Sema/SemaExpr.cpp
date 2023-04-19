@@ -567,10 +567,13 @@ ExprResult Sema::DefaultFunctionArrayConversion(Expr *E, bool Diagnose) {
           Ty = RewriteBoundsSafeInterfaceTypes(Ty);
           isBoundsSafeInterfaceCast = true;
         }
+        //Tainted Function pointers would never have bounds-safe itype interface
+        // as callback functions can only accept and return tainted types.
+        // That is, callback functions cannot accept or return itypes.
       }
 
-    CheckedPointerKind kind = isCheckedScope ?
-      CheckedPointerKind::Ptr : CheckedPointerKind::Unchecked;
+    CheckCBox_PointerKind kind = isCheckedScope ?
+      CheckCBox_PointerKind::Ptr : CheckCBox_PointerKind::Unchecked;
     E = ImpCastExprToType(E, Context.getPointerType(Ty, kind),
                           CK_FunctionToPointerDecay, VK_RValue,
                           nullptr, Sema::CCK_ImplicitConversion,
@@ -823,10 +826,10 @@ ExprResult Sema::CallExprUnaryConversions(Expr *E) {
     // For Checked C, at uses of functions in checked scopes,
     // we also convert the function type to be fully checked
     // as part of the function-to-pointer decay.
-    CheckedPointerKind kind = CheckedPointerKind::Unchecked;
+    CheckCBox_PointerKind kind = CheckCBox_PointerKind::Unchecked;
     bool isBoundsSafeInterfaceCast = false;
     if (IsCheckedScope()) {
-      kind = CheckedPointerKind::Ptr;
+      kind = CheckCBox_PointerKind::Ptr;
       if (auto *DRE = dyn_cast<DeclRefExpr>(E->IgnoreParenCasts()))
         if (isa<FunctionDecl>(DRE->getDecl()))
           if (Ty->isOrContainsUncheckedType()) {
@@ -1938,8 +1941,8 @@ Sema::ActOnStringLiteral(ArrayRef<Token> StringToks, Scope *UDLScope) {
   // Get an array type for the string, according to C99 6.4.5.  This includes
   // the nul terminator character as well as the string length for pascal
   // strings.
-  CheckedArrayKind ArrayKind = IsCheckedScope() ?
-    CheckedArrayKind::NtChecked : CheckedArrayKind::Unchecked;
+  CheckCBox_ArrayKind ArrayKind = IsCheckedScope() ?
+    CheckCBox_ArrayKind::NtChecked : CheckCBox_ArrayKind::Unchecked;
 
   QualType StrTy =
       Context.getStringLiteralArrayType(CharTy, Literal.GetNumStringChars(),
@@ -2123,6 +2126,16 @@ Sema::BuildDeclRefExpr(ValueDecl *D, QualType Ty, ExprValueKind VK,
       return ExprError();
     }
   }
+
+  /*
+   * Something wrong with this
+   */
+//  if (IsTaintedScope()) {
+//    if (Ty->isFunctionNoProtoType()) {
+//      Diag(NameInfo.getLoc(), diag::err_tainted_scope_no_prototype_func);
+//      return ExprError();
+//    }
+//  }
 
   bool RefersToCapturedVariable =
       isa<VarDecl>(D) &&
@@ -3663,8 +3676,8 @@ ExprResult Sema::BuildPredefinedExpr(SourceLocation Loc,
 
     llvm::APInt LengthI(32, Length + 1);
     // Get an array type for the string, according to C99 6.4.5.
-    CheckedArrayKind ArrayKind = IsCheckedScope() ?
-      CheckedArrayKind::NtChecked : CheckedArrayKind::Unchecked;
+    CheckCBox_ArrayKind ArrayKind = IsCheckedScope() ?
+      CheckCBox_ArrayKind::NtChecked : CheckCBox_ArrayKind::Unchecked;
 
     if (IK == PredefinedExpr::LFunction || IK == PredefinedExpr::LFuncSig) {
       ResTy =
@@ -5630,7 +5643,7 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
     BaseExpr = LHSExp;
     IndexExpr = RHSExp;
     // Array subscripting not allowed on ptr<T> values
-    if (PTy->getKind() == CheckedPointerKind::Ptr &&
+    if (PTy->getKind() == CheckCBox_PointerKind::Ptr &&
         !getLangOpts()._3C) {
         return ExprError(Diag(LLoc, diag::err_typecheck_ptr_subscript)
             << LHSTy << LHSExp->getSourceRange() << RHSExp->getSourceRange());
@@ -5653,7 +5666,7 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
     BaseExpr = RHSExp;
     IndexExpr = LHSExp;
     // Array subscripting not allowed on ptr<T> values
-    if (PTy->getKind() == CheckedPointerKind::Ptr &&
+    if (PTy->getKind() == CheckCBox_PointerKind::Ptr &&
         !getLangOpts()._3C) {
         return ExprError(Diag(LLoc, diag::err_typecheck_ptr_subscript)
             << RHSTy << LHSExp->getSourceRange() << RHSExp->getSourceRange());
@@ -6072,6 +6085,19 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
     const BoundsAnnotations Annots = Proto->getParamAnnots(i);
 
     Expr *Arg;
+    /**
+     * Basically, if we know that the callee function is TLIB Type
+     * We want it TLIB-ness to flow through its arguments too.
+     * The reason this is being introduced is -->
+     * If the arg is of type char* dest : itype(_TArray_ptr : bounds)
+     * and the parameter being passed in place of this argument is _Nt_Checked,
+     * then CheckPointerTypesForAssignment throws an error saying, illegal assignment.
+     * However, if we know that the RHS (arg type) is tlib-ed, then it means it
+     * belong to a TLIB function..
+     */
+//    if (FDecl->isTLIB())
+//      Arg->setTLIBScopeSpecifier();
+
     ParmVarDecl *Param = FDecl ? FDecl->getParamDecl(i) : nullptr;
     if (ArgIx < Args.size()) {
       Arg = Args[ArgIx++];
@@ -6107,8 +6133,10 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
       if (CFAudited)
         Entity.setParameterCFAudited();
 
+      if (FDecl && (FDecl->isTLIB()) && (!FDecl->getParamDecl(i)->getInteropType().isNull()))
+        Entity.setInterOpSymbioteType(FDecl->getParamDecl(i)->getType());
       ExprResult ArgE = PerformCopyInitialization(
-          Entity, SourceLocation(), Arg, IsListInitialization, AllowExplicit);
+           Entity, SourceLocation(), Arg, IsListInitialization, AllowExplicit);
       if (ArgE.isInvalid())
         return true;
 
@@ -6514,6 +6542,27 @@ ExprResult Sema::ActOnCallExpr(Scope *Scope, Expr *Fn, SourceLocation LParenLoc,
       BuildCallExpr(Scope, Fn, LParenLoc, ArgExprs, RParenLoc, ExecConfig,
                     /*IsExecConfig=*/false, /*AllowRecovery=*/true);
   if (Call.isInvalid())
+    return Call;
+
+  bool isTaintedFunction = (IsTaintedScope()
+                            || (getCurScope()->isTaintedFunctionScope()));
+  bool isMirrorFunction = (IsMirrorScope()
+                            || (getCurScope()->isMirrorFunctionScope()));
+
+
+  if(isTaintedFunction)
+  {
+    Fn->setTaintedScopeSpecifier(Tainted_Memory);
+  }
+  if(isMirrorFunction) {
+    Fn->setMirrorScopeSpecifier(Mirror_Memory);
+  }
+  if((IsTLIBScope()) || (getCurScope()->isTLIBFunctionScope())) {
+    Fn->setTLIBScopeSpecifier(TLIB_Memory);
+  }
+
+  if ((isTaintedFunction || isMirrorFunction)
+   && (!CheckCallExprIntegrityInTaintedScope(Fn, LParenLoc)))
     return Call;
 
   // Diagnose uses of the C++20 "ADL-only template-id call" feature in earlier
@@ -7809,7 +7858,11 @@ Sema::ActOnCastExpr(Scope *S, SourceLocation LParenLoc,
   DiscardMisalignedMemberAddress(castType.getTypePtr(), CastExpr);
 
   return BuildCStyleCastExpr(LParenLoc, castTInfo, RParenLoc, CastExpr,
-                             IsCheckedScope());
+                             IsCheckedScope(),
+                             IsTaintedScope(),
+                             IsMirrorScope(),
+                             IsTLIBScope(),
+                             getCurScope());
 }
 
 ExprResult Sema::BuildVectorLiteral(SourceLocation LParenLoc,
@@ -8089,13 +8142,13 @@ static QualType checkConditionalPointerCompatibility(Sema &S, ExprResult &LHS,
 
   QualType CompositeTy = S.Context.mergeTypes(lhptee, rhptee);
 
-  CheckedPointerKind resultKind = CheckedPointerKind::Unchecked;
+  CheckCBox_PointerKind resultKind = CheckCBox_PointerKind::Unchecked;
   bool incompatibleCheckedPointer = false;
   if (!IsBlockPointer) {
       // Check the compatibility of the pointer kind and compute the resulting
       // pointer kind.  For checked pointers, enforce that pointees merge too.
-     CheckedPointerKind lhsKind = LHSTy->castAs<PointerType>()->getKind();
-     CheckedPointerKind rhsKind = RHSTy->castAs<PointerType>()->getKind();
+     CheckCBox_PointerKind lhsKind = LHSTy->castAs<PointerType>()->getKind();
+     CheckCBox_PointerKind rhsKind = RHSTy->castAs<PointerType>()->getKind();
      if (lhsKind == rhsKind) {
        resultKind = lhsKind;
        // maybe the lhptee and rhptee did not merge because the array types
@@ -8112,9 +8165,9 @@ static QualType checkConditionalPointerCompatibility(Sema &S, ExprResult &LHS,
          }
        }
        // For checked pointers, the pointee types must merge.
-       incompatibleCheckedPointer = resultKind != CheckedPointerKind::Unchecked && CompositeTy.isNull();
+       incompatibleCheckedPointer = resultKind != CheckCBox_PointerKind::Unchecked && CompositeTy.isNull();
      }
-     else if (lhsKind == CheckedPointerKind::Unchecked) {
+     else if (lhsKind == CheckCBox_PointerKind::Unchecked) {
        // The rhs must be a checked pointer type. The least upper bound is determined
        // as follows:
        //    Unchecked ^ Array =  Array
@@ -8123,8 +8176,8 @@ static QualType checkConditionalPointerCompatibility(Sema &S, ExprResult &LHS,
        // This is provided that the pointee types are compatible or the 
        // pointee types are array types that differ in compatibility only
        // because one is more "checked" than the other.
-       resultKind = (rhsKind == CheckedPointerKind::NtArray) ?
-         CheckedPointerKind::Array : rhsKind;
+       resultKind = (rhsKind == CheckCBox_PointerKind::NtArray) ?
+         CheckCBox_PointerKind::Array : rhsKind;
        // Again, maybe the lhptee and rhptee did not merge because the array types
        // differ in whether they are checked. Only the rhsptee can be checked because
        // otherwise this implicitly casts away checkedness, which is not allowed.
@@ -8133,29 +8186,39 @@ static QualType checkConditionalPointerCompatibility(Sema &S, ExprResult &LHS,
        }
        incompatibleCheckedPointer = CompositeTy.isNull();
      }
-     else if (rhsKind == CheckedPointerKind::Unchecked) {
+     else if (rhsKind == CheckCBox_PointerKind::Unchecked) {
        // Same as above, but reversed.
-       resultKind = (lhsKind == CheckedPointerKind::NtArray) ?
-         CheckedPointerKind::Array : lhsKind;
+       resultKind = (lhsKind == CheckCBox_PointerKind::NtArray) ?
+         CheckCBox_PointerKind::Array : lhsKind;
        if (CompositeTy.isNull() && S.Context.pointeeTypesAreAssignable(lhptee, rhptee)) {
          CompositeTy = lhptee;
        }
        incompatibleCheckedPointer = CompositeTy.isNull();
-     } else if ((lhsKind == CheckedPointerKind::NtArray &&
-                 rhsKind == CheckedPointerKind::Array) ||
-                (rhsKind == CheckedPointerKind::NtArray &&
-                 lhsKind == CheckedPointerKind::Array)) {
+     } else if ((lhsKind == CheckCBox_PointerKind::NtArray &&
+                 rhsKind == CheckCBox_PointerKind::Array) ||
+                (rhsKind == CheckCBox_PointerKind::NtArray &&
+                 lhsKind == CheckCBox_PointerKind::Array)) {
        // NtArray can't be the upper bound type because the Array value may not
        // have have a null terminator.
-       resultKind = CheckedPointerKind::Array;
+       resultKind = CheckCBox_PointerKind::Array;
        incompatibleCheckedPointer = CompositeTy.isNull();
-     } else {
+     }
+     else if ((lhsKind == CheckCBox_PointerKind::t_nt_array &&
+               rhsKind == CheckCBox_PointerKind::t_array) ||
+              (rhsKind == CheckCBox_PointerKind::t_nt_array &&
+               lhsKind == CheckCBox_PointerKind::t_array)) {
+       // NtArray can't be the upper bound type because the Array value may not
+       // have have a null terminator.
+       resultKind = CheckCBox_PointerKind::Array;
+       incompatibleCheckedPointer = CompositeTy.isNull();
+     }
+     else {
        // Must have different kinds of checked pointers (_Ptr vs.
        // _Array_ptr or _Nt_Array_ptr). Implicit conversions between these
        // kinds of pointers are not allowed.
        incompatibleCheckedPointer = !S.getLangOpts()._3C;
        // _Array_ptr is less likely to cause spurious downstream warnings.
-       resultKind = CheckedPointerKind::Array;
+       resultKind = CheckCBox_PointerKind::Array;
      }
 
      if (incompatibleCheckedPointer) {
@@ -8256,15 +8319,15 @@ checkConditionalObjectPointersCompatibility(Sema &S, ExprResult &LHS,
   const PointerType *rhpt = RHSTy->castAs<PointerType>();
   QualType lhptee = lhpt->getPointeeType();
   QualType rhptee = rhpt->getPointeeType();
-  CheckedPointerKind lhkind = lhpt->getKind();
-  CheckedPointerKind rhkind = rhpt->getKind();
+  CheckCBox_PointerKind lhkind = lhpt->getKind();
+  CheckCBox_PointerKind rhkind = rhpt->getKind();
 
   // ignore qualifiers on void (C99 6.5.15p3, clause 6)
   if (lhptee->isVoidType() && rhptee->isIncompleteOrObjectType() && 
-      (lhkind == rhkind || rhkind == CheckedPointerKind::Unchecked)) {
+      (lhkind == rhkind || rhkind == CheckCBox_PointerKind::Unchecked)) {
     // Null-terminated void pointers are illegal, so we don't have to worry
     // about that case.
-    assert(lhkind != CheckedPointerKind::NtArray);
+    assert(lhkind != CheckCBox_PointerKind::NtArray);
     // In checked scopes, casting one arm to void pointer to match
     // the other arm is not allowed.
     if (S.GetCheckedScopeInfo() == CheckedScopeSpecifier::CSS_Memory &&
@@ -8284,10 +8347,10 @@ checkConditionalObjectPointersCompatibility(Sema &S, ExprResult &LHS,
     return destType;
   }
   if (rhptee->isVoidType() && lhptee->isIncompleteOrObjectType() &&
-     (lhkind == rhkind || lhkind == CheckedPointerKind::Unchecked)) {
+     (lhkind == rhkind || lhkind == CheckCBox_PointerKind::Unchecked)) {
     // Null-terminated void pointers are illegal, so we don't have to worry
     // about that case.
-    assert(rhkind != CheckedPointerKind::NtArray);
+    assert(rhkind != CheckCBox_PointerKind::NtArray);
     if (S.GetCheckedScopeInfo() == CheckedScopeSpecifier::CSS_Memory &&
         lhptee->containsCheckedValue(true) != Type::NoCheckedValue) {
       S.Diag(Loc, diag::err_checkedc_void_pointer_cond) << LHSTy << RHSTy <<
@@ -9143,7 +9206,34 @@ static bool IsInvalidCmseNSCallConversion(Sema &S, QualType FromType,
   }
   return false;
 }
+/*
+ * Description:
+ * Rule 1: Tainted pointers cannot be assigned to Un-Tainted pointers
+ * Rule 2: Un-Tainted pointers cannot be assigned to Tainted pointers
+ */
+bool isTaintedAssignmentValid(CheckCBox_PointerKind &lhkind, CheckCBox_PointerKind &rhkind)
+{
+  if((lhkind == CheckCBox_PointerKind::t_nt_array
+      || lhkind == CheckCBox_PointerKind::t_array
+      || lhkind == CheckCBox_PointerKind::t_ptr)
+      && (rhkind != CheckCBox_PointerKind::t_nt_array
+          && rhkind != CheckCBox_PointerKind::t_array
+          && rhkind != CheckCBox_PointerKind::t_ptr))
+  {
+      return false;
+  }
+  else if((lhkind == CheckCBox_PointerKind::Ptr
+            || lhkind == CheckCBox_PointerKind::Array
+            || lhkind == CheckCBox_PointerKind::NtArray)
+           && (rhkind == CheckCBox_PointerKind::t_nt_array
+               || rhkind == CheckCBox_PointerKind::t_array
+               || rhkind == CheckCBox_PointerKind::t_ptr))
+  {
+    return false;
+  }
 
+  return true;
+}
 // checkPointerTypesForAssignment - This is a very tricky routine (despite
 // being closely modeled after the C99 spec:-). The odd characteristic of this
 // routine is it effectively iqnores the qualifiers on the top level pointee.
@@ -9162,10 +9252,25 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
   std::tie(rhptee, rhq) =
       cast<PointerType>(RHSType)->getPointeeType().split().asPair();
 
-  CheckedPointerKind lhkind = cast<PointerType>(LHSType)->getKind();
-  CheckedPointerKind rhkind = cast<PointerType>(RHSType)->getKind();
+  CheckCBox_PointerKind lhkind = cast<PointerType>(LHSType)->getKind();
+  CheckCBox_PointerKind rhkind = cast<PointerType>(RHSType)->getKind();
 
   Sema::AssignConvertType ConvTy = Sema::Compatible;
+
+  //Check if Non-Tainted Pointers are being assigned to Tainted Pointers
+/*
+ * Removing this check at this place because -->
+ * for the case of itypes, only the itypes of an argument is compared
+ * against the type of the parameter being passed -->
+ * if you pass char simple _Checked[120] to char* : itype(_TArray_ptr<char>)
+ * --> You are erroring out --> I dont like this -->
+ *
+ */
+
+    if(!isTaintedAssignmentValid(lhkind, rhkind))
+  {
+      return Sema::IncompatibleTaintedAssignment;
+  }
 
   // C99 6.5.16.1p1: This following citation is common to constraints
   // 3 & 4 (below). ...and the type *pointed to* by the left has all the
@@ -9206,8 +9311,8 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
   // version of void...
 
   // Handle the plain C case (where both pointers unchecked).
-  if (lhkind == CheckedPointerKind::Unchecked &&
-      rhkind == CheckedPointerKind::Unchecked) {
+  if (lhkind == CheckCBox_PointerKind::Unchecked &&
+      rhkind == CheckCBox_PointerKind::Unchecked) {
 
     if (lhptee->isVoidType()) {
       if (rhptee->isIncompleteOrObjectType())
@@ -9229,8 +9334,8 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
   }
 
   // Handle Checked C cases (where one pointer is checked).
-  if (lhkind != CheckedPointerKind::Unchecked ||
-      rhkind != CheckedPointerKind::Unchecked) {
+  if (lhkind != CheckCBox_PointerKind::Unchecked ||
+      rhkind != CheckCBox_PointerKind::Unchecked) {
     // Implicit conversions to checked void pointers.
     // - In unchecked scopes and bounds-safe checked scopes, allow conversions
     // from any pointer to a _Ptr or _Array_ptr void type.
@@ -9240,14 +9345,24 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
     // code would not allow conversions to it, if it were.
     // - Do not have an extension allowing casts from checked function
     // pointers to checked void pointers.
-    if (lhptee->isVoidType() && (lhkind == CheckedPointerKind::Ptr ||
-                                 lhkind == CheckedPointerKind::Array) &&
+    if (lhptee->isVoidType() && (lhkind == CheckCBox_PointerKind::Ptr ||
+                                 lhkind == CheckCBox_PointerKind::Array) &&
         rhptee->isIncompleteOrObjectType()) {
       if (S.GetCheckedScopeInfo() == CheckedScopeSpecifier::CSS_Memory
           && rhptee->containsCheckedValue(true) != Type::NoCheckedValue)
         return Sema::IncompatibleCheckedCVoid;
       return ConvTy;
     }
+
+    if (lhptee->isVoidType() && (lhkind == CheckCBox_PointerKind::t_ptr ||
+                                 lhkind == CheckCBox_PointerKind::t_array) &&
+        rhptee->isIncompleteOrObjectType()) {
+      if (S.GetCheckedScopeInfo() == CheckedScopeSpecifier::CSS_Memory
+          && rhptee->containsCheckedValue(true) != Type::NoCheckedValue)
+        return Sema::IncompatibleCheckedCVoid;
+      return ConvTy;
+    }
+
 
     // Implicit conversions from void pointers to checked pointers.
     // - In unchecked scopes and bounds-safe checked scopes, allow any void
@@ -9260,9 +9375,20 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
     // - Do not have an extension allowing casts from checked void pointers
     // to checked function pointers.
     if (rhptee->isVoidType() && lhptee->isIncompleteOrObjectType()) {
-      if (rhkind != CheckedPointerKind::Ptr &&
-          (lhkind == CheckedPointerKind::Ptr ||
-           lhkind == CheckedPointerKind::Array)) {
+      if (rhkind != CheckCBox_PointerKind::Ptr &&
+          (lhkind == CheckCBox_PointerKind::Ptr ||
+           lhkind == CheckCBox_PointerKind::Array)) {
+        if (S.GetCheckedScopeInfo() == CheckedScopeSpecifier::CSS_Memory
+            && lhptee->containsCheckedValue(true) != Type::NoCheckedValue)
+          return Sema::IncompatibleCheckedCVoid;
+        return ConvTy;
+      }
+    }
+
+    if (rhptee->isVoidType() && lhptee->isIncompleteOrObjectType()) {
+      if (rhkind != CheckCBox_PointerKind::t_ptr &&
+          (lhkind == CheckCBox_PointerKind::t_ptr ||
+           lhkind == CheckCBox_PointerKind::t_array)) {
         if (S.GetCheckedScopeInfo() == CheckedScopeSpecifier::CSS_Memory
             && lhptee->containsCheckedValue(true) != Type::NoCheckedValue)
           return Sema::IncompatibleCheckedCVoid;
@@ -9281,12 +9407,22 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
   //   or _Array_ptr
 
   if (!S.getLangOpts()._3C) {
-    if (rhkind != CheckedPointerKind::Unchecked &&
-        lhkind == CheckedPointerKind::Unchecked)
+    if (rhkind != CheckCBox_PointerKind::Unchecked &&
+        lhkind == CheckCBox_PointerKind::Unchecked)
       return Sema::Incompatible;
 
-    if (lhkind == CheckedPointerKind::NtArray &&
-        rhkind != CheckedPointerKind::NtArray)
+    if (lhkind == CheckCBox_PointerKind::NtArray &&
+        rhkind != CheckCBox_PointerKind::NtArray)
+      return Sema::Incompatible;
+  }
+
+  if (!S.getLangOpts()._3C) {
+    if (rhkind != CheckCBox_PointerKind::Unchecked &&
+        lhkind == CheckCBox_PointerKind::Unchecked)
+      return Sema::Incompatible;
+
+    if (lhkind == CheckCBox_PointerKind::t_nt_array &&
+        rhkind != CheckCBox_PointerKind::t_nt_array)
       return Sema::Incompatible;
   }
 
@@ -9296,8 +9432,8 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
   if (!S.Context.pointeeTypesAreAssignable(ltrans, rtrans)) {
      // None of the language extensions below are allowed for pointers
      // that are checked pointers or that contain checked types.
-     if (LHSType->isOrContainsCheckedType() ||
-         RHSType->isOrContainsCheckedType()) {
+     if (LHSType->isOrContainsCheckedOrTaintedType() ||
+         RHSType->isOrContainsCheckedOrTaintedType()) {
        // If ignoring checked pointers are enabled then assignments containing
        // checked pointers is always compatible.
        return S.getLangOpts()._3C ? Sema::Compatible :
@@ -10103,7 +10239,8 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
 
   // If we can't convert to the LHS type, try the LHS interop type instead.
   // Note that we have to insert a cast that "downgrades" the checkedness.
-  if ((result == Incompatible || result == IncompatibleCheckedCVoid) &&
+  if ((result == Incompatible || result == IncompatibleCheckedCVoid
+       || result == IncompatibleTaintedAssignment) &&
       !LHSInteropType.isNull()) {
     result = CheckAssignmentConstraints(LHSInteropType, RHS, Kind, ConvertRHS);
     if (result != Incompatible && result != IncompatibleCheckedCVoid) {
@@ -12455,7 +12592,7 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
       else {
         QualType TargetType =
           Context.getPointerType(LCanPointeeTy,
-                                 CheckedPointerKind::Unchecked);
+                                 CheckCBox_PointerKind::Unchecked);
         LHS = ImpCastExprToType(LHS.get(), TargetType, Kind);
         RHS = ImpCastExprToType(RHS.get(), TargetType, Kind);
       }
@@ -14234,14 +14371,38 @@ QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
   // In a checked scope, the operator produces an array_ptr<T> except for
   // function type. For address-of function type, it produces ptr not array_ptr.
   // In an unchecked scope, it continues to produce (T *).
-  CheckedPointerKind kind;
+  CheckCBox_PointerKind kind;
   if (IsCheckedScope()) {
-    if (op->getType()->isFunctionType())
-      kind = CheckedPointerKind::Ptr;
+    if (op->getType()->isFunctionType()) {
+       kind = CheckCBox_PointerKind::Ptr;
+    }
     else
-      kind = CheckedPointerKind::Array;
+      kind = CheckCBox_PointerKind::Array;
   } else
-    kind = CheckedPointerKind::Unchecked;
+    kind = CheckCBox_PointerKind::Unchecked;
+
+  /*
+   * Callback Functions will always be dereferenced to _TPtr
+   * so as to keep the typechecked happy
+   */
+
+ if (IsTaintedScope() ||
+      (op->getReferencedDeclOfCallee() != NULL
+                              && op->getReferencedDeclOfCallee()->isCallbackDecl())) {
+    if (op->getType()->isFunctionType()) {
+       kind = CheckCBox_PointerKind::t_ptr;
+    }
+    else
+      kind = CheckCBox_PointerKind::Array;
+  } else
+    kind = CheckCBox_PointerKind::Unchecked;
+/*
+ * Irrespective of which scope you are in, if you are dereferencing a callback
+ * fucntion pointer you need to dereference it to a --> tainted pointer
+ */
+
+  if (op->getType()->isFunctionType() && dcl->getAsFunction()->isCallback())
+    kind = CheckCBox_PointerKind::t_ptr;
 
   return Context.getPointerType(op->getType(), kind);
 }
@@ -14560,6 +14721,145 @@ static bool needsConversionOfHalfVec(bool OpRequiresConversion, ASTContext &Ctx,
 
   return HasVectorOfHalfType(E0) && (!E1 || HasVectorOfHalfType(E1));
 }
+bool Sema::CheckUnExprIntegrityInTaintedScope(ExprResult *InputExpr,
+                                               SourceLocation OpLoc)
+{
+    if(InputExpr->get() == NULL)
+      return true;
+    // Should Also be the same for RHS
+    auto IpExpr = InputExpr->get();
+    if (IpExpr->getReferencedDeclOfCallee() != NULL)
+    {
+        if((IpExpr->getReferencedDeclOfCallee()->getParentFunctionOrMethod()
+          == NULL) && (!IpExpr->getReferencedDeclOfCallee()->isTaintedDecl()))
+        {
+            Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0
+                 << InputExpr->get()->getSourceRange()
+           << FixItHint::CreateInsertion(OpLoc, "Qualify"
+                                     " the global variable as _Tainted");
+            return false;
+        }
+    }
+    return true;
+}
+bool Sema::CheckUnExprIntegrityInCheckedScope(ExprResult *InputExpr,
+                                              SourceLocation OpLoc)
+{
+  if(InputExpr->get() == NULL)
+    return true;
+  // Should Also be the same for RHS
+  auto IpExpr = InputExpr->get();
+  if (IpExpr->getReferencedDeclOfCallee() != NULL)
+  {
+    if ((IpExpr->getReferencedDeclOfCallee()->getParentFunctionOrMethod()
+         == NULL) && (IpExpr->getReferencedDeclOfCallee()->isMirrorDecl())
+        /*
+         * We shall make relaxation for function pointers being passed
+         */
+        )
+    {
+      if(IpExpr->getType()->isFunctionPointerType())
+      {
+        return true;
+      }
+      Diag(OpLoc, diag::err_typecheck_globalvar_chkscope) << 0
+                          << InputExpr->get()->getSourceRange()
+                          << FixItHint::CreateInsertion(OpLoc, "Mark this as const or _Tainted");
+      return false;
+    }
+  }
+  return true;
+}
+bool Sema::CheckCallExprIntegrityInTaintedScope(Expr *Fn,
+                                              SourceLocation OpLoc)
+{
+  if (Fn != NULL && Fn->getReferencedDeclOfCallee() != NULL
+      && Fn->getReferencedDeclOfCallee()->getAsFunction() != NULL)
+  {
+    auto FND = Fn->getReferencedDeclOfCallee()->getAsFunction();
+    if(!(FND->isMirror() ||
+          FND->isCallback() ||
+          FND->isTainted() ||
+          FND->isTLIB()||
+          (FND->getBuiltinID(false) != 0))) {
+      Diag(OpLoc, diag::err_typecheck_tainted_function_callbk)
+          << 0 << Fn->getSourceRange();
+      return false;
+    }
+  }
+  return true;
+}
+bool Sema::CheckBinExprIntegrityInTaintedScope(ExprResult *LHS, ExprResult *RHS,
+                                                  SourceLocation OpLoc,
+                                               SourceRange SR)
+{
+    if((RHS->get() == NULL) || (LHS->get() == NULL))
+      return true;
+
+    auto RHSExpr = RHS->get();
+    auto LHSExpr = LHS->get();
+    if (RHSExpr->getReferencedDeclOfCallee() != NULL) {
+      if ((RHSExpr->getReferencedDeclOfCallee()->getParentFunctionOrMethod() ==
+          NULL) && ((!RHSExpr->getReferencedDeclOfCallee()->isTaintedDecl())
+              && !(RHSExpr->getReferencedDeclOfCallee()->isMirrorDecl()))){
+        Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0 << RHSExpr->getSourceRange()
+                                    << FixItHint::CreateInsertion(OpLoc, "Qualify"
+                                         " the global variable as _Tainted or "
+                                         "const-qualified _Mirror");
+        return false;
+      }
+    }
+
+    /*
+     * Mirror variables can be assigned as long as they are performed in the
+     * Mirrored context
+     */
+    if ((LHSExpr->getReferencedDeclOfCallee() != NULL) &&
+        (LHSExpr->getReferencedDeclOfCallee()
+                     ->getParentFunctionOrMethod() == NULL)
+        && (!LHSExpr->getReferencedDeclOfCallee()->isTaintedDecl())
+        && (LHSExpr->getMirrorScopeSpecifier() != Mirror_Memory)) {
+        Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0 << LHSExpr->getSourceRange()
+                                    << FixItHint::CreateInsertion(OpLoc, "Qualify"
+                                           " the global variable as _Tainted");
+        return false;
+    }
+
+    return true;
+}
+
+bool Sema::CheckBinExprIntegrityInCheckedScope(ExprResult *LHS, ExprResult *RHS,
+                                               SourceLocation OpLoc,
+                                               SourceRange SR)
+{
+  if((RHS->get() == NULL) || (LHS->get() == NULL))
+    return true;
+
+  auto RHSExpr = RHS->get();
+  auto LHSExpr = LHS->get();
+
+//  if (RHSExpr->getReferencedDeclOfCallee() != NULL) {
+//    if ((RHSExpr->getReferencedDeclOfCallee()->getParentFunctionOrMethod() ==
+//         NULL) && ((RHSExpr->getReferencedDeclOfCallee()->isMirrorDecl()))){
+//      Diag(OpLoc, diag::err_typecheck_globalvar_chkscope) << 0 << SR
+//                       << FixItHint::CreateInsertion(OpLoc, "Consider either Qualifying the "
+//                        " this as const or mark it as"
+//                                    " _Tainted");
+//      return false;
+//    }
+//  }
+
+//  if (LHSExpr->getReferencedDeclOfCallee() != NULL) {
+//    if ((LHSExpr->getReferencedDeclOfCallee()->getParentFunctionOrMethod() ==
+//         NULL) && ((LHSExpr->getReferencedDeclOfCallee()->isMirrorDecl()))){
+//      Diag(OpLoc, diag::err_typecheck_globalvar_chkscope) << 0 << LHSExpr->getSourceRange()
+//          << FixItHint::CreateInsertion(OpLoc, "Mark this as const or _Tainted");
+//      return false;
+//    }
+//  }
+
+  return true;
+}
 
 /// CreateBuiltinBinOp - Creates a new built-in binary operation with
 /// operator @p Opc at location @c TokLoc. This routine only supports
@@ -14623,9 +14923,46 @@ ExprResult Sema::CreateBuiltinBinOp(SourceLocation OpLoc,
     }
   }
 
+  SourceRange SR(LHSExpr->getBeginLoc(), RHSExpr->getEndLoc());
+  bool isTaintedFunction = (IsTaintedScope()
+                          || (getCurScope()->isTaintedFunctionScope()));
+  bool isMirrorFunction = (IsMirrorScope()
+                         || (getCurScope()->isMirrorFunctionScope()));
+  if(isTaintedFunction)
+  {
+    RHSExpr->setTaintedScopeSpecifier(Tainted_Memory);
+    LHSExpr->setTaintedScopeSpecifier(Tainted_Memory);
+  }
+  if(isMirrorFunction) {
+    RHSExpr->setMirrorScopeSpecifier(Mirror_Memory);
+    LHSExpr->setMirrorScopeSpecifier(Mirror_Memory);
+  }
+  if((IsTLIBScope()) || (getCurScope()->isTLIBFunctionScope())) {
+    RHSExpr->setTLIBScopeSpecifier(TLIB_Memory);
+    LHSExpr->setTLIBScopeSpecifier(TLIB_Memory);
+  }
+
+  if (isTaintedFunction||isMirrorFunction)
+     {
+
+          if(!CheckBinExprIntegrityInTaintedScope(&LHS, &RHS, OpLoc, SR))
+          return ExprError();
+
+     }
+  else{
+       if(!CheckBinExprIntegrityInCheckedScope(&LHS, &RHS, OpLoc, SR))
+         return ExprError();
+     }
+
   switch (Opc) {
   case BO_Assign:
     ResultTy = CheckAssignmentOperands(LHS.get(), RHS, OpLoc, QualType());
+    /*
+     * Super Dumb, but we shall try doing it here
+     * Logic is --> We want to prevent global varbles from appearing anywhere in an RHS Expression
+     *
+     */
+
     if (getLangOpts().CPlusPlus &&
         LHS.get()->getObjectKind() != OK_ObjCProperty) {
       VK = LHS.get()->getValueKind();
@@ -15256,12 +15593,37 @@ static bool isOverflowingIntegerType(ASTContext &Ctx, QualType T) {
 ExprResult Sema::CreateBuiltinUnaryOp(SourceLocation OpLoc,
                                       UnaryOperatorKind Opc,
                                       Expr *InputExpr) {
+
   ExprResult Input = InputExpr;
   ExprValueKind VK = VK_RValue;
   ExprObjectKind OK = OK_Ordinary;
   QualType resultType;
   bool CanOverflow = false;
+  bool isTaintedFunction = (IsTaintedScope()
+                            || (getCurScope()->isTaintedFunctionScope()));
+  bool isMirrorFunction = (IsMirrorScope()
+                           || (getCurScope()->isMirrorFunctionScope()));
 
+  if(isTaintedFunction)
+  {
+    InputExpr->setTaintedScopeSpecifier(Tainted_Memory);
+  }
+  if(isMirrorFunction) {
+    InputExpr->setMirrorScopeSpecifier(Mirror_Memory);
+  }
+  if((IsTLIBScope()) || (getCurScope()->isTLIBFunctionScope())) {
+    InputExpr->setTLIBScopeSpecifier(TLIB_Memory);
+  }
+  if (isTaintedFunction||isMirrorFunction)
+  {
+    if (!CheckUnExprIntegrityInTaintedScope(&Input, OpLoc))
+      return ExprError();
+
+  }
+  else{
+    if (!CheckUnExprIntegrityInCheckedScope(&Input, OpLoc))
+      return ExprError();
+  }
   bool ConvertHalfVec = false;
   if (getLangOpts().OpenCL) {
     QualType Ty = InputExpr->getType();
@@ -15573,7 +15935,7 @@ ExprResult Sema::ActOnAddrLabel(SourceLocation OpLoc, SourceLocation LabLoc,
   TheDecl->markUsed(Context);
   // Create the AST node.  The address of a label always has type 'void*'.
   return new (Context) AddrLabelExpr(OpLoc, LabLoc, TheDecl,
-                                     Context.getPointerType(Context.VoidTy, CheckedPointerKind::Unchecked));
+                                     Context.getPointerType(Context.VoidTy, CheckCBox_PointerKind::Unchecked));
 }
 
 void Sema::ActOnStartStmtExpr() {
@@ -16097,6 +16459,35 @@ ExprResult Sema::ActOnBoundsCastExprBounds(
                              SourceRange(LParenLoc, RParenLoc), E1, Bounds);
 }
 
+ExprResult Sema::ActOnBoundsTaintedCastExprBounds(
+    Scope *S, SourceLocation OpLoc, tok::TokenKind Kind,
+    SourceLocation LAngleBracketLoc, ParsedType D,
+    SourceLocation RAngleBracketLoc,
+    SourceLocation LParenLoc, SourceLocation RParenLoc, Expr *E1,
+    BoundsExpr *Bounds) {
+  TypeSourceInfo *CastTInfo;
+
+  QualType DestTy = GetTypeFromParser(D, &CastTInfo);
+  SourceLocation TypeLoc =
+      CastTInfo ? (CastTInfo->getTypeLoc()).getBeginLoc() : LAngleBracketLoc;
+
+  if (CheckBoundsCastBaseType(E1))
+    return ExprError();
+
+  if (!DestTy->isTaintedPointerType()) {
+    Diag(TypeLoc, diag::err_bounds_cast_expected_tainted_array_ptr);
+    return ExprError();
+  } else if (Bounds->isElementCount() && DestTy->isVoidPointerType()) {
+    Diag(Bounds->getBeginLoc(),
+         diag::err_typecheck_void_pointer_count_bounds_cast);
+    return ExprError();
+  }
+
+  return BuildBoundsCastExpr(OpLoc, Kind, CastTInfo,
+                             SourceRange(LAngleBracketLoc, RAngleBracketLoc),
+                             SourceRange(LParenLoc, RParenLoc), E1, Bounds);
+}
+
 ExprResult Sema::ActOnBoundsCastExprSingle(
     Scope *S, SourceLocation OpLoc, tok::TokenKind Kind,
     SourceLocation LAngleBracketLoc, ParsedType D,
@@ -16119,6 +16510,44 @@ ExprResult Sema::ActOnBoundsCastExprSingle(
       Bounds = Context.getPrebuiltCountOne();
   } else {
     Diag(TypeLoc, diag::err_bounds_cast_expected_ptr_or_unchecked);
+    return ExprError();
+  }
+
+  return BuildBoundsCastExpr(OpLoc, Kind, CastTInfo,
+                             SourceRange(LAngleBracketLoc, RAngleBracketLoc),
+                             SourceRange(LParenLoc, RParenLoc), E1,
+                             Bounds);
+}
+
+ExprResult Sema::ActOnBoundsTaintedCastExprSingle(
+    Scope *S, SourceLocation OpLoc, tok::TokenKind Kind,
+    SourceLocation LAngleBracketLoc, ParsedType D,
+    SourceLocation RAngleBracketLoc,
+    SourceLocation LParenLoc, SourceLocation RParenLoc, Expr *E1) {
+  TypeSourceInfo *CastTInfo;
+  BoundsExpr *Bounds;
+
+  QualType DestTy = GetTypeFromParser(D, &CastTInfo);
+  SourceLocation TypeLoc =
+      CastTInfo ? (CastTInfo->getTypeLoc()).getBeginLoc() : LAngleBracketLoc;
+
+  if (CheckBoundsCastBaseType(E1))
+    return ExprError();
+
+  if(DestTy->isUncheckedPointerType())
+  {
+    Diag(TypeLoc, diag::err_bounds_cast_expected_tainted_ptr);
+    return ExprError();
+  }
+
+  if (DestTy->isTaintedPointerPtrType()) {
+    if (DestTy->isVoidPointerType())
+      Bounds = Context.getPrebuiltByteCountOne();
+    else
+      Bounds = Context.getPrebuiltCountOne();
+
+  } else {
+    Diag(TypeLoc, diag::err_bounds_cast_expected_tainted_ptr);
     return ExprError();
   }
 
@@ -16352,6 +16781,9 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
     RetTy = BSI->ReturnType;
 
   bool NoReturn = BD->hasAttr<NoReturnAttr>();
+  bool Tainted = BD->hasAttr<TaintedAttr>();
+  bool Callback = BD->hasAttr<CallbackAttr>();
+
   QualType BlockTy;
 
   // If the user wrote a function type in some form, try to use that.
@@ -16360,6 +16792,14 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
 
     FunctionType::ExtInfo Ext = FTy->getExtInfo();
     if (NoReturn && !Ext.getNoReturn()) Ext = Ext.withNoReturn(true);
+
+    if (Tainted && !Ext.getTainted()) {
+      Ext.setTainted(true);
+    }
+
+    if (Callback && !Ext.getCallback()) {
+      Ext.setCallback(true);
+    }
 
     // Turn protoless block types into nullary block types.
     if (isa<FunctionNoProtoType>(FTy)) {
@@ -16386,6 +16826,8 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
   } else {
     FunctionProtoType::ExtProtoInfo EPI;
     EPI.ExtInfo = FunctionType::ExtInfo().withNoReturn(NoReturn);
+    EPI.ExtInfo = FunctionType::ExtInfo().setTainted(Tainted);
+    EPI.ExtInfo = FunctionType::ExtInfo().setCallback(Callback);
     BlockTy = Context.getFunctionType(RetTy, None, EPI);
   }
 
@@ -16948,6 +17390,7 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
     return true;
   }
   case Incompatible:
+  case IncompatibleTaintedAssignment:
     if (maybeDiagnoseAssignmentToFunction(*this, DstType, SrcExpr)) {
       if (Complained)
         *Complained = true;

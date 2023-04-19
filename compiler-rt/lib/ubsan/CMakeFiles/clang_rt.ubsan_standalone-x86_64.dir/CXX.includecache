@@ -1,0 +1,40 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/ubsan_init.h
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/ubsan_init_standalone_preinit.cpp
+ubsan_platform.h
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/ubsan_platform.h
+sanitizer_common/sanitizer_internal_defs.h
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/sanitizer_common/sanitizer_internal_defs.h
+ubsan_init.h
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/ubsan_init.h
+ubsan_signals_standalone.h
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/ubsan_signals_standalone.h
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/ubsan_platform.h
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/ubsan/ubsan_signals_standalone.h
+
+lib/sanitizer_common/sanitizer_internal_defs.h
+sanitizer_platform.h
+lib/sanitizer_common/sanitizer_platform.h
+sanitizer_win_defs.h
+lib/sanitizer_common/sanitizer_win_defs.h
+
+lib/sanitizer_common/sanitizer_platform.h
+features.h
+-
+TargetConditionals.h
+-
+
+lib/sanitizer_common/sanitizer_win_defs.h
+sanitizer_platform.h
+lib/sanitizer_common/sanitizer_platform.h
+

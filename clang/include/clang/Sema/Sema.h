@@ -1895,13 +1895,13 @@ public:
                               const DeclSpec *DS = nullptr);
   QualType BuildQualifiedType(QualType T, SourceLocation Loc, unsigned CVRA,
                               const DeclSpec *DS = nullptr);
-  QualType BuildPointerType(QualType T, CheckedPointerKind kind,
+  QualType BuildPointerType(QualType T, CheckCBox_PointerKind kind,
                             SourceLocation Loc, DeclarationName Entity);
   QualType BuildReferenceType(QualType T, bool LValueRef,
                               SourceLocation Loc, DeclarationName Entity);
   QualType BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
                           Expr *ArraySize, unsigned Quals,
-                          CheckedArrayKind Kind, SourceRange Brackets, 
+                          CheckCBox_ArrayKind Kind, SourceRange Brackets, 
                           DeclarationName Entity);
   QualType BuildVectorType(QualType T, Expr *VecSize, SourceLocation AttrLoc);
   QualType BuildExtVectorType(QualType T, Expr *ArraySize,
@@ -3102,7 +3102,8 @@ public:
   // This is used for both record definitions and ObjC interface declarations.
   void ActOnFields(Scope *S, SourceLocation RecLoc, Decl *TagDecl,
                    ArrayRef<Decl *> Fields, SourceLocation LBrac,
-                   SourceLocation RBrac, const ParsedAttributesView &AttrList);
+                   SourceLocation RBrac, const ParsedAttributesView &AttrList,
+                   bool isTaintedStruct = false);
 
   /// ActOnTagStartDefinition - Invoked when we have entered the
   /// scope of a tag's definition (e.g., for an enumeration, class,
@@ -4625,15 +4626,25 @@ public:
   void ActOnStartOfCompoundStmt(bool IsStmtExpr);
   void ActOnAfterCompoundStatementLeadingPragmas();
   void ActOnFinishOfCompoundStmt();
-  StmtResult ActOnCompoundStmt(SourceLocation L, SourceLocation R,
-                               ArrayRef<Stmt *> Elts, bool isStmtExpr,
-                               CheckedScopeSpecifier WrittenCSS = CSS_None,
-                               SourceLocation CSSLoc = SourceLocation(),
-                               SourceLocation CSMLoc = SourceLocation(),
-                               SourceLocation BNDLoc = SourceLocation());
+
+  StmtResult ActOnCompoundStmt(
+      SourceLocation L, SourceLocation R, ArrayRef<Stmt *> Elts,
+      bool isStmtExpr, CheckedScopeSpecifier WrittenCSS = CSS_None ,
+      SourceLocation CSSLoc = SourceLocation(),
+      TaintedScopeSpecifier WrittenTaintedSS = Tainted_None,
+      SourceLocation TaintedLoc = SourceLocation(),
+      MirrorScopeSpecifier WrittenMirrorSS = Mirror_None,
+      SourceLocation MirrorLoc = SourceLocation(),
+      TLIBScopeSpecifier WrittenTLIBSS = TLIB_None,
+      SourceLocation TLIBLoc = SourceLocation(),
+      SourceLocation CSMLoc = SourceLocation(),
+      SourceLocation BNDLoc = SourceLocation());
 
 private:
   CheckedScopeSpecifier CheckingKind;
+  TaintedScopeSpecifier TaintedKind;
+  TLIBScopeSpecifier TLIBKind;
+  MirrorScopeSpecifier MirrorKind;
 
   // Keep a stack of saved checked scope information.
   class SavedCheckedScope {
@@ -4643,19 +4654,82 @@ private:
     SourceLocation Loc;
     CheckedScopeSpecifier Saved;
   };
+
+  // Keep a stack of saved checked scope information.
+  class SavedTLIBScope {
+  public:
+    SavedTLIBScope(TLIBScopeSpecifier S, SourceLocation L) :
+                                                                   Loc(L), Saved(S) {}
+    SourceLocation Loc;
+    TLIBScopeSpecifier Saved;
+  };
+
+  class SavedTaintedScope {
+  public:
+    SavedTaintedScope(TaintedScopeSpecifier S, SourceLocation L) :
+                                                             Loc(L), Saved(S) {}
+    SourceLocation Loc;
+    TaintedScopeSpecifier Saved;
+  };
+
+  class SavedMirrorScope {
+  public:
+    SavedMirrorScope(MirrorScopeSpecifier S, SourceLocation L) :
+                                                             Loc(L), Saved(S) {}
+    SourceLocation Loc;
+    MirrorScopeSpecifier  Saved;
+  };
+
   SmallVector<SavedCheckedScope, 8> CheckingKindStack; // can be empty
+  SmallVector<SavedTLIBScope, 8> TLIBKindStack; // can be empty
+  SmallVector<SavedTaintedScope, 8> TaintedKindStack; // can be empty
+  SmallVector<SavedMirrorScope, 8> MirrorKindStack; // can be empty
 
 public:
   CheckedScopeSpecifier GetCheckedScopeInfo() {
     return CheckingKind;
   }
 
+  TaintedScopeSpecifier GetTaintedScopeInfo() {
+    return TaintedKind;
+  }
+
+  TLIBScopeSpecifier GetTLIBScopeInfo() {
+    return TLIBKind;
+  }
+
+  MirrorScopeSpecifier GetMirrorScopeInfo() {
+    return MirrorKind;
+  }
+
   void SetCheckedScopeInfo(CheckedScopeSpecifier CSS) {
     CheckingKind = CSS;
   }
 
+  void SetTaintedScopeInfo(TaintedScopeSpecifier CSS) {
+    TaintedKind = CSS;
+  }
+  void SetTLIBScopeInfo(TLIBScopeSpecifier CSS) {
+    TLIBKind = CSS;
+  }
+  void SetMirrorScopeInfo(MirrorScopeSpecifier CSS) {
+    MirrorKind = CSS;
+  }
+
   void PushCheckedScopeInfo(SourceLocation Loc) {
     CheckingKindStack.push_back(SavedCheckedScope(CheckingKind, Loc));
+  }
+
+  void PushTaintedScopeInfo(SourceLocation Loc) {
+    TaintedKindStack.push_back(SavedTaintedScope(TaintedKind, Loc));
+  }
+
+  void PushTLIBScopeInfo(SourceLocation Loc) {
+    TLIBKindStack.push_back(SavedTLIBScope(TLIBKind, Loc));
+  }
+
+  void PushMirrorScopeInfo(SourceLocation Loc) {
+    MirrorKindStack.push_back(SavedMirrorScope(MirrorKind, Loc));
   }
 
   bool PopCheckedScopeInfo() {
@@ -4668,9 +4742,76 @@ public:
      return true;
   }
 
+  bool PopTaintedScopeInfo() {
+    if (TaintedKindStack.size() > 0) {
+      TaintedKind = TaintedKindStack.back().Saved;
+      TaintedKindStack.pop_back();
+      return false;
+    }
+    else
+      return true;
+  }
+
+  bool PopTLIBScopeInfo() {
+    if (TLIBKindStack.size() > 0) {
+      TLIBKind = TLIBKindStack.back().Saved;
+      TLIBKindStack.pop_back();
+      return false;
+    }
+    else
+      return true;
+  }
+
+  bool PopMirrorScopeInfo() {
+    if (MirrorKindStack.size() > 0) {
+      MirrorKind = MirrorKindStack.back().Saved;
+      MirrorKindStack.pop_back();
+      return false;
+    }
+    else
+      return true;
+  }
+
   void DiagnoseUnterminatedCheckedScope();
 
+  bool IsTaintedScope() {
+    auto FnScope = this->RecursiveScopeResolve(getCurScope());
+    if(FnScope != nullptr && FnScope->isTaintedFunctionScope())
+      return true;
+    else if(TaintedKind != Tainted_None)
+      return true;
+    else
+      return false;
+  }
+
+  bool IsTLIBScope() {
+    auto FnScope = this->RecursiveScopeResolve(getCurScope());
+    if(FnScope != nullptr && FnScope->isTLIBFunctionScope())
+      return true;
+    else if(TLIBKind != TLIB_None)
+      return true;
+    else
+      return false;
+  }
+
+  bool IsMirrorScope() {
+    auto FnScope = this->RecursiveScopeResolve(getCurScope());
+    if(FnScope != nullptr && FnScope->isMirrorFunctionScope())
+      return true;
+    else if(MirrorKind != Mirror_None)
+      return true;
+    else
+      return false;
+  }
+
   bool IsCheckedScope() {
+    /*
+     * This is very very risky
+     */
+    auto FnScope = this->RecursiveScopeResolve(getCurScope());
+    if(FnScope != nullptr && (FnScope->isTaintedFunctionScope() || FnScope->isTLIBFunctionScope()))
+      return false;
+
     return CheckingKind != CSS_Unchecked;
   }
 
@@ -4695,11 +4836,76 @@ public:
     }
   };
 
+  class TaintedScopeRAII {
+    Sema &SemaRef;
+    TaintedScopeSpecifier PrevTaintedKind;
+
+  public:
+    TaintedScopeRAII(Sema &SemaRef, TaintedScopeSpecifier TaintedSS)
+        : SemaRef(SemaRef),
+          PrevTaintedKind(SemaRef.TaintedKind) {
+      if (TaintedSS != Tainted_None)
+        SemaRef.TaintedKind = TaintedSS;
+    }
+
+    TaintedScopeRAII(Sema &S, DeclSpec &DS) :
+                                              TaintedScopeRAII(S, DS.getTaintedScopeSpecifier()) {
+    }
+
+    ~TaintedScopeRAII() {
+      SemaRef.TaintedKind = PrevTaintedKind;
+    }
+  };
+
+  class MirrorScopeRAII {
+    Sema &SemaRef;
+    MirrorScopeSpecifier PrevMirrorKind;
+
+  public:
+    MirrorScopeRAII(Sema &SemaRef, MirrorScopeSpecifier MirrorSS)
+        : SemaRef(SemaRef),
+          PrevMirrorKind(SemaRef.MirrorKind) {
+      if (MirrorSS != Mirror_None)
+        SemaRef.MirrorKind = MirrorSS;
+    }
+
+    MirrorScopeRAII(Sema &S, DeclSpec &DS) :
+                                             MirrorScopeRAII(S, DS.getMirrorScopeSpecifier()) {
+    }
+
+    ~MirrorScopeRAII() {
+      SemaRef.MirrorKind = PrevMirrorKind;
+    }
+  };
+
+  class TLIBScopeRAII {
+    Sema &SemaRef;
+    TLIBScopeSpecifier PrevTLIBKind;
+
+  public:
+    TLIBScopeRAII(Sema &SemaRef, TLIBScopeSpecifier CSS)
+        : SemaRef(SemaRef),
+          PrevTLIBKind(SemaRef.TLIBKind) {
+      if (CSS != TLIB_None)
+        SemaRef.TLIBKind = CSS;
+    }
+
+    TLIBScopeRAII(Sema &S, DeclSpec &DS) :
+                                           TLIBScopeRAII(S, DS.getTLIBScopeSpecifier()) {
+    }
+
+    ~TLIBScopeRAII() {
+      SemaRef.TLIBKind = PrevTLIBKind;
+    }
+  };
   /// A RAII object to enter scope of a compound statement.
   class CompoundScopeRAII {
   public:
     CompoundScopeRAII(Sema &S, bool IsStmtExpr = false, 
-                      CheckedScopeSpecifier CSS = CSS_None):
+                      CheckedScopeSpecifier CSS = CSS_None,
+                      TaintedScopeSpecifier TaintedSS = Tainted_None,
+                      MirrorScopeSpecifier MirrorSS = Mirror_None,
+                      TLIBScopeSpecifier TLIBSS = TLIB_None):
        S(S), CheckedProperties(S, CSS) {
       S.ActOnStartOfCompoundStmt(IsStmtExpr);
     }
@@ -5537,11 +5743,6 @@ public:
   ExprResult ActOnCastExpr(Scope *S, SourceLocation LParenLoc,
                            Declarator &D, ParsedType &Ty,
                            SourceLocation RParenLoc, Expr *CastExpr);
-  ExprResult BuildCStyleCastExpr(SourceLocation LParenLoc,
-                                 TypeSourceInfo *Ty,
-                                 SourceLocation RParenLoc,
-                                 Expr *Op,
-                                 bool isCheckedScope = false);
   CastKind PrepareScalarCast(ExprResult &src, QualType destType);
 
   /// Build an altivec or OpenCL literal.
@@ -5763,7 +5964,20 @@ public:
                             SourceLocation LParenLoc, SourceLocation RParenLoc,
                             Expr *E1, BoundsExpr *ParsedBounds);
 
+  ExprResult
+  ActOnBoundsTaintedCastExprBounds(Scope *S, SourceLocation OpLoc, tok::TokenKind Kind,
+                                   SourceLocation LAnagleBracketLoc, ParsedType D,
+                                   SourceLocation RAngleBracketLoc,
+                                   SourceLocation LParenLoc, SourceLocation RParenLoc,
+                                   Expr *E1, BoundsExpr *ParsedBounds);
+
   ExprResult ActOnBoundsCastExprSingle(
+      Scope *S, SourceLocation OpLoc, tok::TokenKind Kind,
+      SourceLocation LAnagleBracketLoc, ParsedType D,
+      SourceLocation RAngleBracketLoc,
+      SourceLocation LParenLoc, SourceLocation RParenLoc, Expr *E1);
+
+  ExprResult ActOnBoundsTaintedCastExprSingle(
       Scope *S, SourceLocation OpLoc, tok::TokenKind Kind,
       SourceLocation LAnagleBracketLoc, ParsedType D,
       SourceLocation RAngleBracketLoc,
@@ -5797,6 +6011,34 @@ public:
     PCSK_BoundsOnly,
     PCSK_Push,
     PCSK_Pop
+  };
+
+  // \#pragma TLIB.
+  enum PragmaTlibScopeKind {
+    TLIB_On,
+    TLIB_RELAX,
+    TLIB_Off,
+    TLIB_BoundsOnly,
+    TLIB_Push,
+    TLIB_Pop
+  };
+
+  // \#pragma TAINTED_SCOPE.
+  enum PragmaTaintedScopeKind {
+    TAINTED_On,
+    TAINTED_Off,
+    TAINTED_BoundsOnly,
+    TAINTED_Push,
+    TAINTED_Pop
+  };
+
+  // \#pragma CHECKED_SCOPE.
+  enum PragmaMirrorScopeKind {
+    MIRROR_On,
+    MIRROR_Off,
+    MIRROR_BoundsOnly,
+    MIRROR_Push,
+    MIRROR_Pop
   };
   void ActOnPragmaCheckedScope(PragmaCheckedScopeKind Kind, SourceLocation Loc);
   void DiagnoseUnterminatedPragmaCheckedScopePush();
@@ -12002,7 +12244,11 @@ public:
 
     /// Incompatible - We reject this conversion outright, it is invalid to
     /// represent it in the AST.
-    Incompatible
+    Incompatible,
+
+    /// IncompatibleTaintedAssignment - We Reject this conversion outright,
+    /// it is invalid to represent it in the AST.
+    IncompatibleTaintedAssignment
   };
 
   /// DiagnoseAssignmentResult - Emit a diagnostic, if required, for the
@@ -13419,6 +13665,34 @@ public:
   /// Adds Callee to DeviceCallGraph if we don't know if its caller will be
   /// codegen'ed yet.
   bool checkSYCLDeviceFunction(SourceLocation Loc, FunctionDecl *Callee);
+  bool CheckTaintedFunctionIntegrity(ParmVarDecl *Param);
+  bool CheckCallbackFunctionIntegrity(ParmVarDecl *Param);
+  bool CheckBinExprIntegrityInTaintedScope(ExprResult *LHS, ExprResult *RHS,
+                                           SourceLocation OpLoc,
+                                           SourceRange SR);
+  bool CheckUnExprIntegrityInTaintedScope(ExprResult *InputExpr,
+                                          SourceLocation OpLoc);
+  bool CheckCallExprIntegrityInTaintedScope(Expr *Fn, SourceLocation OpLoc);
+  Scope *RecursiveScopeResolve(Scope *S);
+  bool CheckBinExprIntegrityInCheckedScope(ExprResult *LHS, ExprResult *RHS,
+                                           SourceLocation OpLoc,
+                                           SourceRange SR);
+  bool CheckUnExprIntegrityInCheckedScope(ExprResult *InputExpr,
+                                          SourceLocation OpLoc);
+  void ActOnPragmaTlibScope(PragmaTlibScopeKind Kind, SourceLocation Loc);
+  void ActOnPragmaTaintedScope(PragmaTaintedScopeKind Kind, SourceLocation Loc);
+  void ActOnPragmaMirrorScope(PragmaMirrorScopeKind Kind, SourceLocation Loc);
+  void DiagnoseUnterminatedTaintedScope();
+  void DiagnoseUnterminatedMirrorScope();
+  void DiagnoseUnterminatedTLIBScope();
+  ExprResult BuildCStyleCastExpr(SourceLocation LPLoc,
+                                 TypeSourceInfo *CastTypeInfo,
+                                 SourceLocation RPLoc, Expr *CastExpr,
+                                 bool IsCheckedScope = false,
+                                 bool isTaintedScope = false,
+                                 bool IsMirrorScope = false,
+                                 bool IsTLIBScope = false,
+                                 Scope *S = nullptr);
 };
 
 /// RAII object that enters a new expression evaluation context.

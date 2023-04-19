@@ -134,7 +134,8 @@ namespace llvm {
           UniqueSectionNames(true), UniqueBasicBlockSectionNames(false),
           TrapUnreachable(false), NoTrapAfterNoreturn(false), TLSSize(0),
           EmulatedTLS(false), ExplicitEmulatedTLS(false), EnableIPRA(false),
-          EmitStackSizeSection(false), EnableMachineOutliner(false),
+          EmitStackSizeSection(false), Emitwasmsbx(false), Emitnoopsbx(false),
+          Emitheapsbx(false), EnableMachineOutliner(false),
           EnableMachineFunctionSplitter(false), SupportsDefaultOutlining(false),
           EmitAddrsig(false), EmitCallSiteInfo(false),
           SupportsDebugEntryValues(false), EnableDebugEntryValues(false),
@@ -281,6 +282,12 @@ namespace llvm {
 
     /// Emit section containing metadata on function stack sizes.
     unsigned EmitStackSizeSection : 1;
+
+    unsigned Emitwasmsbx : 1;
+
+    unsigned Emitnoopsbx : 1;
+
+    unsigned Emitheapsbx : 1;
 
     /// Enables the MachineOutliner pass.
     unsigned EnableMachineOutliner : 1;

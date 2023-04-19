@@ -411,6 +411,10 @@ def err_inline_non_function : Error<
   "'inline' can only appear on functions%select{| and non-local variables}0">;
 def err_noreturn_non_function : Error<
   "'_Noreturn' can only appear on functions">;
+def err_tainted_non_function: Error<
+  "'_Tainted' can only appear on functions">;
+def err_tainted_callback_non_function: Error<
+  "'_Callback' can only appear on functions">;
 def warn_qual_return_type : Warning<
   "'%0' type qualifier%s1 on return type %plural{1:has|:have}1 no effect">,
   InGroup<IgnoredQualifiers>, DefaultIgnore;
@@ -796,7 +800,13 @@ def ext_variadic_main : ExtWarn<
   "'main' is not allowed to be declared variadic">, InGroup<Main>;
 def ext_noreturn_main : ExtWarn<
   "'main' is not allowed to be declared _Noreturn">, InGroup<Main>;
+def ext_tainted_main : ExtWarn<
+    "'main' is not allowed to be declared _Tainted">, InGroup<Main>;
+def ext_tainted_callback_main : ExtWarn<
+    "'main' is not allowed to be declared _Callback">, InGroup<Main>;
 def note_main_remove_noreturn : Note<"remove '_Noreturn'">;
+def note_main_remove_tainted : Note<"remove '_Tainted'">;
+def note_main_remove_tainted_callback : Note<"remove '_Callback'">;
 def err_constexpr_main : Error<
   "'main' is not allowed to be declared %select{constexpr|consteval}0">;
 def err_deleted_main : Error<"'main' is not allowed to be deleted">;
@@ -6601,6 +6611,12 @@ def ext_deprecated_string_literal_conversion : ExtWarn<
 def err_realimag_invalid_type : Error<"invalid type %0 to %1 operator">;
 def err_typecheck_sclass_fscope : Error<
   "illegal storage class on file-scoped variable">;
+def err_typecheck_globalvar_tfscope : Error<
+  "Tainted/Mirror Annotated functions cannot access Un-Qualified Global Storage">;
+def err_typecheck_globalvar_chkscope : Error<
+  "Checked functions cannot Access/Modify Global Storage Marked as _">;
+def err_typecheck_tainted_function_callbk : Error<
+  "Tainted Annotated functions cannot call functions that are not marked as Callback/Mirror/Tainted">;
 def warn_standalone_specifier : Warning<"'%0' ignored on this declaration">,
   InGroup<MissingDeclarations>;
 def ext_standalone_specifier : ExtWarn<"'%0' is not permitted on a declaration "
@@ -9487,6 +9503,31 @@ def warn_falloff_noreturn_function : Warning<
   "function declared 'noreturn' should not return">,
   InGroup<InvalidNoreturn>;
 
+// CheckCBox specific error messages
+def err_incompatible_tainted_pointer_2_checked_assignment : Error<
+  "Tainted-pointers cannot point to Checked-pointers">;
+def err_incompatible_tainted_pointer_2_unchecked_assignment : Error<
+  "Tainted-pointers cannot point to Unchecked-pointers">;
+def err_tainted_specified_functions_should_have_tainted_pointers : Error<
+  "Functions marked as Tainted can only accept/return pointers of Tainted Type">;
+def err_tainted_specified_functions_static : Error<
+"Tainted Functions can not be static as their internal SBX definition \n is defined in another Static Library">;
+def err_tainted_specified_functions_should_have_tainted_structs : Error<
+   "Functions marked as Tainted can only accept/return structs of Tainted Type">;
+def err_tainted_function_can_only_have_callback_func_ptrs : Error<
+   "Functions marked as Tainted can only accept function pointers are \"_Callback\" specified">;
+def err_tainted_function_can_only_have_callback_func_ptrs_ret : Error<
+   "Functions marked as Tainted NOT return function pointers">;
+def err_callback_func_must_be_declarated: Error<
+   "Callback Function Prototype is missing!">;
+
+def err_callback_specified_functions_should_have_tainted_pointers : Error<
+  "Functions marked as Callback can only accept/return pointers of Tainted Type">;
+def err_callback_specified_functions_should_have_tainted_structs : Error<
+   "Functions marked as Callback can only accept/return structs of Tainted Type">;
+def err_callback_specified_functions_cannot_return_func_ptrs : Error<
+   "Functions marked as Callback can NOT return function pointers">;
+
 // Checked C specific error messages about returns
 def err_return_missing_expr : Error<
   "non-void function %0 must return a value in a checked scope">;
@@ -11242,8 +11283,14 @@ def err_typecheck_bounds_expr_incompatible_pointers : Error<
 def err_typecheck_ptr_decl_with_bounds : Error<
   "bounds declaration not allowed because %0 has a _Ptr type">;
 
+def err_typecheck_tptr_decl_with_bounds : Error<
+  "bounds declaration not allowed because %0 has a _TPtr type">;
+
 def err_typecheck_ptr_return_with_bounds : Error<
   "bounds declaration not allowed for a _Ptr return type">;
+
+def err_typecheck_tptr_return_with_bounds : Error<
+  "bounds declaration not allowed for a _TPtr return type">;
 
 def err_typecheck_function_pointer_decl_with_bounds : Error<
   "bounds declaration not allowed because %0 has a function pointer type">;
@@ -11499,6 +11546,13 @@ def err_bounds_type_annotation_lost_checking : Error<
     "function without a prototype cannot be used or declared in a "
     "checked scope">;
 
+  def err_tlib_scope_no_prototype_func : Error<
+    "function without a prototype cannot be called with tainted pointers ">;
+
+  def err_tainted_scope_no_prototype_func : Error<
+    "function without a prototype cannot be used or declared in a "
+    "Tainted scope">;
+
   def err_checked_scope_decl_variable_args : Error<
     "%select{parameter|return|local variable|global variable|member}0 "
     "%select{|used }1in a checked scope "
@@ -11520,6 +11574,22 @@ def err_bounds_type_annotation_lost_checking : Error<
     "%0 cannot be cast to %1 in a checked scope because "
     "%0 might not point to a null-terminated array">;
 
+  def err_invalid_tainted_ptr_struct : Error<
+    "Tainted Pointer cannot point to Non-Tainted Structs unless\n"
+     "they are part of a TLIB function parameter/Return Type">;
+
+  def err_tainted_no_cast_to_nt_array_ptr : Error<
+    "%0 cannot be cast to %1 in because "
+    "%0 might not point to a null-terminated array">;
+
+  def err_untainted_cast_to_tainted : Error<
+    "Un-tainted Pointer %0 cannot be cast to Tainted Pointer %1 "
+    "as the Address pointed by %0 should not be exposed to Unchecked Region">;
+
+  def err_tainted_cast_to_untainted : Error<
+      "Tainted Pointer %0 cannot be cast to Un-tainted Pointer %1 "
+      "as the Dynamic Check of the address pointed by Tainted pointer gets lost">;
+
   def err_checked_on_non_function : Error<
   "%select{'_Unchecked'|'_Checked _Bounds_only|'_Checked'}0 "
   "can only appear on functions">;
@@ -11536,14 +11606,46 @@ def err_bounds_type_annotation_lost_checking : Error<
   def err_pragma_pop_checked_scope_mismatch : Error<
   "#pragma CHECKED_SCOPE pop with no matching #pragma CHECKED_SCOPE push">;
 
+  def err_pragma_pop_tainted_scope_mismatch : Error<
+  "#pragma TAINTED_SCOPE pop with no matching #pragma TAINTED_SCOPE push">;
+
+  def err_pragma_pop_tlib_scope_mismatch : Error<
+  "#pragma TLIB pop with no matching #pragma TLIB push">;
+
+  def err_pragma_pop_mirror_scope_mismatch : Error<
+  "#pragma MIRROR_SCOPE pop with no matching #pragma MIRROR_SCOPE push">;
+
   def err_pragma_checked_scope_no_pop_eof : Error<"unterminated "
     "'#pragma CHECKED_SCOPE push' at end of file">;
+
+  def err_pragma_tainted_scope_no_pop_eof : Error<"unterminated "
+    "'#pragma TAINTED_SCOPE push' at end of file">;
+
+  def err_pragma_mirror_scope_no_pop_eof : Error<"unterminated "
+    "'#pragma MIRROR_SCOPE push' at end of file">;
+
+  def err_pragma_tlib_scope_no_pop_eof : Error<"unterminated "
+    "'#pragma TLIB push' at end of file">;
 
   def err_bounds_cast_expected_ptr_or_unchecked : Error<
     "expected _Ptr or * type">;
 
+  def err_bounds_cast_expected_tainted_ptr : Error<
+    "expected _TPtr">;
+
   def err_bounds_cast_expected_array_ptr : Error<
     "expected _Array_ptr type">;
+
+  def err_bounds_cast_expected_tainted_array_ptr : Error<
+       "expected _TArray_ptr type">;
+
+  def err_bounds_expression_expected_tainted_pointer: Error<
+        "Only Tainted-pointers allowed as part of bounds expression"
+        " for Tainted Cast Operations">;
+
+  def err_bounds_expression_tainted_pointers_not_expected: Error<
+        "Tainted Pointers are not allowed as part of bounds expression"
+        " for Non-Tainted Cast Operations">;
 
   def warn_bounds_declaration_invalid : Warning<
     "cannot prove declared bounds for '%1' are valid after "

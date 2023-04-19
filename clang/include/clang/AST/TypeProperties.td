@@ -22,7 +22,7 @@ let Class = PointerType in {
     let Read = [{ node->getPointeeType() }];
   }
 
-  def : Property<"kind", CheckedPointerKind> {
+  def : Property<"kind", CheckCBox_PointerKind> {
     let Read = [{ node->getKind() }];
   }
 
@@ -113,7 +113,7 @@ let Class = ConstantArrayType in {
   def : Property<"size", ExprRef> {
     let Read = [{ node->getSizeExpr() }];
   }
-  def : Property<"kind", CheckedArrayKind> {
+  def : Property<"kind", CheckCBox_ArrayKind> {
     let Read = [{ node->getKind() }];
   }
 
@@ -126,7 +126,7 @@ let Class = ConstantArrayType in {
 }
 
 let Class = IncompleteArrayType in {
-  def : Property<"kind", CheckedArrayKind> {
+  def : Property<"kind", CheckCBox_ArrayKind> {
     let Read = [{ node->getKind() }];
   }
 

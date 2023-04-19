@@ -1128,6 +1128,8 @@ public:
     case CK_BitCast:
     case CK_DynamicPtrBounds:
     case CK_AssumePtrBounds:
+    case CK_TaintedDynamicPtrBounds:
+    case CK_TaintedAssumePtrBounds:
     case CK_ToVoid:
     case CK_Dynamic:
     case CK_LValueBitCast:

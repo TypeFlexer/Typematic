@@ -1291,7 +1291,7 @@ public:
       return SourceRange(getKWLoc(), getRightSymLoc());
   }
 
-  CheckedPointerKind getKind() const {
+  CheckCBox_PointerKind getKind() const {
       return this->getTypePtr()->getKind();
   }
 };

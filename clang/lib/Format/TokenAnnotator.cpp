@@ -2668,7 +2668,7 @@ unsigned TokenAnnotator::splitPenalty(const AnnotatedLine &Line,
     return 160;
   if (Left.is(TT_CastRParen))
     return 100;
-  if (Left.isOneOf(tok::kw_class, tok::kw_struct))
+  if (Left.isOneOf(tok::kw_class, tok::kw_struct, tok::kw_Tstruct))
     return 5000;
   if (Left.is(tok::comment))
     return 1000;
@@ -3668,7 +3668,8 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
            (Line.startsWith(tok::kw_typedef, tok::kw_enum) &&
             Style.BraceWrapping.AfterEnum) ||
            (Line.startsWith(tok::kw_class) && Style.BraceWrapping.AfterClass) ||
-           (Line.startsWith(tok::kw_struct) && Style.BraceWrapping.AfterStruct);
+           (Line.startsWith(tok::kw_struct) && Style.BraceWrapping.AfterStruct) ||
+           (Line.startsWith(tok::kw_Tstruct) && Style.BraceWrapping.AfterStruct);
   if (Left.is(TT_ObjCBlockLBrace) &&
       Style.AllowShortBlocksOnASingleLine == FormatStyle::SBS_Never)
     return true;
@@ -4089,7 +4090,7 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
   }
 
   return Left.isOneOf(tok::comma, tok::coloncolon, tok::semi, tok::l_brace,
-                      tok::kw_class, tok::kw_struct, tok::comment) ||
+                      tok::kw_class, tok::kw_struct, tok::kw_Tstruct, tok::comment) ||
          Right.isMemberAccess() ||
          Right.isOneOf(TT_TrailingReturnArrow, TT_LambdaArrow, tok::lessless,
                        tok::colon, tok::l_square, tok::at) ||

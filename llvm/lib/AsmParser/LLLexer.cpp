@@ -666,6 +666,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(noprofile);
   KEYWORD(noredzone);
   KEYWORD(noreturn);
+  KEYWORD(tainted);
   KEYWORD(nosync);
   KEYWORD(nocf_check);
   KEYWORD(noundef);

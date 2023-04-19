@@ -1007,12 +1007,82 @@ void Sema::ActOnPragmaCheckedScope(PragmaCheckedScopeKind Kind,
   }
 }
 
+// CheckCBox - #pragma TLIB action.  Adjust or save the current checked
+// scope information.
+void Sema::ActOnPragmaTlibScope(PragmaTlibScopeKind Kind,
+                                   SourceLocation Loc) {
+  switch (Kind) {
+  case TLIB_On: SetTLIBScopeInfo(TLIB_Memory); break;
+  case TLIB_RELAX: SetTLIBScopeInfo(TLIB_Relax_cast); break;
+  case TLIB_BoundsOnly:
+    SetTLIBScopeInfo(TLIB_Bounds); break;
+  case TLIB_Off: SetTLIBScopeInfo(TLIB_None); break;
+  case TLIB_Push: PushTLIBScopeInfo(Loc); break;
+  case TLIB_Pop: {
+    if (PopTLIBScopeInfo())
+      Diags.Report(Loc, diag::err_pragma_pop_tlib_scope_mismatch);
+    break;
+  }
+  }
+}
+
+// CheckCBox - #pragma TAINTED action.  Adjust or save the current checked
+// scope information.
+void Sema::ActOnPragmaTaintedScope(PragmaTaintedScopeKind Kind,
+                                SourceLocation Loc) {
+  switch (Kind) {
+  case TAINTED_On: SetTaintedScopeInfo(Tainted_Memory); break;
+  case TAINTED_Off: SetTaintedScopeInfo(Tainted_None); break;
+  case TAINTED_BoundsOnly: SetTaintedScopeInfo(Tainted_Bounds); break;
+  case TAINTED_Push: PushTaintedScopeInfo(Loc); break;
+  case TAINTED_Pop: {
+    if (PopTaintedScopeInfo())
+      Diags.Report(Loc, diag::err_pragma_pop_tainted_scope_mismatch);
+    break;
+  }
+  }
+}
+
+// CheckCBox - #pragma TAINTED action.  Adjust or save the current checked
+// scope information.
+void Sema::ActOnPragmaMirrorScope(PragmaMirrorScopeKind Kind,
+                                   SourceLocation Loc) {
+  switch (Kind) {
+  case MIRROR_On: SetMirrorScopeInfo(Mirror_Memory); break;
+  case MIRROR_Off: SetMirrorScopeInfo(Mirror_None); break;
+  case MIRROR_BoundsOnly: SetMirrorScopeInfo(Mirror_Bounds); break;
+  case MIRROR_Push: PushMirrorScopeInfo(Loc); break;
+  case MIRROR_Pop: {
+    if (PopMirrorScopeInfo())
+      Diags.Report(Loc, diag::err_pragma_pop_mirror_scope_mismatch);
+    break;
+  }
+  }
+}
+
 void Sema::DiagnoseUnterminatedCheckedScope() {
   if (CheckingKindStack.empty())
     return;
   Diag(CheckingKindStack.back().Loc, diag::err_pragma_checked_scope_no_pop_eof);
 }
 
+void Sema::DiagnoseUnterminatedTaintedScope() {
+  if (TaintedKindStack.empty())
+    return;
+  Diag(TaintedKindStack.back().Loc, diag::err_pragma_tainted_scope_no_pop_eof);
+}
+
+void Sema::DiagnoseUnterminatedMirrorScope() {
+  if (MirrorKindStack.empty())
+    return;
+  Diag(MirrorKindStack.back().Loc, diag::err_pragma_mirror_scope_no_pop_eof);
+}
+
+void Sema::DiagnoseUnterminatedTLIBScope() {
+  if (TLIBKindStack.empty())
+    return;
+  Diag(TLIBKindStack.back().Loc, diag::err_pragma_tlib_scope_no_pop_eof);
+}
 void Sema::AddRangeBasedOptnone(FunctionDecl *FD) {
   // In the future, check other pragmas if they're implemented (e.g. pragma
   // optimize 0 will probably map to this functionality too).

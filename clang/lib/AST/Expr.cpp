@@ -1731,6 +1731,8 @@ bool CastExpr::CastConsistency() const {
   case CK_LValueToRValue:
   case CK_DynamicPtrBounds:
   case CK_AssumePtrBounds:
+  case CK_TaintedDynamicPtrBounds:
+  case CK_TaintedAssumePtrBounds:
   case CK_NoOp:
   case CK_AtomicToNonAtomic:
   case CK_NonAtomicToAtomic:

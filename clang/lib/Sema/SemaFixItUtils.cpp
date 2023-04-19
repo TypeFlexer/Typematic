@@ -142,6 +142,15 @@ bool ConversionFixItGenerator::tryToFixConversion(const Expr *FullExpr,
     if (!Expr->isLValue() || Expr->getObjectKind() != OK_Ordinary)
       return false;
 
+    if (((ToTy->isTaintedPointerType()) && (!FromTy->isTaintedPointerType())) ||
+       ((!ToTy->isTaintedPointerType()) && (FromTy->isTaintedPointerType())))
+    {
+      Hints.push_back(FixItHint::CreateInsertion(Begin,
+     "Only Tainted Pointers (RHS) can be assigned to Tainted pointers (LHS)"));
+      NumConversionsFixed++;
+      return true;
+    }
+
     CanConvert = CompareTypes(S.Context.getPointerType(FromQTy), ToQTy,
                               S, Begin, VK_RValue);
     if (CanConvert) {

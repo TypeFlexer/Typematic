@@ -1508,7 +1508,20 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
   // FIXME: Rename BlockScope -> ClosureScope if we decide to continue using
   // it.
-  unsigned ScopeFlags = Scope::BlockScope | Scope::FnScope | Scope::DeclScope |
+  unsigned ScopeFlags = Scope::BlockScope | Scope::FnScope |
+                        ((DS.isTaintedSpecified()) ?
+                         Scope::TaintedFunctionScope :
+                                            Scope::FnScope)|
+                        ((DS.isCallbackSpecified())?
+                        Scope::CallbackFunctionScope :
+                                            Scope::FnScope)|
+                        ((DS.isTaintedMirrorSpecified())?
+                        Scope::MirrorFunctionScope :
+                                            Scope::FnScope) |
+                        ((DS.isTLIBSpecified())?
+                         Scope::TLIBFunctionScope :
+                                            Scope::FnScope) |
+                        Scope::DeclScope |
                         Scope::CompoundStmtScope;
   ParseScope BodyScope(this, ScopeFlags);
 
@@ -3238,7 +3251,7 @@ void Parser::ParseDirectNewDeclarator(Declarator &D) {
 
     D.AddTypeInfo(DeclaratorChunk::getArray(0,
                                             /*isStatic=*/false, /*isStar=*/false,
-                                            CheckedArrayKind::Unchecked,
+                                            CheckCBox_ArrayKind::Unchecked,
                                             Size.get(), T.getOpenLocation(),
                                             T.getCloseLocation()),
                   std::move(Attrs), T.getCloseLocation());

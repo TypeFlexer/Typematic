@@ -1,0 +1,408 @@
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WMISMATCHED_TAGS_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_75f4c/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_75f4c.dir/build.make CMakeFiles/cmTC_75f4c.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_75f4c.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WMISMATCHED_TAGS_FLAG  -nodefaultlibs -fPIC   -Wmismatched-tags -o CMakeFiles/cmTC_75f4c.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wmismatched-tags'
+make[4]: *** [CMakeFiles/cmTC_75f4c.dir/build.make:66: CMakeFiles/cmTC_75f4c.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_75f4c/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WNEWLINE_EOF_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_7816a/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_7816a.dir/build.make CMakeFiles/cmTC_7816a.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_7816a.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WNEWLINE_EOF_FLAG  -nodefaultlibs -fPIC   -Wnewline-eof -o CMakeFiles/cmTC_7816a.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wnewline-eof'
+make[4]: *** [CMakeFiles/cmTC_7816a.dir/build.make:66: CMakeFiles/cmTC_7816a.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_7816a/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WSHORTEN_64_TO_32_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_948ec/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_948ec.dir/build.make CMakeFiles/cmTC_948ec.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_948ec.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WSHORTEN_64_TO_32_FLAG  -nodefaultlibs -fPIC   -Wshorten-64-to-32 -o CMakeFiles/cmTC_948ec.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wshorten-64-to-32'
+make[4]: *** [CMakeFiles/cmTC_948ec.dir/build.make:66: CMakeFiles/cmTC_948ec.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_948ec/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WX_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_0491c/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_0491c.dir/build.make CMakeFiles/cmTC_0491c.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_0491c.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WX_FLAG  -nodefaultlibs -fPIC   -WX- -o CMakeFiles/cmTC_0491c.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-WX-'
+make[4]: *** [CMakeFiles/cmTC_0491c.dir/build.make:66: CMakeFiles/cmTC_0491c.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_0491c/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_EHS_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b7c23/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_b7c23.dir/build.make CMakeFiles/cmTC_b7c23.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_b7c23.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_EHS_FLAG  -nodefaultlibs -fPIC   -EHs- -o CMakeFiles/cmTC_b7c23.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHs-'
+make[4]: *** [CMakeFiles/cmTC_b7c23.dir/build.make:66: CMakeFiles/cmTC_b7c23.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_b7c23/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_EHA_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f0008/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_f0008.dir/build.make CMakeFiles/cmTC_f0008.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_f0008.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_EHA_FLAG  -nodefaultlibs -fPIC   -EHa- -o CMakeFiles/cmTC_f0008.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHa-'
+make[4]: *** [CMakeFiles/cmTC_f0008.dir/build.make:66: CMakeFiles/cmTC_f0008.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_f0008/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_FVISIBILITY_GLOBAL_NEW_DELETE_HIDDEN_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_611bf/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_611bf.dir/build.make CMakeFiles/cmTC_611bf.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_611bf.dir/src.cxx.o
+/usr/bin/c++    -m32  -DLIBCXXABI_SUPPORTS_FVISIBILITY_GLOBAL_NEW_DELETE_HIDDEN_FLAG  -nodefaultlibs -fPIC   -fvisibility-global-new-delete-hidden -o CMakeFiles/cmTC_611bf.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-fvisibility-global-new-delete-hidden'
+make[4]: *** [CMakeFiles/cmTC_611bf.dir/build.make:66: CMakeFiles/cmTC_611bf.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_611bf/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_FALIGNED_ALLOCATION_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_556af/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_556af.dir/build.make CMakeFiles/cmTC_556af.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_556af.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_FALIGNED_ALLOCATION_FLAG  -nodefaultlibs -fPIC   -faligned-allocation -o CMakeFiles/cmTC_556af.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-faligned-allocation'; did you mean '-fsized-deallocation'?
+make[4]: *** [CMakeFiles/cmTC_556af.dir/build.make:66: CMakeFiles/cmTC_556af.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_556af/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_EHS_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c3de3/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_c3de3.dir/build.make CMakeFiles/cmTC_c3de3.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_c3de3.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_EHS_FLAG  -nodefaultlibs -fPIC   -EHs- -o CMakeFiles/cmTC_c3de3.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHs-'
+make[4]: *** [CMakeFiles/cmTC_c3de3.dir/build.make:66: CMakeFiles/cmTC_c3de3.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_c3de3/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_EHA_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_9771e/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_9771e.dir/build.make CMakeFiles/cmTC_9771e.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_9771e.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_EHA_FLAG  -nodefaultlibs -fPIC   -EHa- -o CMakeFiles/cmTC_9771e.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHa-'
+make[4]: *** [CMakeFiles/cmTC_9771e.dir/build.make:66: CMakeFiles/cmTC_9771e.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_9771e/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_ZL_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_1ea83/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_1ea83.dir/build.make CMakeFiles/cmTC_1ea83.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_1ea83.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_ZL_FLAG  -nodefaultlibs -fPIC   /Zl -o CMakeFiles/cmTC_1ea83.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: /Zl: No such file or directory
+make[4]: *** [CMakeFiles/cmTC_1ea83.dir/build.make:66: CMakeFiles/cmTC_1ea83.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_1ea83/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_NODEFAULTLIB_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_edc9d/fast && make[3]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_edc9d.dir/build.make CMakeFiles/cmTC_edc9d.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_edc9d.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_NODEFAULTLIB_FLAG  -nodefaultlibs -fPIC   /nodefaultlib -o CMakeFiles/cmTC_edc9d.dir/src.cxx.o -c /home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: /nodefaultlib: No such file or directory
+make[4]: *** [CMakeFiles/cmTC_edc9d.dir/build.make:66: CMakeFiles/cmTC_edc9d.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_edc9d/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WMISMATCHED_TAGS_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_3003b/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_3003b.dir/build.make CMakeFiles/cmTC_3003b.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_3003b.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WMISMATCHED_TAGS_FLAG  -nodefaultlibs -fPIC   -Wmismatched-tags -o CMakeFiles/cmTC_3003b.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wmismatched-tags'
+make[4]: *** [CMakeFiles/cmTC_3003b.dir/build.make:66: CMakeFiles/cmTC_3003b.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_3003b/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WNEWLINE_EOF_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f34b6/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_f34b6.dir/build.make CMakeFiles/cmTC_f34b6.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_f34b6.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WNEWLINE_EOF_FLAG  -nodefaultlibs -fPIC   -Wnewline-eof -o CMakeFiles/cmTC_f34b6.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wnewline-eof'
+make[4]: *** [CMakeFiles/cmTC_f34b6.dir/build.make:66: CMakeFiles/cmTC_f34b6.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_f34b6/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WSHORTEN_64_TO_32_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_53de5/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_53de5.dir/build.make CMakeFiles/cmTC_53de5.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_53de5.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WSHORTEN_64_TO_32_FLAG  -nodefaultlibs -fPIC   -Wshorten-64-to-32 -o CMakeFiles/cmTC_53de5.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wshorten-64-to-32'
+make[4]: *** [CMakeFiles/cmTC_53de5.dir/build.make:66: CMakeFiles/cmTC_53de5.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_53de5/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_WX_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f9203/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_f9203.dir/build.make CMakeFiles/cmTC_f9203.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_f9203.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_WX_FLAG  -nodefaultlibs -fPIC   -WX- -o CMakeFiles/cmTC_f9203.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-WX-'
+make[4]: *** [CMakeFiles/cmTC_f9203.dir/build.make:66: CMakeFiles/cmTC_f9203.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_f9203/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_EHS_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_7d644/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_7d644.dir/build.make CMakeFiles/cmTC_7d644.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_7d644.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_EHS_FLAG  -nodefaultlibs -fPIC   -EHs- -o CMakeFiles/cmTC_7d644.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHs-'
+make[4]: *** [CMakeFiles/cmTC_7d644.dir/build.make:66: CMakeFiles/cmTC_7d644.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_7d644/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_EHA_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b61b2/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_b61b2.dir/build.make CMakeFiles/cmTC_b61b2.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_b61b2.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXXABI_SUPPORTS_EHA_FLAG  -nodefaultlibs -fPIC   -EHa- -o CMakeFiles/cmTC_b61b2.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHa-'
+make[4]: *** [CMakeFiles/cmTC_b61b2.dir/build.make:66: CMakeFiles/cmTC_b61b2.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_b61b2/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXXABI_SUPPORTS_FVISIBILITY_GLOBAL_NEW_DELETE_HIDDEN_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_cabfb/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_cabfb.dir/build.make CMakeFiles/cmTC_cabfb.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_cabfb.dir/src.cxx.o
+/usr/bin/c++    -m32  -DLIBCXXABI_SUPPORTS_FVISIBILITY_GLOBAL_NEW_DELETE_HIDDEN_FLAG  -nodefaultlibs -fPIC   -fvisibility-global-new-delete-hidden -o CMakeFiles/cmTC_cabfb.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-fvisibility-global-new-delete-hidden'
+make[4]: *** [CMakeFiles/cmTC_cabfb.dir/build.make:66: CMakeFiles/cmTC_cabfb.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_cabfb/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_FALIGNED_ALLOCATION_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_a907b/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_a907b.dir/build.make CMakeFiles/cmTC_a907b.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_a907b.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_FALIGNED_ALLOCATION_FLAG  -nodefaultlibs -fPIC   -faligned-allocation -o CMakeFiles/cmTC_a907b.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-faligned-allocation'; did you mean '-fsized-deallocation'?
+make[4]: *** [CMakeFiles/cmTC_a907b.dir/build.make:66: CMakeFiles/cmTC_a907b.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_a907b/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_EHS_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_4114e/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_4114e.dir/build.make CMakeFiles/cmTC_4114e.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_4114e.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_EHS_FLAG  -nodefaultlibs -fPIC   -EHs- -o CMakeFiles/cmTC_4114e.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHs-'
+make[4]: *** [CMakeFiles/cmTC_4114e.dir/build.make:66: CMakeFiles/cmTC_4114e.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_4114e/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_EHA_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_268ed/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_268ed.dir/build.make CMakeFiles/cmTC_268ed.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_268ed.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_EHA_FLAG  -nodefaultlibs -fPIC   -EHa- -o CMakeFiles/cmTC_268ed.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-EHa-'
+make[4]: *** [CMakeFiles/cmTC_268ed.dir/build.make:66: CMakeFiles/cmTC_268ed.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_268ed/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_ZL_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_69ce2/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_69ce2.dir/build.make CMakeFiles/cmTC_69ce2.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_69ce2.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_ZL_FLAG  -nodefaultlibs -fPIC   /Zl -o CMakeFiles/cmTC_69ce2.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: /Zl: No such file or directory
+make[4]: *** [CMakeFiles/cmTC_69ce2.dir/build.make:66: CMakeFiles/cmTC_69ce2.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_69ce2/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test LIBCXX_SUPPORTS_NODEFAULTLIB_FLAG failed with the following output:
+Change Dir: /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_9787a/fast && make[3]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+/usr/bin/make -f CMakeFiles/cmTC_9787a.dir/build.make CMakeFiles/cmTC_9787a.dir/build
+make[4]: Entering directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_9787a.dir/src.cxx.o
+/usr/bin/c++    -m32 -DLIBCXX_SUPPORTS_NODEFAULTLIB_FLAG  -nodefaultlibs -fPIC   /nodefaultlib -o CMakeFiles/cmTC_9787a.dir/src.cxx.o -c /home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp/src.cxx
+c++: error: /nodefaultlib: No such file or directory
+make[4]: *** [CMakeFiles/cmTC_9787a.dir/build.make:66: CMakeFiles/cmTC_9787a.dir/src.cxx.o] Error 1
+make[4]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+make[3]: *** [Makefile:121: cmTC_9787a/fast] Error 2
+make[3]: Leaving directory '/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-bins/CMakeFiles/CMakeTmp'
+
+
+Source file was:
+int main() { return 0; }

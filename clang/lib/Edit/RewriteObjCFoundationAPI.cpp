@@ -1003,6 +1003,8 @@ static bool rewriteToNumericBoxedExpression(const ObjCMessageExpr *Msg,
     case CK_LValueToRValue:
     case CK_DynamicPtrBounds:
     case CK_AssumePtrBounds:
+    case CK_TaintedDynamicPtrBounds:
+    case CK_TaintedAssumePtrBounds:
     case CK_NoOp:
     case CK_UserDefinedConversion:
       break;

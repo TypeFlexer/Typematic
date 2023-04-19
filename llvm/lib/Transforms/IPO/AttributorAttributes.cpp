@@ -4053,6 +4053,66 @@ struct AANoReturnCallSite final : AANoReturnImpl {
   void trackStatistics() const override { STATS_DECLTRACK_CS_ATTR(noreturn); }
 };
 
+/// ------------------ Function Tainted Attribute ----------------------------
+struct AATaintedImpl : public AATainted {
+  AATaintedImpl(const IRPosition &IRP, Attributor &A) : AATainted(IRP, A) {}
+
+  /// See AbstractAttribute::initialize(...).
+  void initialize(Attributor &A) override {
+    AATainted::initialize(A);
+    Function *F = getAssociatedFunction();
+    if (!F || F->isDeclaration())
+      indicatePessimisticFixpoint();
+  }
+
+  /// See AbstractAttribute::getAsStr().
+  const std::string getAsStr() const override {
+    return getAssumed() ? "tainted" : "not-tainted";
+  }
+
+};
+
+struct AATaintedFunction final : AANoReturnImpl {
+  AATaintedFunction(const IRPosition &IRP, Attributor &A)
+      : AANoReturnImpl(IRP, A) {}
+
+  /// See AbstractAttribute::trackStatistics()
+  void trackStatistics() const override { STATS_DECLTRACK_FN_ATTR(noreturn) }
+};
+
+/// NoReturn attribute deduction for a call sites.
+struct AATaintedCallSite final : AATaintedImpl {
+  AATaintedCallSite(const IRPosition &IRP, Attributor &A)
+      : AATaintedImpl(IRP, A) {}
+
+  /// See AbstractAttribute::initialize(...).
+  void initialize(Attributor &A) override {
+    AATaintedImpl::initialize(A);
+    if (Function *F = getAssociatedFunction()) {
+      const IRPosition &FnPos = IRPosition::function(*F);
+      auto &FnAA = A.getAAFor<AATainted>(*this, FnPos);
+      if (!FnAA.isAssumedTainted())
+        indicatePessimisticFixpoint();
+    }
+  }
+
+  /// See AbstractAttribute::updateImpl(...).
+  ChangeStatus updateImpl(Attributor &A) override {
+    // TODO: Once we have call site specific value information we can provide
+    //       call site specific liveness information and then it makes
+    //       sense to specialize attributes for call sites arguments instead of
+    //       redirecting requests to the callee argument.
+    Function *F = getAssociatedFunction();
+    const IRPosition &FnPos = IRPosition::function(*F);
+    auto &FnAA = A.getAAFor<AATainted>(*this, FnPos);
+    return clampStateAndIndicateChange(getState(), FnAA.getState());
+  }
+
+  /// See AbstractAttribute::trackStatistics()
+  void trackStatistics() const override { STATS_DECLTRACK_CS_ATTR(tainted); };
+};
+
+
 /// ----------------------- Variable Capturing ---------------------------------
 
 /// A class to hold the state of for no-capture attributes.

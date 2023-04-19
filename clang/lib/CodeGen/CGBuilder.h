@@ -97,10 +97,82 @@ public:
     return CreateAlignedLoad(Addr, Align.getAsAlign(), Name);
   }
 
+  bool IsShouldModifyOperandType(llvm::Value *Op1, llvm::Value *Op2)
+  {
+    llvm::Type* Op1CoreType = NULL;
+    if (Op1->getType()->isPointerTy())
+      Op1CoreType = Op1->getType()->getCoreElementType();
+    else
+      Op1CoreType = Op1->getType();
+
+    llvm::Type* Op2CoreType = NULL;
+    if (Op2->getType()->isPointerTy())
+      Op2CoreType = Op2->getType()->getCoreElementType();
+    else
+      Op2CoreType = Op2->getType();
+
+    if (Op1CoreType != Op2CoreType)
+      return true;
+    else
+      return false;
+  }
   // Note that we intentionally hide the CreateStore APIs that don't
   // take an alignment.
   llvm::StoreInst *CreateStore(llvm::Value *Val, Address Addr,
                                bool IsVolatile = false) {
+    // If atleast one of the operand type is a decoy type, then we
+    // modify the other operand's type to decoy type.
+    bool IsShouldChangedOperandType = IsShouldModifyOperandType(Val,
+                                                                Addr.getPointer());
+
+    /*
+     * Hijack the llvm::Value in here to change its type from Tstruct.NonSplType
+     * to Tstruct.Spl_NonSplType
+     */
+    // First Do it for Val (the value to be stored)
+    if(IsShouldChangedOperandType) {
+      llvm::Type *ValAllocaType = NULL;
+
+      llvm::Type *ValOriginalType = Val->getType();
+      if (ValOriginalType->isTStructTy() ||
+          (ValOriginalType->isPointerTy() &&
+           ValOriginalType->getCoreElementType()->isTStructTy())) {
+
+        ValAllocaType =
+            ChangeStructName(static_cast<llvm::StructType *>(ValOriginalType));
+        /*
+        * Insert Adaptor to change the name of Struct from Tstruct.Name to Tstruct.Spl_Name
+         */
+        if (ValAllocaType != NULL) {
+          while (ValOriginalType->isPointerTy()) {
+            ValOriginalType = ValOriginalType->getPointerElementType();
+            ValAllocaType = ValAllocaType->getPointerTo(0);
+          }
+          Val->setType(ValAllocaType);
+        }
+      }
+
+      // Then do it for Addr.getPointer() (the address to be stored)
+      llvm::Type *DestAllocaType = NULL;
+      llvm::Type *DestOriginalType = Addr.getPointer()->getType();
+      if (DestOriginalType->isTStructTy() ||
+          (DestOriginalType->isPointerTy() &&
+           DestOriginalType->getCoreElementType()->isTStructTy())) {
+
+        DestAllocaType =
+            ChangeStructName(static_cast<llvm::StructType *>(DestOriginalType));
+        /*
+        * Insert Adaptor to change the name of Struct from Tstruct.Name to Tstruct.Spl_Name
+         */
+        if (DestAllocaType != NULL) {
+          while (DestOriginalType->isPointerTy()) {
+            DestOriginalType = DestOriginalType->getPointerElementType();
+            DestAllocaType = DestAllocaType->getPointerTo(0);
+          }
+          Addr.getPointer()->setType(DestAllocaType);
+        }
+      }
+    }
     return CreateAlignedStore(Val, Addr.getPointer(),
                               Addr.getAlignment().getAsAlign(), IsVolatile);
   }

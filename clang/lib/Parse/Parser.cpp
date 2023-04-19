@@ -400,7 +400,7 @@ bool Parser::SkipUntil(ArrayRef<tok::TokenKind> Toks, SkipUntilFlags Flags) {
 //===----------------------------------------------------------------------===//
 
 /// EnterScope - Start a new scope.
-void Parser::EnterScope(unsigned ScopeFlags) {
+void Parser::EnterScope(long ScopeFlags) {
   if (NumCachedScopes) {
     Scope *N = ScopeCache[--NumCachedScopes];
     N->Init(getCurScope(), ScopeFlags);
@@ -408,6 +408,12 @@ void Parser::EnterScope(unsigned ScopeFlags) {
   } else {
     Actions.CurScope = new Scope(getCurScope(), ScopeFlags, Diags);
   }
+}
+
+void Parser::UpdateNewFlags(long ScopeFlags) {
+  Scope *N = getCurScope();
+  N->setFlags(ScopeFlags);
+  Actions.CurScope = N;
 }
 
 /// ExitScope - Pop a scope off the scope stack.
@@ -429,7 +435,7 @@ void Parser::ExitScope() {
 
 /// Set the flags for the current scope to ScopeFlags. If ManageFlags is false,
 /// this object does nothing.
-Parser::ParseScopeFlags::ParseScopeFlags(Parser *Self, unsigned ScopeFlags,
+Parser::ParseScopeFlags::ParseScopeFlags(Parser *Self, long ScopeFlags,
                                  bool ManageFlags)
   : CurScope(ManageFlags ? Self->getCurScope() : nullptr) {
   if (CurScope) {
@@ -632,6 +638,18 @@ bool Parser::ParseTopLevelDecl(DeclGroupPtrTy &Result, bool IsFirstDecl) {
 
   case tok::annot_pragma_checked_scope:
     HandlePragmaCheckedScope();
+    return false;
+
+  case tok::annot_pragma_tlib_scope:
+    HandlePragmaTlibScope();
+    return false;
+
+  case tok::annot_pragma_tainted_scope:
+    HandlePragmaTaintedScope();
+    return false;
+
+  case tok::annot_pragma_mirror_scope:
+    HandlePragmaMirrorScope();
     return false;
 
   case tok::kw_export:
@@ -1075,7 +1093,9 @@ Parser::ParseDeclOrFunctionDefInternal(ParsedAttributesWithRange &attrs,
 
   // Checked C - mark the current scope as checked or unchecked if necessary.
   Sema::CheckedScopeRAII CheckedScopeTracker(Actions, DS);
-
+  Sema::TaintedScopeRAII TaintedScopeTracker(Actions, DS);
+  Sema::MirrorScopeRAII MirrorScopeTracker(Actions, DS);
+  Sema::TLIBScopeRAII TLIBScopeTracker(Actions, DS);
   // If we had a free-standing type definition with a missing semicolon, we
   // may get this far before the problem becomes obvious.
   if (DS.hasTagDefinition() && DiagnoseMissingSemiAfterTagDefinition(
@@ -1091,6 +1111,7 @@ Parser::ParseDeclOrFunctionDefInternal(ParsedAttributesWithRange &attrs,
       case DeclSpec::TST_class:
         return 5;
       case DeclSpec::TST_struct:
+      case DeclSpec::TST_Tstruct:
         return 6;
       case DeclSpec::TST_union:
         return 5;
@@ -1206,7 +1227,10 @@ Parser::ParseDeclarationOrFunctionDefinition(ParsedAttributesWithRange &attrs,
 ///
 Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
                                       const ParsedTemplateInfo &TemplateInfo,
-                                      LateParsedAttrList *LateParsedAttrs) {
+                                      LateParsedAttrList *LateParsedAttrs,
+                                      TaintedScopeSpecifier TaintedSS,
+                                      MirrorScopeSpecifier MirrorSS,
+                                      TLIBScopeSpecifier TLIBSS) {
   // Poison SEH identifiers so they are flagged as illegal in function bodies.
   PoisonSEHIdentifiersRAIIObject PoisonSEHIdentifiers(*this, true);
   const DeclaratorChunk::FunctionTypeInfo &FTI = D.getFunctionTypeInfo();
@@ -1286,7 +1310,20 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
       Actions.canDelayFunctionBody(D)) {
     MultiTemplateParamsArg TemplateParameterLists(*TemplateInfo.TemplateParams);
 
-    ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
+    ParseScope BodyScope(this, Scope::FnScope |
+                                   ((D.getDeclSpec().isTaintedSpecified()) ?
+                                               Scope::TaintedFunctionScope :
+                                                            Scope::FnScope)|
+                                   ((D.getDeclSpec().isCallbackSpecified())?
+                                              Scope::CallbackFunctionScope :
+                                                            Scope::FnScope)|
+                                   ((D.getDeclSpec().isTaintedMirrorSpecified())?
+                                              Scope::CallbackFunctionScope :
+                                                            Scope::FnScope)|
+                                   ((D.getDeclSpec().isTLIBSpecified())?
+                                              Scope::TLIBFunctionScope :
+                                                            Scope::FnScope)|
+                                   Scope::DeclScope |
                                    Scope::CompoundStmtScope);
     Scope *ParentScope = getCurScope()->getParent();
 
@@ -1317,7 +1354,20 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
            (Tok.is(tok::l_brace) || Tok.is(tok::kw_try) ||
             Tok.is(tok::colon)) &&
       Actions.CurContext->isTranslationUnit()) {
-    ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
+    ParseScope BodyScope(this, Scope::FnScope |
+                    ((D.getDeclSpec().isTaintedSpecified()) ?
+                                Scope::TaintedFunctionScope :
+                                             Scope::FnScope)|
+                    ((D.getDeclSpec().isCallbackSpecified())?
+                               Scope::CallbackFunctionScope :
+                                             Scope::FnScope)|
+                    ((D.getDeclSpec().isTaintedMirrorSpecified())?
+                               Scope::MirrorFunctionScope :
+                                             Scope::FnScope)|
+                    ((D.getDeclSpec().isTLIBSpecified())?
+                               Scope::TLIBFunctionScope :
+                                             Scope::FnScope)|
+                                           Scope::DeclScope |
                                    Scope::CompoundStmtScope);
     Scope *ParentScope = getCurScope()->getParent();
 
@@ -1336,7 +1386,20 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
   }
 
   // Enter a scope for the function body.
-  ParseScope BodyScope(this, Scope::FnScope | Scope::DeclScope |
+  ParseScope BodyScope(this, Scope::FnScope |
+                                 ((D.getDeclSpec().isTaintedSpecified()) ?
+                                 Scope::TaintedFunctionScope :
+                                 Scope::FnScope)|
+                                 ((D.getDeclSpec().isCallbackSpecified())?
+                                 Scope::CallbackFunctionScope :
+                                 Scope::FnScope)|
+                                 ((D.getDeclSpec().isTaintedMirrorSpecified())?
+                                 Scope::MirrorFunctionScope :
+                                 Scope::FnScope)|
+                                 ((D.getDeclSpec().isTLIBSpecified())?
+                                 Scope::TLIBFunctionScope :
+                                 Scope::FnScope)|
+                                 Scope::DeclScope |
                                  Scope::CompoundStmtScope);
 
   // Tell the actions module that we have entered a function definition with the
@@ -1349,6 +1412,18 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
                                                   ? *TemplateInfo.TemplateParams
                                                   : MultiTemplateParamsArg(),
                                               &SkipBody);
+  BodyScope.UpdateFlags(this,(Res->isTaintedDecl() ?
+                              Scope::TaintedFunctionScope :
+                                           Scope::FnScope)|
+                             (Res->isCallbackDecl()?
+                             Scope::CallbackFunctionScope :
+                                           Scope::FnScope)|
+                             ((Res->isMirrorDecl())?
+                               Scope::MirrorFunctionScope :
+                                           Scope::FnScope)|
+                             ((Res->isLibDecl())?
+                               Scope::TLIBFunctionScope :
+                                           Scope::FnScope));
 
   if (SkipBody.ShouldSkip) {
     SkipFunctionBody();
@@ -1435,7 +1510,8 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
   if (LateParsedAttrs)
     ParseLexedAttributeList(*LateParsedAttrs, Res, false, true);
 
-  return ParseFunctionStatementBody(Res, BodyScope, CSS);
+  return ParseFunctionStatementBody(Res, BodyScope, CSS,
+                                    TaintedSS, MirrorSS, TLIBSS);
 }
 
 void Parser::SkipFunctionBody() {
@@ -1481,7 +1557,9 @@ void Parser::ParseKNRParamDeclarations(Declarator &D) {
 
     // Checked C - mark the current scope as checked or unchecked if necessary.
     Sema::CheckedScopeRAII CheckedScopeTracker(Actions, DS);
-
+    Sema::TaintedScopeRAII TaintedScopeTracker(Actions, DS);
+    Sema::MirrorScopeRAII MirrorScopeTracker(Actions, DS);
+    Sema::TLIBScopeRAII TLIBScopeTracker(Actions, DS);
     // C99 6.9.1p6: 'each declaration in the declaration list shall have at
     // least one declarator'.
     // NOTE: GCC just makes this an ext-warn.  It's not clear what it does with
@@ -2180,7 +2258,10 @@ SourceLocation Parser::handleUnexpectedCodeCompletionToken() {
   PrevTokLocation = Tok.getLocation();
 
   for (Scope *S = getCurScope(); S; S = S->getParent()) {
-    if (S->getFlags() & Scope::FnScope) {
+    if (S->getFlags() & (Scope::FnScope
+//                         | Scope::TaintedFunctionScope
+//                         | Scope::CallbackFunctionScope
+                         )) {
       Actions.CodeCompleteOrdinaryName(getCurScope(),
                                        Sema::PCC_RecoveryInFunction);
       cutOffParsing();

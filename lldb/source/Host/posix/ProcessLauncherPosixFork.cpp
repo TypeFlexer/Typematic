@@ -55,6 +55,15 @@ static void LLVM_ATTRIBUTE_NORETURN ExitWithError(int error_fd,
   _exit(1);
 }
 
+static void LLVM_ATTRIBUTE_TAINTED ExitWithError(int error_fd,
+                                                  const char *operation) {
+  int err = errno;
+  llvm::raw_fd_ostream os(error_fd, true);
+  os << operation << " failed: " << llvm::sys::StrError(err);
+  os.flush();
+  _exit(1);
+}
+
 static void DisableASLRIfRequested(int error_fd, const ProcessLaunchInfo &info) {
 #if defined(__linux__)
   if (info.GetFlags().Test(lldb::eLaunchFlagDisableASLR)) {

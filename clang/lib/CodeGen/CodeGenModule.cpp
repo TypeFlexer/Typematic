@@ -2752,6 +2752,52 @@ ConstantAddress CodeGenModule::GetWeakRefReference(const ValueDecl *VD) {
 
 void CodeGenModule::EmitGlobal(GlobalDecl GD) {
   const auto *Global = cast<ValueDecl>(GD.getDecl());
+  //Create a global variable
+  //check if sbx is enabled
+  auto const_int_val_32 =
+      llvm::ConstantInt::get(getModule().getContext(), llvm::APInt(32, 0));
+  auto const_int_val_64 =
+      llvm::ConstantInt::get(getModule().getContext(), llvm::APInt(64, 0));
+  if (getCodeGenOpts().wasmsbx) {
+    getModule().getOrInsertGlobal("sbxHeap", Int64Ty);
+    llvm::GlobalVariable *sbxHeap = getModule().getNamedGlobal("sbxHeap");
+    auto const_int_val =
+        llvm::ConstantInt::get(getModule().getContext(), llvm::APInt(64, 0));
+    sbxHeap->setInitializer(const_int_val);
+    sbxHeap->setLinkage(llvm::GlobalValue::CommonLinkage);
+
+    // Insert a global variable to store the HeapBound
+    getModule().getOrInsertGlobal("sbxHeapRange", Int32Ty);
+    llvm::GlobalVariable *sbxHeapBound =
+        getModule().getNamedGlobal("sbxHeapRange");
+    sbxHeapBound->setInitializer(const_int_val_32);
+    sbxHeapBound->setLinkage(llvm::GlobalValue::CommonLinkage);
+  }else if (getCodeGenOpts().heapsbx)
+  {
+    getModule().getOrInsertGlobal("lowerbound_1", Int64Ty);
+    llvm::GlobalVariable *lowerbound_1 = getModule().getNamedGlobal("lowerbound_1");
+    lowerbound_1->setInitializer(const_int_val_64);
+    lowerbound_1->setLinkage(llvm::GlobalValue::CommonLinkage);
+
+    // Insert a global variable to store the HeapBound
+    getModule().getOrInsertGlobal("upperbound_1", Int64Ty);
+    llvm::GlobalVariable *upperbound_1 =
+            getModule().getNamedGlobal("upperbound_1");
+    upperbound_1->setInitializer(const_int_val_64);
+    upperbound_1->setLinkage(llvm::GlobalValue::CommonLinkage);
+
+    getModule().getOrInsertGlobal("lowerbound_2", Int64Ty);
+    llvm::GlobalVariable *lowerbound_2 = getModule().getNamedGlobal("lowerbound_2");
+    lowerbound_2->setInitializer(const_int_val_64);
+    lowerbound_2->setLinkage(llvm::GlobalValue::CommonLinkage);
+
+    // Insert a global variable to store the HeapBound
+    getModule().getOrInsertGlobal("upperbound_2", Int64Ty);
+    llvm::GlobalVariable *upperbound_2 =
+        getModule().getNamedGlobal("upperbound_2");
+    upperbound_2->setInitializer(const_int_val_64);
+    upperbound_2->setLinkage(llvm::GlobalValue::CommonLinkage);
+  }
 
   // Weak references don't produce any output by themselves.
   if (Global->hasAttr<WeakRefAttr>())
@@ -3785,7 +3831,22 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
     // handling.
     GV->setConstant(isTypeConstant(D->getType(), false));
 
-    GV->setAlignment(getContext().getDeclAlign(D).getAsAlign());
+    if (D->getType()->isTaintedPointerType())
+    {
+      // check if -m32 flag is set
+      if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+      {
+        // set the GV to be 32-bit
+        GV->setAlignment(CharUnits::Two().getAsAlign());
+      }
+      else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+      {
+        // set the GV to be 64-bit
+        GV->setAlignment(CharUnits::Four().getAsAlign());
+      }
+    }
+    else
+        GV->setAlignment(getContext().getDeclAlign(D).getAsAlign());
 
     setLinkageForGV(GV, D);
 

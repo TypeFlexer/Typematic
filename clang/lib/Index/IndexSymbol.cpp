@@ -108,6 +108,8 @@ SymbolInfo index::getSymbolInfo(const Decl *D) {
     switch (TD->getTagKind()) {
     case TTK_Struct:
       Info.Kind = SymbolKind::Struct; break;
+    case TTK_Tstruct:
+      Info.Kind = SymbolKind::Tstruct; break;
     case TTK_Union:
       Info.Kind = SymbolKind::Union; break;
     case TTK_Class:
@@ -506,6 +508,7 @@ StringRef index::getSymbolKindString(SymbolKind K) {
   case SymbolKind::Macro: return "macro";
   case SymbolKind::Enum: return "enum";
   case SymbolKind::Struct: return "struct";
+  case SymbolKind::Tstruct: return "Tstruct";
   case SymbolKind::Class: return "class";
   case SymbolKind::Protocol: return "protocol";
   case SymbolKind::Extension: return "extension";

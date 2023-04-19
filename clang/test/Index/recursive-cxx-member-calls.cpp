@@ -18,7 +18,7 @@ namespace       clang {
       AT_deprecated, AT_destructor, AT_dllexport, AT_dllimport,
       AT_ext_vector_type, AT_fastcall, AT_final, AT_format, AT_format_arg,
       AT_gnu_inline, AT_hiding, AT_malloc, AT_mode, AT_naked, AT_nodebug,
-      AT_noinline, AT_no_instrument_function, AT_nonnull, AT_noreturn,
+      AT_noinline, AT_no_instrument_function, AT_nonnull, AT_noreturn, AT_Tainted,
       AT_nothrow, AT_nsobject, AT_objc_exception, AT_override,
       AT_cf_returns_not_retained, AT_cf_returns_retained,
       AT_ns_returns_not_retained, AT_ns_returns_retained, AT_objc_gc, 

@@ -32,6 +32,7 @@ public:
   FORWARD_SYMBOL_METHOD(getName)
   FORWARD_SYMBOL_METHOD(hasNoInlineAttribute)
   FORWARD_SYMBOL_METHOD(hasNoReturnAttribute)
+  FORWARD_SYMBOL_METHOD(hasTaintedAttribute)
   FORWARD_SYMBOL_METHOD(isUnreached)
   FORWARD_SYMBOL_METHOD(getOffset)
   FORWARD_SYMBOL_METHOD(hasOptimizedCodeDebugInfo)

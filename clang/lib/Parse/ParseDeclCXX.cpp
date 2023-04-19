@@ -1407,6 +1407,9 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
     TagType = DeclSpec::TST_interface;
   else if (TagTokKind == tok::kw_class)
     TagType = DeclSpec::TST_class;
+  else if (TagTokKind == tok::kw_Tstruct) {
+    TagType = DeclSpec::TST_Tstruct;
+  }
   else {
     assert(TagTokKind == tok::kw_union && "Not a class specifier");
     TagType = DeclSpec::TST_union;
@@ -2056,6 +2059,14 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
     else {
       Decl *D =
           SkipBody.CheckSameAsPrevious ? SkipBody.New : TagOrTempResult.get();
+
+      if(DS.isTaintedSpecified())
+        D->setTaintedDecl(true);
+      if(DS.isTaintedMirrorSpecified())
+        D->setMirrorDecl(true);
+      if(DS.isDecoyDeclSpecified())
+        D->setDecoyDecl(true);
+
       // Parse the definition body.
       ParseStructUnionBody(StartLoc, TagType, cast<RecordDecl>(D));
       if (SkipBody.CheckSameAsPrevious &&
@@ -3361,7 +3372,10 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
         break;
       }
 
-      if ((S->getFlags() & Scope::FnScope))
+      if ((S->getFlags() & (Scope::FnScope | Scope::TaintedFunctionScope |
+                            Scope::MirrorFunctionScope |
+                            Scope::TLIBFunctionScope   |
+                            Scope::CallbackFunctionScope)))
         // If we're in a function or function template then this is a local
         // class rather than a nested class.
         break;

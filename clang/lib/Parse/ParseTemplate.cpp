@@ -1675,7 +1675,10 @@ void Parser::ParseLateTemplatedFuncDef(LateParsedTemplate &LPT) {
 
   // Parse the method body. Function body parsing code is similar enough
   // to be re-used for method bodies as well.
-  ParseScope FnScope(this, Scope::FnScope | Scope::DeclScope |
+  ParseScope FnScope(this, Scope::FnScope |
+//                               Scope::TaintedFunctionScope |
+//                               Scope::CallbackFunctionScope |
+                               Scope::DeclScope |
                                Scope::CompoundStmtScope);
 
   // Recreate the containing function DeclContext.

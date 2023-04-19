@@ -1801,6 +1801,10 @@ void StmtPrinter::VisitBoundsCastExpr(BoundsCastExpr *Node) {
     OS << "_Dynamic_bounds_cast<";
   else if (Node->getCastKind() == CK_AssumePtrBounds)
     OS << "_Assume_bounds_cast<";
+  else if (Node->getCastKind() == CK_TaintedDynamicPtrBounds)
+    OS << "_Tainted_Dynamic_bounds_cast";
+  else if (Node->getCastKind() == CK_TaintedAssumePtrBounds)
+    OS << "_Tainted_Assume_bounds_cast";
   else
     OS << "Illegal_bounds_cast_kind";
   Node->getTypeAsWritten().print(OS, Policy);

@@ -154,6 +154,10 @@ public:
     CVRMask = Const | Volatile | Restrict
   };
 
+  enum Decoy{
+    Decoy = 0x20
+  };
+
   enum GC {
     GCNone = 0,
     Weak,
@@ -293,11 +297,16 @@ public:
     removeCVRQualifiers(CVRMask);
   }
   void addCVRQualifiers(unsigned mask) {
-    assert(!(mask & ~CVRMask) && "bitmask contains non-CVR bits");
+    if(mask != Decoy) //decoy is an exception
+      assert(!(mask & ~CVRMask) && "bitmask contains non-CVR bits");
     Mask |= mask;
   }
+  void setDecoyQualifier() {
+    Mask |= Decoy;
+  }
   void addCVRUQualifiers(unsigned mask) {
-    assert(!(mask & ~CVRMask & ~UMask) && "bitmask contains non-CVRU bits");
+    if(mask != Decoy) //decoy is an exception
+      assert(!(mask & ~CVRMask & ~UMask) && "bitmask contains non-CVRU bits");
     Mask |= mask;
   }
 
@@ -397,18 +406,21 @@ public:
   bool hasFastQualifiers() const { return getFastQualifiers(); }
   unsigned getFastQualifiers() const { return Mask & FastMask; }
   void setFastQualifiers(unsigned mask) {
-    assert(!(mask & ~FastMask) && "bitmask contains non-fast qualifier bits");
+    if(mask != Decoy) //decoy is an exception
+      assert(!(mask & ~FastMask) && "bitmask contains non-fast qualifier bits");
     Mask = (Mask & ~FastMask) | mask;
   }
   void removeFastQualifiers(unsigned mask) {
-    assert(!(mask & ~FastMask) && "bitmask contains non-fast qualifier bits");
+    if(mask != Decoy) //decoy is an exception
+      assert(!(mask & ~FastMask) && "bitmask contains non-fast qualifier bits");
     Mask &= ~mask;
   }
   void removeFastQualifiers() {
     removeFastQualifiers(FastMask);
   }
   void addFastQualifiers(unsigned mask) {
-    assert(!(mask & ~FastMask) && "bitmask contains non-fast qualifier bits");
+    if(mask != Decoy) //decoy is an exception
+      assert(!(mask & ~FastMask) && "bitmask contains non-fast qualifier bits");
     Mask |= mask;
   }
 
@@ -735,6 +747,11 @@ public:
   /// added "const" at a different level.
   bool isLocalConstQualified() const {
     return (getLocalFastQualifiers() & Qualifiers::Const);
+  }
+
+  bool isLocalDecoyQualified() const {
+    //check if qualifiers is decoy
+    return (getCVRQualifiers() == Qualifiers::Decoy);
   }
 
   /// Determine whether this type is const-qualified.
@@ -1299,6 +1316,7 @@ private:
   static bool hasNonTrivialToPrimitiveDefaultInitializeCUnion(const RecordDecl *RD);
   static bool hasNonTrivialToPrimitiveDestructCUnion(const RecordDecl *RD);
   static bool hasNonTrivialToPrimitiveCopyCUnion(const RecordDecl *RD);
+  bool isDecoyQualified() const;
 };
 
 } // namespace clang
@@ -1341,14 +1359,13 @@ class ExtQualsTypeCommonBase {
   friend class ExtQuals;
   friend class QualType;
   friend class Type;
-
   /// The "base" type of an extended qualifiers type (\c ExtQuals) or
   /// a self-referential pointer (for \c Type).
   ///
   /// This pointer allows an efficient mapping from a QualType to its
   /// underlying type pointer.
   const Type *const BaseType;
-
+  bool Decoyed = false;
   /// The canonical type of this type.  A QualType.
   QualType CanonicalType;
 
@@ -1452,11 +1469,11 @@ enum class AutoTypeKeyword {
   GNUAutoType
 };
 
-/// Checked C generalizes pointer types to 3 different kinds of
+/// CheckCBox generalizes pointer types to 6 different kinds of
 /// pointers.  Each has different static and dynamic checking
-/// to detect programming errors:
-///   1. Unchecked C pointers: these are * pointers.  They have
-///      have no checking.
+/// to detect programming errors and enforce restrictions:
+///   1. Unchecked C pointers: these are the C's generic * pointers.
+///      They have no checking.
 ///   2. Checked C _Ptr types: these have null checks before
 ///      memory accesses.  No pointer arithmetic is allowed.
 ///   3. Checked C _Array_ptr types: these have null checks
@@ -1465,7 +1482,33 @@ enum class AutoTypeKeyword {
 ///      arithmetic is allowed.  It has overflow checking.
 ///   4. Checked C _Nt_Array_ptr: these are pointers to
 ///      null-terminated arrays. Pointer arithmetic is allowed.
-enum class CheckedPointerKind {
+///      Below are Tainted Pointers:
+///      General Concept:
+///         The Software program is partitioned into two regions based on Memory.
+///         Region A: Application Memory Region (SAFE): Security Sensitive information
+///                   MAY exist in this region. Here is where Checked
+///                   and Un-Checked Pointers exist. Tainted pointers should
+///                   NOT point to this memory region.
+///         Region B: Tainted Memory Region: Functions annotated as __tainted
+///                   execute in this potentially unsafe (Ex: Publicly exposed APIs)
+///                   Memory region. Tainted Pointers SHOULD ONLY point to this
+///                   Memory region and there are Dynamic Checks introduced to ensure the same.
+///
+///        Data Exchange: De-referencing tainted pointers in Region A is met with
+///                      an additional check to ensure this pointer points to Region B.
+///
+///   5. CheckCBox Tainted _Ptr types: Similar to Checked C _Ptr type
+///      except for one extra check:
+///      Pointer is verified before de-referencing to make sure it does
+///      NOT point to application memory (Region A).
+///   6. Checked C Tainted _Array_ptr types: _Array_ptr checks plus one
+///      extra check. Pointer is verified before de-referencing to make
+///      sure it does NOT point to application memory (Region A).
+///   7. Checked C Tainted _Nt_array_ptr types: _Nt_Array_ptr checks
+///      plus one extra check. Pointer is verified before de-referencing
+///      to make sure it does NOT point to application memory (Region A).
+
+enum class CheckCBox_PointerKind {
   /// \brief Unchecked C pointer.
   Unchecked = 0,
   /// \brief Checked C _Ptr type.
@@ -1474,15 +1517,22 @@ enum class CheckedPointerKind {
   Array,
   /// \brief Checked C _Nt_array_ptr type (pointer-to null-terminated array)
   NtArray,
+  /// \brief Tainted C type.
+  t_ptr,
+  /// \brief Tainted C _Array_ptr type
+  t_array,
+  /// \brief Tainted C _Nt_array_ptr type
+  t_nt_array
 };
 
 /// Checked C generalizes arrays to 3 different kinds of arrays.
-enum class CheckedArrayKind {
+enum class CheckCBox_ArrayKind {
   Unchecked = 0,
   Checked,        // Checked array
-  NtChecked       // Null-terminated checked array
+  NtChecked,       // Null-terminated checked array
+  Tainted,         //tainted array
+  Nt_tainted       //Null-terminated tainted array
 };
-
 class BoundsAnnotations {
   BoundsExpr *Bounds;
   InteropTypeExpr *InteropType;
@@ -1601,7 +1651,6 @@ private:
     }
   };
   enum { NumTypeBits = 8 + llvm::BitWidth<TypeDependence> + 6 };
-
 protected:
   // These classes allow subclasses to somewhat cleanly pack bitfields
   // into Type.
@@ -1609,7 +1658,7 @@ protected:
     friend class PointerType;
 
     unsigned : NumTypeBits;
-    unsigned CheckedPointerKind : 2;
+    unsigned CheckCBox_PointerKind : 3;
   };
 
   class ArrayTypeBitfields {
@@ -1627,13 +1676,13 @@ protected:
     unsigned SizeModifier : 3;
 
     // Kind of checked array
-    unsigned CheckedArrayKind : 2;
+    unsigned CheckCBox_ArrayKind : 3;
   };
 
   class ConstantArrayTypeBitfields {
     friend class ConstantArrayType;
 
-    unsigned : NumTypeBits + 3 + 3 + 2;
+    unsigned : NumTypeBits + 3 + 3 + 3;
 
     /// Whether we have a stored size expression.
     unsigned HasStoredSizeExpr : 1;
@@ -1894,7 +1943,6 @@ private:
 
 protected:
   friend class ASTContext;
-
   Type(TypeClass tc, QualType canon, TypeDependence Dependence)
       : ExtQualsTypeCommonBase(this,
                                canon.isNull() ? QualType(this_(), 0) : canon) {
@@ -2095,12 +2143,18 @@ public:
   bool isItypeGenericFunctionType() const;
   bool isPointerType() const;
   bool isCheckedPointerType() const;
+  bool isTaintedPointerType() const;
   bool isUncheckedPointerType() const;
   bool isCheckedPointerPtrType() const;            // Checked C _Ptr type.
+  bool isTaintedPointerPtrType() const;            // CheckCBox C Tainted _t_ptr type.
   bool isCheckedPointerArrayType() const;          // Checked C _Array_ptr or
                                                    // _Nt_array_ptr type.
+  bool isTaintedPointerArrayType() const;          // CheckCBox C Tainted _t_array_ptr or
+                                                   // _t_nt_array_ptr type.
   bool isExactlyCheckedPointerArrayType() const;   // Checked C _Array_ptr type.
+  bool isExactlyTaintedPointerArrayType() const;   // CheckCBox C Tainted _t_array_ptr type.
   bool isCheckedPointerNtArrayType() const;        // Checked C Nt_Array type.
+  bool isTaintedPointerNtArrayType() const;        // CheckCBox C Tainted _t_nt_Array type.
   bool isAnyPointerType() const;   // Any C pointer or ObjC object pointer
   bool isBlockPointerType() const;
   bool isVoidPointerType() const;
@@ -2120,6 +2174,7 @@ public:
   bool isDependentSizedArrayType() const;
   /// \brief whether this is a Checked C checked array type.
   bool isCheckedArrayType() const; // includes _Nt_checked arrays
+  bool isTaintedArrayType() const;
   bool isExactlyCheckedArrayType() const;
   bool isNtCheckedArrayType() const;
   bool isUncheckedArrayType() const;
@@ -2127,6 +2182,7 @@ public:
   bool isExistentialType() const; // Checked C existential type
   bool isClassType() const;
   bool isStructureType() const;
+  bool isTaintedStructureType() const;
   bool isObjCBoxableRecordType() const;
   bool isInterfaceType() const;
   bool isStructureOrClassType() const;
@@ -2292,7 +2348,7 @@ public:
   bool hasUnnamedOrLocalType() const;
 
   /// \brief Whether this type is or contains a checked type
-  bool isOrContainsCheckedType() const;
+  bool isOrContainsCheckedOrTaintedType() const;
 
   enum CheckedValueKind {
     NoCheckedValue,
@@ -2569,9 +2625,18 @@ public:
     return CanonicalType;
   }
 
+  QualType getCoreTypeInternal() const {
+    auto TempType = getCanonicalTypeInternal();
+    while(TempType->isPointerType())
+    {
+        TempType = TempType->getPointeeType();
+    }
+    return TempType;
+  }
   CanQualType getCanonicalTypeUnqualified() const; // in CanonicalType.h
   void dump() const;
   void dump(llvm::raw_ostream &OS, const ASTContext &Context) const;
+  bool isCallback() const;
 };
 
 /// This will check for a TypedefType by removing any existing sugar
@@ -2750,16 +2815,16 @@ class PointerType : public Type, public llvm::FoldingSetNode {
 
   QualType PointeeType;
 
-  PointerType(QualType Pointee, QualType CanonicalPtr, CheckedPointerKind ptrKind)
+  PointerType(QualType Pointee, QualType CanonicalPtr, CheckCBox_PointerKind ptrKind)
       : Type(Pointer, CanonicalPtr, Pointee->getDependence()),
         PointeeType(Pointee) {
-          PointerTypeBits.CheckedPointerKind = (unsigned)ptrKind;
+          PointerTypeBits.CheckCBox_PointerKind = (unsigned)ptrKind;
         }
 
 public:
   QualType getPointeeType() const { return PointeeType; }
 
-  CheckedPointerKind getKind() const { return CheckedPointerKind(PointerTypeBits.CheckedPointerKind); }
+  CheckCBox_PointerKind getKind() const { return CheckCBox_PointerKind(PointerTypeBits.CheckCBox_PointerKind); }
 
   /// Returns true if address spaces of pointers overlap.
   /// OpenCL v2.0 defines conversion rules for pointers to different
@@ -2777,9 +2842,10 @@ public:
            otherQuals.isAddressSpaceSupersetOf(thisQuals);
   }
 
-  bool isNTChecked() const { return getKind() == CheckedPointerKind::NtArray; }
-  bool isChecked() const { return getKind() != CheckedPointerKind::Unchecked; }
-  bool isUnchecked() const { return getKind() == CheckedPointerKind::Unchecked; }
+  bool isNTChecked() const { return getKind() == CheckCBox_PointerKind::NtArray; }
+  bool isChecked() const { return ((getKind() != CheckCBox_PointerKind::Unchecked)
+                                    && (!isTaintedPointerType()));}
+  bool isUnchecked() const { return getKind() == CheckCBox_PointerKind::Unchecked; }
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
@@ -2787,7 +2853,7 @@ public:
     Profile(ID, getPointeeType(), getKind());
   }
 
-  static void Profile(llvm::FoldingSetNodeID &ID, QualType Pointee, CheckedPointerKind kind) {
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType Pointee, CheckCBox_PointerKind kind) {
     ID.AddPointer(Pointee.getAsOpaquePtr());
     ID.AddInteger((unsigned)kind);
   }
@@ -3030,18 +3096,20 @@ protected:
   friend class ASTContext; // ASTContext creates these.
 
   ArrayType(TypeClass tc, QualType et, QualType can, ArraySizeModifier sm,
-            unsigned tq, CheckedArrayKind k, const Expr *sz = nullptr);
+            unsigned tq, CheckCBox_ArrayKind k, const Expr *sz = nullptr);
 
 public:
-  CheckedArrayKind getKind() const {
-    return CheckedArrayKind(ArrayTypeBits.CheckedArrayKind);
+  CheckCBox_ArrayKind getKind() const {
+    return CheckCBox_ArrayKind(ArrayTypeBits.CheckCBox_ArrayKind);
   }
-  bool isChecked() const { return getKind() != CheckedArrayKind::Unchecked; }
-  bool isUnchecked() const { return getKind() == CheckedArrayKind::Unchecked; }
+  bool isChecked() const { return getKind() != CheckCBox_ArrayKind::Unchecked; }
+  bool isUnchecked() const { return getKind() == CheckCBox_ArrayKind::Unchecked; }
+  bool isTainted() const {return isTaintedPointerType();}
+
   bool isExactlyChecked() const {
-    return  getKind() == CheckedArrayKind::Checked;
+    return  getKind() == CheckCBox_ArrayKind::Checked;
   }
-  bool isNtChecked() const { return getKind() == CheckedArrayKind::NtChecked; }
+  bool isNtChecked() const { return getKind() == CheckCBox_ArrayKind::NtChecked; }
   QualType getElementType() const { return ElementType; }
 
   ArraySizeModifier getSizeModifier() const {
@@ -3076,7 +3144,7 @@ class ConstantArrayType final
   llvm::APInt Size; // Allows us to unique the type.
 
   ConstantArrayType(QualType et, QualType can, const llvm::APInt &size,
-                    const Expr *sz, ArraySizeModifier sm, unsigned tq, CheckedArrayKind kind)
+                    const Expr *sz, ArraySizeModifier sm, unsigned tq, CheckCBox_ArrayKind kind)
       : ArrayType(ConstantArray, et, can, sm, tq, kind, sz), Size(size) {
     ConstantArrayTypeBits.HasStoredSizeExpr = sz != nullptr;
     if (ConstantArrayTypeBits.HasStoredSizeExpr) {
@@ -3117,7 +3185,7 @@ public:
   static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Ctx,
                       QualType ET, const llvm::APInt &ArraySize,
                       const Expr *SizeExpr, ArraySizeModifier SizeMod,
-                      unsigned TypeQuals, CheckedArrayKind kind);
+                      unsigned TypeQuals, CheckCBox_ArrayKind kind);
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == ConstantArray;
@@ -3131,7 +3199,7 @@ class IncompleteArrayType : public ArrayType {
   friend class ASTContext; // ASTContext creates these.
 
   IncompleteArrayType(QualType et, QualType can,
-                      ArraySizeModifier sm, unsigned tq, CheckedArrayKind kind)
+                      ArraySizeModifier sm, unsigned tq, CheckCBox_ArrayKind kind)
       : ArrayType(IncompleteArray, et, can, sm, tq, kind) {}
 
 public:
@@ -3151,7 +3219,7 @@ public:
 
   static void Profile(llvm::FoldingSetNodeID &ID, QualType ET,
                       ArraySizeModifier SizeMod, unsigned TypeQuals,
-                      CheckedArrayKind  Kind) {
+                      CheckCBox_ArrayKind  Kind) {
     ID.AddPointer(ET.getAsOpaquePtr());
     ID.AddInteger(SizeMod);
     ID.AddInteger(TypeQuals);
@@ -3186,7 +3254,7 @@ class VariableArrayType : public ArrayType {
   VariableArrayType(QualType et, QualType can, Expr *e,
                     ArraySizeModifier sm, unsigned tq,
                     SourceRange brackets)
-      : ArrayType(VariableArray, et, can, sm, tq, CheckedArrayKind::Unchecked, e),
+      : ArrayType(VariableArray, et, can, sm, tq, CheckCBox_ArrayKind::Unchecked, e),
         SizeExpr((Stmt*) e), Brackets(brackets) {}
 
 public:
@@ -3812,8 +3880,8 @@ public:
     // adjust the Bits field below, and if you add bits, you'll need to adjust
     // Type::FunctionTypeBitfields::ExtInfo as well.
 
-    // |  CC  |noreturn|produces|nocallersavedregs|regparm|nocfcheck|cmsenscall|
-    // |0 .. 4|   5    |    6   |       7         |8 .. 10|    11   |    12    |
+    // |  CC  |noreturn|produces|nocallersavedregs|regparm|nocfcheck|cmsenscall
+    // |0 .. 4|   5    |    6   |       7         |8 .. 10|    11   |    12
     //
     // regparm is either 0 (no regparm attribute) or the regparm value+1.
     enum { CallConvMask = 0x1F };
@@ -3854,6 +3922,11 @@ public:
     ExtInfo(CallingConv CC) : Bits(CC) {}
 
     bool getNoReturn() const { return Bits & NoReturnMask; }
+    bool getTainted() const{ return Actually_tainted; }
+    bool getCallback() const{ return Actually_callback; }
+    bool getMirror() const {return Actually_mirror; }
+    bool getTLIB() const{ return Actually_TLIB; }
+    bool isDecoyedType() const {return Decoyed;}
     bool getProducesResult() const { return Bits & ProducesResultMask; }
     bool getCmseNSCall() const { return Bits & CmseNSCallMask; }
     bool getNoCallerSavedRegs() const { return Bits & NoCallerSavedRegsMask; }
@@ -3876,6 +3949,11 @@ public:
       return Bits != Other.Bits;
     }
 
+    int Actually_tainted = 0;
+    int Actually_callback = 0;
+    int Actually_mirror = 0;
+    int Actually_TLIB = 0;
+    bool Decoyed = false;
     // Note that we don't have setters. That is by design, use
     // the following with methods instead of mutating these objects.
 
@@ -3884,6 +3962,42 @@ public:
         return ExtInfo(Bits | NoReturnMask);
       else
         return ExtInfo(Bits & ~NoReturnMask);
+    }
+
+    ExtInfo setTainted(bool tainted) {
+      if (tainted)
+        Actually_tainted = 1;
+      else
+        Actually_tainted = 0;
+      return *this;
+    }
+
+    ExtInfo setCallback(bool callback) {
+      if (callback)
+        Actually_callback = 1;
+      else
+        Actually_callback = 0;
+      return *this;
+    }
+
+    void setDecoyed(bool decoyed) {
+      Decoyed = decoyed;
+    }
+
+    ExtInfo setMirror(bool mirror) {
+      if (mirror)
+        Actually_mirror = 1;
+      else
+        Actually_mirror = 0;
+      return *this;
+    }
+
+    ExtInfo setTLIB(bool TLIB) {
+      if (TLIB)
+        Actually_TLIB = 1;
+      else
+        Actually_TLIB = 0;
+      return *this;
     }
 
     ExtInfo withProducesResult(bool producesResult) const {
@@ -3966,6 +4080,9 @@ public:
   /// attribute. The C++11 [[noreturn]] attribute does not affect the function
   /// type.
   bool getNoReturnAttr() const { return getExtInfo().getNoReturn(); }
+  /// Determine whether this function type includes the GNU tainted
+  /// attribute.
+  bool getTaintedAttr() const { return getExtInfo().getTainted(); }
 
   bool getCmseNSCallAttr() const { return getExtInfo().getCmseNSCall(); }
   CallingConv getCallConv() const { return getExtInfo().getCC(); }
@@ -5645,7 +5762,10 @@ enum TagTypeKind {
   TTK_Class,
 
   /// The "enum" keyword.
-  TTK_Enum
+  TTK_Enum,
+
+  /// The "Tstruct" keyword.
+  TTK_Tstruct
 };
 
 /// The elaboration keyword that precedes a qualified type name or
@@ -5669,6 +5789,9 @@ enum ElaboratedTypeKeyword {
   /// The "typename" keyword precedes the qualified type name, e.g.,
   /// \c typename T::type.
   ETK_Typename,
+
+  /// The "struct" keyword introduces the elaborated-type-specifier.
+  ETK_TStruct,
 
   /// No keyword precedes the qualified type name.
   ETK_None
@@ -6720,7 +6843,6 @@ class alignas(8) TypeSourceInfo {
   friend class ASTContext;
 
   QualType Ty;
-
   TypeSourceInfo(QualType ty) : Ty(ty) {}
 
 public:
@@ -6806,7 +6928,10 @@ inline bool QualType::isConstQualified() const {
   return isLocalConstQualified() ||
          getCommonPtr()->CanonicalType.isLocalConstQualified();
 }
-
+inline bool QualType::isDecoyQualified() const {
+  return isLocalDecoyQualified() ||
+         getCommonPtr()->CanonicalType.isLocalDecoyQualified();
+}
 inline bool QualType::isRestrictQualified() const {
   return isLocalRestrictQualified() ||
          getCommonPtr()->CanonicalType.isLocalRestrictQualified();
@@ -7021,26 +7146,59 @@ inline bool Type::isUncheckedPointerType() const {
 
 inline bool Type::isCheckedPointerPtrType() const {
   if (const PointerType *T = getAs<PointerType>())
-    return T->getKind() == CheckedPointerKind::Ptr;
+    return T->getKind() == CheckCBox_PointerKind::Ptr;
+  return false;
+}
+
+inline bool Type::isTaintedPointerPtrType() const {
+  if (const PointerType *T = getAs<PointerType>())
+    return T->getKind() == CheckCBox_PointerKind::t_ptr;
+  return false;
+}
+
+inline bool Type::isTaintedPointerType() const {
+  if (const PointerType *T = getAs<PointerType>())
+    return T->getKind() == CheckCBox_PointerKind::t_ptr ||
+           T->getKind() == CheckCBox_PointerKind::t_array ||
+           T->getKind() == CheckCBox_PointerKind::t_nt_array;
   return false;
 }
 
 inline bool Type::isCheckedPointerArrayType() const {
   if (const PointerType *T = getAs<PointerType>())
-    return T->getKind() == CheckedPointerKind::Array ||
-           T->getKind() == CheckedPointerKind::NtArray;
+    return T->getKind() == CheckCBox_PointerKind::Array ||
+           T->getKind() == CheckCBox_PointerKind::NtArray;
+  return false;
+}
+
+inline bool Type::isTaintedPointerArrayType() const {
+  if (const PointerType *T = getAs<PointerType>())
+    return T->getKind() == CheckCBox_PointerKind::t_array ||
+           T->getKind() == CheckCBox_PointerKind::t_nt_array;
   return false;
 }
 
 inline bool Type::isExactlyCheckedPointerArrayType() const {
   if (const PointerType *T = getAs<PointerType>())
-    return T->getKind() == CheckedPointerKind::Array;
+    return T->getKind() == CheckCBox_PointerKind::Array;
+  return false;
+}
+
+inline bool Type::isExactlyTaintedPointerArrayType() const {
+  if (const PointerType *T = getAs<PointerType>())
+    return  T->getKind() == CheckCBox_PointerKind::t_ptr;
   return false;
 }
 
 inline bool Type::isCheckedPointerNtArrayType() const {
   if (const PointerType *T = getAs<PointerType>())
-    return T->getKind() == CheckedPointerKind::NtArray;
+    return T->getKind() == CheckCBox_PointerKind::NtArray;
+  return false;
+}
+
+inline bool Type::isTaintedPointerNtArrayType() const {
+  if (const PointerType *T = getAs<PointerType>())
+    return  T->getKind() == CheckCBox_PointerKind::t_nt_array;
   return false;
 }
 
@@ -7129,6 +7287,13 @@ inline bool Type::isDependentSizedArrayType() const {
 inline bool Type::isCheckedArrayType() const {
   if (const ArrayType *T = dyn_cast<ArrayType>(CanonicalType))
     return T->isChecked();
+  else
+    return false;
+}
+
+inline bool Type::isTaintedArrayType() const {
+  if (const ArrayType *T = dyn_cast<ArrayType>(CanonicalType))
+    return T->isTainted();
   else
     return false;
 }

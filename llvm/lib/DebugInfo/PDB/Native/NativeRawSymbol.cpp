@@ -509,6 +509,10 @@ bool NativeRawSymbol::hasNoReturnAttribute() const {
   return false;
 }
 
+bool NativeRawSymbol::hasTaintedAttribute() const {
+  return false;
+}
+
 bool NativeRawSymbol::hasOptimizedCodeDebugInfo() const {
   return false;
 }

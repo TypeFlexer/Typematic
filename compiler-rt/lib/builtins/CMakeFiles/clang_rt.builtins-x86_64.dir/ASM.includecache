@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/builtins/assembly.h
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/builtins/x86_64/floatundidf.S
+../assembly.h
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/builtins/assembly.h
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/builtins/x86_64/floatundisf.S
+../assembly.h
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/builtins/assembly.h
+
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/builtins/x86_64/floatundixf.S
+../assembly.h
+/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/builtins/assembly.h
+

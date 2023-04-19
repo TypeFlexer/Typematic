@@ -1271,6 +1271,7 @@ private:
 public:
   Value *CreateAdd(Value *LHS, Value *RHS, const Twine &Name = "",
                    bool HasNUW = false, bool HasNSW = false) {
+
     if (auto *LC = dyn_cast<Constant>(LHS))
       if (auto *RC = dyn_cast<Constant>(RHS))
         return Insert(Folder.CreateAdd(LC, RC, HasNUW, HasNSW), Name);
@@ -1288,6 +1289,7 @@ public:
 
   Value *CreateSub(Value *LHS, Value *RHS, const Twine &Name = "",
                    bool HasNUW = false, bool HasNSW = false) {
+
     if (auto *LC = dyn_cast<Constant>(LHS))
       if (auto *RC = dyn_cast<Constant>(RHS))
         return Insert(Folder.CreateSub(LC, RC, HasNUW, HasNSW), Name);
@@ -1773,6 +1775,15 @@ public:
       const DataLayout &DL = BB->getModule()->getDataLayout();
       Align = DL.getABITypeAlign(Ty);
     }
+
+    if (Ptr->getType()->isPointerTy() &&
+        Ptr->getType()->getCoreElementType()->isDecoyed())
+    {
+      llvm::errs()<< "CreateAlignedLoad: " ;
+      Ptr->dump() ;
+      const DataLayout &DL = BB->getModule()->getDataLayout();
+      Align = Align.ToFour();
+    }
     return Insert(new LoadInst(Ty, Ptr, Twine(), isVolatile, *Align), Name);
   }
 
@@ -2147,7 +2158,38 @@ public:
                         const Twine &Name = "") {
     return CreateCast(Instruction::PtrToInt, V, DestTy, Name);
   }
-
+  llvm::Type* ChangeStructName(llvm::StructType* StructType)
+  {
+    std::string ModifiedName = "";
+    if(StructType->isPointerTy())
+    {
+      std::string StructName = StructType->
+                               getCoreElementType()->getStructName().str();
+      auto start = StructName.find('.');
+      std::string actualName = StructName.substr(start+1);
+      actualName = "Tstruct.Spl_"+ actualName;
+      ModifiedName = std::string(actualName);
+    }
+    else
+    {
+      std::string StructName = StructType->
+                               getStructName().str();
+      auto start = StructName.find('.');
+      std::string actualName = StructName.substr(start+1);
+      actualName = "Tstruct.Spl_"+ actualName;
+      ModifiedName = std::string(actualName);
+    }
+    if(!ModifiedName.empty())
+    {
+      auto RetrievedDecoyType = StructType->getTypeByName(BB->getModule()->getContext(), StringRef(ModifiedName));
+      if (RetrievedDecoyType && RetrievedDecoyType->isDecoyed())
+        return RetrievedDecoyType;
+      else
+        return NULL;
+    }
+    else
+      return NULL;
+  }
   Value *CreateIntToPtr(Value *V, Type *DestTy,
                         const Twine &Name = "") {
     return CreateCast(Instruction::IntToPtr, V, DestTy, Name);
@@ -2379,6 +2421,16 @@ public:
 
   Value *CreateICmp(CmpInst::Predicate P, Value *LHS, Value *RHS,
                     const Twine &Name = "") {
+    if (LHS->getType()->isTaintedPtrTy())
+    {
+      //create a ptr to int cast
+      LHS = CreatePtrToInt(LHS, Type::getInt32Ty(Context));
+    }
+
+    if (RHS->getType()->isTaintedPtrTy())
+    {
+      RHS = CreatePtrToInt(RHS, Type::getInt32Ty(Context));
+    }
     if (auto *LC = dyn_cast<Constant>(LHS))
       if (auto *RC = dyn_cast<Constant>(RHS))
         return Insert(Folder.CreateICmp(P, LC, RC), Name);
@@ -2579,6 +2631,38 @@ public:
                         Name);
   }
 
+  Value *CreateIsTaintedPtr(Value* Arg, const Twine &Name = "") {
+    //Create a Call to "c_isTaintedPointerToTaintedMem" by Passing the pointer reference
+    return CreateTaintedPtrMemCheck(Arg);
+  }
+
+  Value *CreateIsLegalCallEdge(Value *Arg, const Twine &Name = "TaintedFunctionSanityCheck") {
+    //Create a Call to "checkCallStackIntegrityForCheckedFunction" by Passing the pointer reference
+    return CreateIsLegalCallEdgeCheck(Arg);
+  }
+
+  Value *RegisterTaintedFunction(Value *Arg, const Twine &Name = "RegisterTaintedFunction") {
+    return registerTaintedFunction(Arg);
+  }
+
+  Value *RegisterCallbackFunction(Value *Arg, const Twine &Name = "RegisterCallbackFunction") {
+    return registerCallbackFunction(Arg);
+  }
+
+  Value *UNRegisterCallbackFunction(Value *Arg, const Twine &Name = "UNRegisterCallbackFunction") {
+    return unregisterCallbackFunction(Arg);
+  }
+
+  Value *CreateCondlTaintedO2Ptr(Value *pValue);
+  Value *CreateDerefCondlTaintedPtr(Value *Arg, const Twine &Name = "") {
+    //Create a Call to "c_conditionalO2P" by Passing the pointer reference
+    return CreateCondlTaintedO2Ptr(Arg);
+  }
+
+  Value *CreateP2O(Value *Arg, const Twine &Name = "") {
+    //Create a Call to "c_" by Passing the pointer reference
+    return CreatePToO(Arg);
+  }
   /// Return the i64 difference between two pointer values, dividing out
   /// the size of the pointed-to objects.
   ///
@@ -2652,6 +2736,17 @@ public:
   CallInst *CreateAlignmentAssumption(const DataLayout &DL, Value *PtrValue,
                                       Value *Alignment,
                                       Value *OffsetValue = nullptr);
+  CallInst *CreateTaintedPtrMemCheck(Value* Src);
+
+    CallInst *CreateTaintedOffset2Ptr(Value *Offset);
+  Value *CreatePToO(Value *pValue);
+    CallInst *InitSbx();
+  CallInst *FetchSbxHeapAddress();
+    CallInst *FetchSbxHeapBound(llvm::Module *M = NULL);
+    CallInst *CreateIsLegalCallEdgeCheck(Value *pValue);
+    CallInst *registerTaintedFunction(Value *Src);
+  CallInst *registerCallbackFunction(Value *Src);
+    CallInst *unregisterCallbackFunction(Value *Src);
 };
 
 /// This provides a uniform API for creating instructions and inserting

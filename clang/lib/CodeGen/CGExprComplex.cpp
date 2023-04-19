@@ -469,6 +469,8 @@ ComplexPairTy ComplexExprEmitter::EmitCast(CastKind CK, Expr *Op,
   case CK_LValueToRValue:
   case CK_DynamicPtrBounds:
   case CK_AssumePtrBounds:
+  case CK_TaintedDynamicPtrBounds:
+  case CK_TaintedAssumePtrBounds:
   case CK_UserDefinedConversion:
     return Visit(Op);
 

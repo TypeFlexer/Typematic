@@ -86,7 +86,9 @@ private:
   unsigned SubclassData : 24; // Space for subclasses to store data.
                               // Note that this should be synchronized with
                               // MAX_INT_BITS value in IntegerType class.
-
+  bool TStructTyId = false;
+  bool TaintedPtrTyId = false;
+  bool Decoyed = false;
 protected:
   friend class LLVMContextImpl;
 
@@ -110,7 +112,7 @@ protected:
   /// the pointee of a pointer, the element type of an array, etc. This pointer
   /// may be 0 for types that don't contain other types (Integer, Double,
   /// Float).
-  Type * const *ContainedTys = nullptr;
+  Type * *ContainedTys = nullptr;
 
 public:
   /// Print the current type.
@@ -221,7 +223,17 @@ public:
 
   /// True if this is an instance of StructType.
   bool isStructTy() const { return getTypeID() == StructTyID; }
+  /// True if this is an instance of StructType.
+  bool isTStructTy() const { return TStructTyId; }
 
+  bool isTaintedPtrTy() const { return TaintedPtrTyId; }
+  bool isDecoyed() const {return Decoyed;}
+
+  void setTStructTy(bool val) {TStructTyId = val;}
+
+  void setTaintedPtrTy(bool val) {TaintedPtrTyId = val;}
+
+  void setDecoyed(bool val) {Decoyed = val;}
   /// True if this is an instance of ArrayType.
   bool isArrayTy() const { return getTypeID() == ArrayTyID; }
 
@@ -363,7 +375,7 @@ public:
   inline StringRef getStructName() const;
   inline unsigned getStructNumElements() const;
   inline Type *getStructElementType(unsigned N) const;
-
+  inline Type* getStructTypeFromName(LLVMContext &C, StringRef Name) const;
   inline uint64_t getArrayNumElements() const;
 
   Type *getArrayElementType() const {
@@ -376,6 +388,15 @@ public:
     return ContainedTys[0];
   }
 
+  Type* getCoreElementType() const {
+    assert(getTypeID() == PointerTyID);
+    Type* PointerLayer = getPointerElementType();
+    while(PointerLayer->isPointerTy())
+    {
+      PointerLayer = PointerLayer->getPointerElementType();
+    }
+    return PointerLayer;
+  }
   /// Given an integer or vector type, change the lane bitwidth to NewBitwidth,
   /// whilst keeping the old number of lanes.
   inline Type *getWithNewBitWidth(unsigned NewBitWidth) const;
@@ -476,7 +497,6 @@ public:
   /// Return a pointer to the current type. This is equivalent to
   /// PointerType::get(Foo, AddrSpace).
   PointerType *getPointerTo(unsigned AddrSpace = 0) const;
-
 private:
   /// Derived types like structures and arrays are sized iff all of the members
   /// of the type are sized as well. Since asking for their size is relatively

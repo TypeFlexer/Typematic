@@ -87,7 +87,9 @@ namespace {
     void CheckStaticCast();
     void CheckDynamicCast();
     void CheckCXXCStyleCast(bool FunctionalCast, bool ListInitialization);
-    void CheckCStyleCast(bool IsCheckedScope);
+    void CheckCStyleCast(bool IsCheckedScope, bool IsTaintedScope,
+                         bool IsMirrorScope, bool IsTLIBScope
+                                                         , Scope* S=nullptr);
     void CheckBuiltinBitCast();
     void CheckAddrspaceCast();
     void CheckBoundsCast(tok::TokenKind kind);
@@ -161,6 +163,7 @@ namespace {
         return;
       PlaceholderKind = (BuiltinType::Kind) 0;
     }
+    Scope *RecursiveScopeResolve(Scope *S);
   };
 
   void CheckNoDeref(Sema &S, const QualType FromType, const QualType ToType,
@@ -2689,8 +2692,22 @@ static void DiagnoseBadFunctionCast(Sema &Self, const ExprResult &SrcExpr,
             << SrcType << DestType << SrcExpr.get()->getSourceRange();
 }
 
+Scope* CastOperation::RecursiveScopeResolve(Scope* S){
+  /*
+   * Recurse the parent scope tree until you get a scope that is a function type
+   *
+   */
+  Scope* Resolved_scope = S;
+  while ((Resolved_scope != nullptr) && (!Resolved_scope->isFunctionScope()))
+  {
+     Resolved_scope = this->RecursiveScopeResolve(S->getParent());
+  }
+  return Resolved_scope;
+}
+
 /// Check the semantics of a C-style cast operation, in C.
-void CastOperation::CheckCStyleCast(bool IsCheckedScope) {
+void CastOperation::CheckCStyleCast(bool IsCheckedScope, bool IsTaintedScope,
+                                    bool IsMirrorScope, bool IsTLIBScope, Scope* S) {
   assert(!Self.getLangOpts().CPlusPlus);
 
   // C-style casts can resolve __unknown_any types.
@@ -2958,34 +2975,88 @@ void CastOperation::CheckCStyleCast(bool IsCheckedScope) {
     }
   }
 
-  // Checked C - No C-style casts to unchecked pointer/array type or variadic
-  // type in a checked block.
-  if (IsCheckedScope) {
-    bool isNullPointerConstant =
-      DestType->isVoidPointerType() &&
-      DestType->isUncheckedPointerType() &&
-      !SrcExpr.isInvalid() &&
-      SrcExpr.get()->isNullPointerConstant(Self.Context,
-                                           Expr::NPC_NeverValueDependent);
-    if (!isNullPointerConstant &&
-        !Self.DiagnoseTypeInCheckedScope(DestType, OpRange.getBegin(),
-                                         OpRange.getEnd())) {
-      SrcExpr = ExprError();
-      return;
+/* Cast rules amongst/within tainted pointers and non-tainted pointers are
+ * relaxed within the tainted function scope.
+ *
+ * This is done because, the body of a tainted function will anyhow move to
+ * the tainted region.
+ *
+ * And Since the Tainted region has no concept of checked/tainted pointers, in
+ * the best interest of ease/speed/code-size, the below rules are eased.
+ *
+ *
+ */
+  //CheckCBox - Un-Tainted Pointers Cannot be Cast to Tainted Pointers
+  /*
+   * Sometimes if the cast (to be relaxed) is happening within a switch scope
+   * or other nested scope, we need to traceback upwards until we
+   * trace back upwards till a switch scope
+   */
+  if(S != nullptr && !S->isFunctionScope())
+    S = this->RecursiveScopeResolve(S);
+
+  if(S != nullptr && !((S->isTaintedFunctionScope() || IsTaintedScope)
+                        || (S->isTLIBFunctionScope() || IsTLIBScope))) {
+    if (DestType->isTaintedPointerType()) {
+      if ((!SrcType->isTaintedPointerType())) {
+        Self.Diag(SrcExpr.get()->getExprLoc(),
+                  diag::err_untainted_cast_to_tainted)
+            << SrcType << DestType << SrcExpr.get()->getSourceRange();
+        SrcExpr = ExprError();
+        return;
+      }
     }
 
-    // Disallow cast from other Checked Pointer types to nt_arary_ptr because 
+    // CheckCBox - Tainted Pointers Cannot be Cast to Un-Tainted Pointers
+    if (DestType->isPointerType() && (!DestType->isTaintedPointerType())) {
+      if ((SrcType->isTaintedPointerType())) {
+        Self.Diag(SrcExpr.get()->getExprLoc(),
+                  diag::err_tainted_cast_to_untainted)
+            << SrcType << DestType << SrcExpr.get()->getSourceRange();
+        SrcExpr = ExprError();
+        return;
+      }
+    }
+
+    // Disallow cast from other Tainted Pointer types to TNt_array_ptr because
+    // the SrcType might not point to a NULL-terminated array.
+    if (DestType->isPointerType() && DestType->isTaintedPointerNtArrayType()) {
+      if (SrcType->isPointerType() && !SrcType->isTaintedPointerNtArrayType()) {
+        Self.Diag(SrcExpr.get()->getExprLoc(),
+                  diag::err_tainted_no_cast_to_nt_array_ptr)
+            << SrcType << DestType << SrcExpr.get()->getSourceRange();
+        SrcExpr = ExprError();
+        return;
+      }
+    }
+  }
+
+    // Checked C - No C-style casts to unchecked pointer/array type or variadic
+    // type in a checked block.
+    if (IsCheckedScope) {
+      bool isNullPointerConstant =
+          DestType->isVoidPointerType() && DestType->isUncheckedPointerType() &&
+          !SrcExpr.isInvalid() &&
+          SrcExpr.get()->isNullPointerConstant(Self.Context,
+                                               Expr::NPC_NeverValueDependent);
+      if (!isNullPointerConstant &&
+          !Self.DiagnoseTypeInCheckedScope(DestType, OpRange.getBegin(),
+                                           OpRange.getEnd())) {
+        SrcExpr = ExprError();
+        return;
+      }
+
+    // Disallow cast from other Checked Pointer types to Nt_array_ptr because
     // the SrcType might not point to a NULL-terminated array.
     if (DestType->isPointerType() && DestType->isCheckedPointerNtArrayType()) {
-        if (SrcType->isPointerType() && !SrcType->isCheckedPointerNtArrayType()) {
-          Self.Diag(SrcExpr.get()->getExprLoc(),
-              diag::err_checked_scope_no_cast_to_nt_array_ptr)
+      if (SrcType->isPointerType() && !SrcType->isCheckedPointerNtArrayType()) {
+        Self.Diag(SrcExpr.get()->getExprLoc(),
+                  diag::err_checked_scope_no_cast_to_nt_array_ptr)
             << SrcType << DestType << SrcExpr.get()->getSourceRange();
           SrcExpr = ExprError();
           return;
-        }
+      }
     }
-
   }
 
   DiagnoseCastOfObjCSEL(Self, SrcExpr, DestType);
@@ -3086,6 +3157,10 @@ void CastOperation::CheckBoundsCast(tok::TokenKind kind) {
     Kind = CK_AssumePtrBounds;
   else if (kind == tok::kw__Dynamic_bounds_cast)
     Kind = CK_DynamicPtrBounds;
+  else if(kind == tok::kw__Tainted_Assume_bounds_cast)
+    Kind = CK_TaintedAssumePtrBounds;
+  else if(kind == tok::kw__Tainted_Dynamic_bounds_cast)
+    Kind = CK_TaintedDynamicPtrBounds;
 
   // Checked C - No C-style casts to unchecked pointer/array type or variadic
   // type in a checked block.
@@ -3101,13 +3176,18 @@ void CastOperation::CheckBoundsCast(tok::TokenKind kind) {
       return;
     }
   }
+
 }
 
 ExprResult Sema::BuildCStyleCastExpr(SourceLocation LPLoc,
                                      TypeSourceInfo *CastTypeInfo,
                                      SourceLocation RPLoc,
                                      Expr *CastExpr,
-                                     bool IsCheckedScope) {
+                                     bool IsCheckedScope,
+                                     bool isTaintedScope,
+                                     bool IsMirrorScope,
+                                     bool IsTLIBScope,
+                                     Scope* S) {
   CastOperation Op(*this, CastTypeInfo->getType(), CastExpr);
   Op.DestRange = CastTypeInfo->getTypeLoc().getSourceRange();
   Op.OpRange = SourceRange(LPLoc, CastExpr->getEndLoc());
@@ -3116,7 +3196,8 @@ ExprResult Sema::BuildCStyleCastExpr(SourceLocation LPLoc,
     Op.CheckCXXCStyleCast(/*FunctionalCast=*/ false,
                           isa<InitListExpr>(CastExpr));
   } else {
-    Op.CheckCStyleCast(IsCheckedScope);
+    Op.CheckCStyleCast(IsCheckedScope, isTaintedScope, IsMirrorScope,
+                       IsTLIBScope,S);
   }
 
   if (Op.SrcExpr.isInvalid())

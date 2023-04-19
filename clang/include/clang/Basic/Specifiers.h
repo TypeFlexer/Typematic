@@ -66,6 +66,7 @@ namespace clang {
     TST_enum,
     TST_union,
     TST_struct,
+    TST_Tstruct,
     TST_class,        // C++ class type
     TST_interface,    // C++ (Microsoft-specific) __interface type
     TST_typename,     // Typedef, C++ class-name or enum name, etc.
@@ -80,8 +81,11 @@ namespace clang {
     TST_atomic,           // C11 _Atomic
     TST_plainPtr,     // Checked C _Ptr type
     TST_arrayPtr,     // Checked C _Array_ptr type
-    TST_ntarrayPtr ,  // Chcecked C _Nt_array_ptr type
+    TST_ntarrayPtr ,  // Checked C _Nt_array_ptr type
     TST_exists,       // Checked C _Exists type
+    TST_t_plainPtr,   //CheckCBox Tainted _Ptr type
+    TST_t_arrayPtr,   //CheckCBox Tainted _Array_ptr type
+    TST_t_ntarray_Ptr, // CheckCBox _Nt_array_ptr type
 #define GENERIC_IMAGE_TYPE(ImgType, Id) TST_##ImgType##_t, // OpenCL image types
 #include "clang/Basic/OpenCLImageTypes.def"
     TST_error // erroneous type
@@ -394,6 +398,59 @@ namespace clang {
     CSS_Memory = 0x3
   };
 
+  /// CheckCBox-C - tainted specifiers.  Used for function, structs,
+  /// and checked compound scopes.
+  enum TaintedScopeSpecifier {
+    /// Nothing specified.
+    Tainted_None = 0x0,
+
+    /// Unchecked
+    Tainted_Memory = 0x1,
+
+    /// Check properties for bounds safety.
+    /// Corresponds to _Checked _Bounds_only
+    Tainted_Bounds = 0x2,
+
+    /// Check properties for bounds safety and preventing type confusion.
+    /// Corresponds to _Bounds
+    Tainted_UnTainted = 0x3
+  };
+
+  /// Checked C - checked specifiers.  Used for function, structs,
+  /// and checked compound scopes.
+  enum TLIBScopeSpecifier {
+    /// Nothing specified.
+    TLIB_None = 0x0,
+
+    /// Unchecked
+    TLIB_UnTLIB = 0x1,
+
+    /// Check properties for bounds safety.
+    /// Corresponds to _Checked _Bounds_only
+    TLIB_Bounds = 0x2,
+
+    TLIB_Memory = 0x3,
+    /// Relax Casting rules
+    TLIB_Relax_cast = 0x4
+  };
+
+  /// CheckCBox - checked specifiers.  Used for function, structs,
+  /// and checked compound scopes.
+  enum MirrorScopeSpecifier {
+    /// Nothing specified.
+    Mirror_None = 0x0,
+
+    /// Unchecked
+    Mirror_Unchecked = 0x1,
+
+    /// Check properties for bounds safety.
+    /// Corresponds to _Checked _Bounds_only
+    Mirror_Bounds = 0x2,
+
+    /// Check properties for bounds safety and preventing type confusion.
+    /// Corresponds to _Bounds
+    Mirror_Memory = 0x3
+  };
 } // end namespace clang
 
 #endif // LLVM_CLANG_BASIC_SPECIFIERS_H

@@ -835,6 +835,8 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
 
   case CK_DynamicPtrBounds:
   case CK_AssumePtrBounds:
+  case CK_TaintedDynamicPtrBounds:
+  case CK_TaintedAssumePtrBounds:
   case CK_LValueToRValue:
     // If we're loading from a volatile type, force the destination
     // into existence.

@@ -661,9 +661,11 @@ bool InverseUtil::IsCastExprInvertible(Sema &S, Expr *LValue, CastExpr *E) {
       return IsInvertible(S, LValue, E->getSubExpr());
     // Bounds casts may be invertible.
     case CastKind::CK_DynamicPtrBounds:
-    case CastKind::CK_AssumePtrBounds: {
+    case CastKind::CK_AssumePtrBounds:
+    case CastKind::CK_TaintedDynamicPtrBounds:
+    case CastKind::CK_TaintedAssumePtrBounds: {
       CHKCBindTemporaryExpr *Temp =
-        dyn_cast<CHKCBindTemporaryExpr>(E->getSubExpr());
+          dyn_cast<CHKCBindTemporaryExpr>(E->getSubExpr());
       assert(Temp);
       return IsInvertible(S, LValue, Temp->getSubExpr());
     }

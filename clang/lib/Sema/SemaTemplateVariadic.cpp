@@ -864,8 +864,11 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_underlyingType:
   case TST_atomic:
   case TST_plainPtr:
+  case TST_t_plainPtr:
   case TST_arrayPtr:
+  case TST_t_arrayPtr:
   case TST_ntarrayPtr:
+  case TST_t_ntarray_Ptr:
   case TST_exists: {
     QualType T = DS.getRepAsType().get();
     if (!T.isNull() && T->containsUnexpandedParameterPack())
@@ -904,6 +907,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_enum:
   case TST_union:
   case TST_struct:
+  case TST_Tstruct:
   case TST_interface:
   case TST_class:
   case TST_auto:

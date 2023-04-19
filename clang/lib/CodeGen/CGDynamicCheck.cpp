@@ -30,6 +30,9 @@ namespace {
               "The # of dynamic _Dynamic_check(cond) checks found");
   STATISTIC(NumDynamicChecksNonNull,
               "The # of dynamic non-null checks found");
+
+  STATISTIC(NumDynamicChecksTainted, "The # of dynamic tainted ptr memory checks found");
+
   STATISTIC(NumDynamicChecksOverflow,
               "The # of dynamic overflow checks found");
   STATISTIC(NumDynamicChecksRange,
@@ -68,6 +71,43 @@ static bool shouldEmitNonNullCheck(const CodeGenModule &CGM,
   return true;
 }
 
+bool CodeGenFunction::shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
+                                            const QualType BaseTy) {
+    if(!CGM.getLangOpts().CheckedC)
+        return false;
+    //if(!CGM.getLangOpts().TaintedC)
+    //return false;
+
+    if (BaseTy->isUncheckedPointerType())
+      return false;
+
+    if((!(BaseTy->isTaintedPointerType() || BaseTy->isTaintedStructureType())
+          || BaseTy->isFunctionType() || BaseTy->isFunctionPointerType()))
+        return false;
+
+    if (BaseTy->isCheckedPointerType() || BaseTy->isCheckedArrayType())
+      return false;
+
+    return true;
+
+}
+
+bool CodeGenFunction::shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
+                                             const llvm::Type* BaseTy) {
+  if(!CGM.getLangOpts().CheckedC)
+    return false;
+
+  if (BaseTy->isPointerTy() && BaseTy->getCoreElementType()->isVoidTy())
+    return false;
+
+  if((!(BaseTy->isTaintedPtrTy() || BaseTy->isTStructTy())
+       || BaseTy->isFunctionTy()))
+    return false;
+
+  return true;
+
+}
+
 void CodeGenFunction::EmitDynamicNonNullCheck(const Address BaseAddr,
                                               const QualType BaseTy) {
   if (!shouldEmitNonNullCheck(CGM, BaseTy))
@@ -78,6 +118,91 @@ void CodeGenFunction::EmitDynamicNonNullCheck(const Address BaseAddr,
   Value *ConditionVal = Builder.CreateIsNotNull(BaseAddr.getPointer(),
                                                 "_Dynamic_check.non_null");
   EmitDynamicCheckBlocks(ConditionVal);
+}
+
+Value* CodeGenFunction::EmitTaintedPtrDerefAdaptor(const Address BaseAddr,
+                                                const llvm::Type* BaseTy){
+  if(!shouldEmitTaintedPtrDerefAdaptor
+            (CGM, BaseTy))
+        return NULL;
+
+    ++NumDynamicChecksTainted;
+
+    return EmitDynamicTaintedPtrAdaptorBlock(BaseAddr);
+}
+
+Value* CodeGenFunction::EmitTaintedPtrDerefAdaptor(const Address BaseAddr,
+                                                   const QualType BaseTy){
+  if(!shouldEmitTaintedPtrDerefAdaptor
+      (CGM, BaseTy))
+    return NULL;
+
+  ++NumDynamicChecksTainted;
+
+  return EmitDynamicTaintedPtrAdaptorBlock(BaseAddr);
+}
+
+
+/*
+ * This Function is introduced to insert Tainted Pointer Dereference
+ * Instrumentation against Call Arguments to a function that does not have
+ * Explicit Tainted Argument Types as function parameters.
+ *
+ * The user might still be passing Tainted Pointers because it is quite
+ * possible that function arguments might of itype accepting Tainted Pointers.
+ *
+ * Hence, We do the following.
+ * 1.) We check if the Pointer is a Tainted Pointer offset or Not.
+ * 2.) If it is Offset, we return pointer, else we return whatever we receive
+ * (This way we dont break, if the passed pointer argument is a checked region
+ * pointer)
+ */
+
+Value* CodeGenFunction::EmitConditionalTaintedP2OAdaptor(Value* Base){
+
+  if(!(CGM.getCodeGenOpts().wasmsbx))
+    return NULL;
+
+  ++NumDynamicChecksTainted;
+  llvm::Type* OriginalType = Base->getType();
+  if (!Base->getType()->isPointerTy())
+    return NULL;
+
+  Value *OffsetVal = Builder.CreatePointerCast(
+      Base,
+      llvm::Type::getInt8PtrTy(Base->getContext()));
+
+  llvm::Value* ConvPtr = NULL;
+  if(CGM.getCodeGenOpts().wasmsbx)
+  {
+    ConvPtr = Builder.CreatePtrToInt(OffsetVal, llvm::Type::getInt32Ty(Base->getContext()));
+  }
+//  else if (CGM.getCodeGenOpts().noopsbx)
+//  {
+//    ConvPtr = Builder.CreatePtrToInt(OffsetVal, llvm::Type::getInt64Ty(Base->getContext()));
+//  }
+  /*
+   * Returned Ptr is of type unsigned int , hence cast it back to original type.
+   */
+  llvm::Value* RetVal = Builder.CreateIntToPtr(ConvPtr, OriginalType);
+  auto CharUnitsSz = CharUnits::Four();
+  // check if -m32 flag is set
+  if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+  {
+    // set the GV to be 32-bit
+    CharUnitsSz = CharUnits::Two();
+  }
+  else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+  {
+    // set the GV to be 64-bit
+    CharUnitsSz = CharUnits::Four();
+  }
+  //TODO: Need to optimize this someway
+  Address TempAlloca = CreateTempAllocaWithoutCast(OriginalType, CharUnitsSz); //Returned Pointer must align to N/2 bytes for tainted pointers.
+  Builder.CreateStore(RetVal, TempAlloca);
+  //Load from Alloca and return
+  auto LoadVal =  Builder.CreateLoad(TempAlloca);
+  return Builder.CreatePointerCast(LoadVal, RetVal->getType());
 }
 
 void CodeGenFunction::EmitDynamicNonNullCheck(Value *Val,
@@ -129,6 +254,10 @@ void CodeGenFunction::EmitDynamicBoundsCheck(const Address PtrAddr,
     return;
   }
 
+  llvm::Value *TaintedPtrFromOffset = PtrAddr.getPointer();
+  TaintedPtrFromOffset = EmitConditionalTaintedP2OAdaptor(TaintedPtrFromOffset);
+  if(TaintedPtrFromOffset == NULL)
+    TaintedPtrFromOffset = PtrAddr.getPointer();
   const RangeBoundsExpr *BoundsRange = dyn_cast<RangeBoundsExpr>(Bounds);
 
   ++NumDynamicChecksRange;
@@ -139,31 +268,73 @@ void CodeGenFunction::EmitDynamicBoundsCheck(const Address PtrAddr,
   // We don't infer an expression with the correct cast for
   // multidimensional array access, but icmp requires that
   // its operands are of the same type, so we bitcast Lower to
-  // match the type of PtrAddr at the LLVM IR Level.
-  if (Lower.getType() != PtrAddr.getType())
-    Lower = Builder.CreateBitCast(Lower, PtrAddr.getType());
+  // match the type of TaintedPtrFromOffset at the LLVM IR Level.
+  if (Lower.getType() != TaintedPtrFromOffset->getType())
+    Lower = Builder.CreateBitCast(Lower, TaintedPtrFromOffset->getType());
 
   Address Upper = EmitPointerWithAlignment(BoundsRange->getUpperExpr());
+  /*
+   * This is Dummied as its screwed
+   * If the above is a GEP instruction
+   * and if the GEP is on a double/triple pointer type, modify the GEP
+   * to GEP on i32* (only if the variable of decoyed type)
+   */
+
+  if (isa<GEPOperator>(Upper.getPointer()))
+  {
+    llvm::GEPOperator* GEP = dyn_cast<GEPOperator>(Upper.getPointer());
+    auto GEPOp = GEP->getPointerOperandType();
+    if (CGM.getCodeGenOpts().wasmsbx)
+    {
+      if(GEPOp->isPointerTy() && GEPOp->getCoreElementType()->isDecoyed())
+      {
+        llvm::Type* PtrTy = GEP->getPointerOperandType();
+        llvm::Type* IntPtrTy = llvm::Type::getInt32PtrTy(CGM.getLLVMContext());
+        llvm::Type* IntTy = NULL;
+        if(CGM.getCodeGenOpts().wasmsbx)
+        {
+          IntTy = llvm::Type::getInt32Ty(CGM.getLLVMContext());
+        }
+        llvm::Value* NewPtr = Builder.CreatePointerCast(GEP->getPointerOperand(), IntPtrTy);
+        ArrayRef<llvm::Value *> indices(
+            reinterpret_cast<Value *const *>(GEP->idx_begin()),
+            reinterpret_cast<Value *const *>(GEP->idx_end()));
+        llvm::Value* NewGEP = Builder.CreateInBoundsGEP(IntTy, NewPtr, indices[0]);
+        llvm::Value* OriginalTypeVal = Builder.CreatePointerCast(NewGEP, PtrTy);
+        Upper = Address(OriginalTypeVal, Upper.getAlignment());
+      }
+    }
+  }
 
   // As above, we may need to bitcast Upper to match the type
-  // of PtrAddr at the LLVM IR Level.
-  if (Upper.getType() != PtrAddr.getType())
-    Upper = Builder.CreateBitCast(Upper, PtrAddr.getType());
+  // of TaintedPtrFromOffset at the LLVM IR Level.
+  if (Upper.getType() != TaintedPtrFromOffset->getType())
+    Upper = Builder.CreateBitCast(Upper, TaintedPtrFromOffset->getType());
+
+  llvm::Value *TaintedUpperPtrFromOffset = Upper.getPointer();
+  TaintedUpperPtrFromOffset = EmitConditionalTaintedP2OAdaptor(TaintedUpperPtrFromOffset);
+  if(TaintedUpperPtrFromOffset == NULL)
+    TaintedUpperPtrFromOffset = Upper.getPointer();
+
+  llvm::Value *TaintedLowerPtrFromOffset = Lower.getPointer();
+  TaintedLowerPtrFromOffset = EmitConditionalTaintedP2OAdaptor(TaintedLowerPtrFromOffset);
+  if(TaintedLowerPtrFromOffset == NULL)
+    TaintedLowerPtrFromOffset = Lower.getPointer();
 
   // Make the lower check
   Value *LowerChk = Builder.CreateICmpULE(
-      Lower.getPointer(), PtrAddr.getPointer(), "_Dynamic_check.lower");
+      TaintedLowerPtrFromOffset, TaintedPtrFromOffset, "_Dynamic_check.lower");
 
   // Make the upper check
   Value *UpperChk;
   assert(CheckKind != BCK_None);
   if (CheckKind != BCK_NullTermRead)
-    UpperChk = Builder.CreateICmpULT(PtrAddr.getPointer(), Upper.getPointer(),
+    UpperChk = Builder.CreateICmpULT(TaintedPtrFromOffset, TaintedUpperPtrFromOffset,
                                      "_Dynamic_check.upper");
   else
     // For reads of null-terminated pointers, we allow the element exactly
     // at the upper bound to be read.
-    UpperChk = Builder.CreateICmpULE(PtrAddr.getPointer(), Upper.getPointer(),
+    UpperChk = Builder.CreateICmpULE(TaintedPtrFromOffset, TaintedUpperPtrFromOffset,
                                      "_Dynamic_check.upper");
   llvm::Value *Condition =
     Builder.CreateAnd(LowerChk, UpperChk, "_Dynamic_check.range");
@@ -174,7 +345,8 @@ void CodeGenFunction::EmitDynamicBoundsCheck(const Address PtrAddr,
   BasicBlock *DyCkSuccess = createBasicBlock("_Dynamic_check.succeeded");
   BasicBlock *DyCkFailure;
   if (CheckKind == BCK_NullTermWriteAssign)
-    DyCkFailure = EmitNulltermWriteAdditionalCheck(PtrAddr, Upper, LowerChk,
+    DyCkFailure = EmitNulltermWriteAdditionalCheck(Address(TaintedPtrFromOffset, getPointerAlign()) ,
+                                                   Address(TaintedUpperPtrFromOffset, getPointerAlign()), LowerChk,
                                                    Val, DyCkSuccess);
   else
     DyCkFailure = EmitDynamicCheckFailedBlock();
@@ -290,13 +462,34 @@ CodeGenFunction::EmitDynamicBoundsCastCheck(const Address BaseAddr,
   if (CastUpper.getType() != Upper.getType())
     CastUpper = Builder.CreateBitCast(CastUpper, Upper.getType());
 
+  llvm::Value *TaintedPtrFromOffsetLower = Lower.getPointer();
+  TaintedPtrFromOffsetLower = EmitConditionalTaintedP2OAdaptor(TaintedPtrFromOffsetLower);
+  if(TaintedPtrFromOffsetLower == NULL)
+    TaintedPtrFromOffsetLower = Lower.getPointer();
+
+  llvm::Value *TaintedPtrFromOffsetCastLower = CastLower.getPointer();
+  TaintedPtrFromOffsetCastLower = EmitConditionalTaintedP2OAdaptor(TaintedPtrFromOffsetCastLower);
+  if(TaintedPtrFromOffsetCastLower == NULL)
+    TaintedPtrFromOffsetCastLower = CastLower.getPointer();
+
   // Make the lower check (Lower <= CastLower)
   Value *LowerChk = Builder.CreateICmpULE(
-      Lower.getPointer(), CastLower.getPointer(), "_Dynamic_check.lower");
+      TaintedPtrFromOffsetLower, TaintedPtrFromOffsetCastLower, "_Dynamic_check.lower");
+
+  llvm::Value *TaintedPtrFromOffsetCastUpper = CastUpper.getPointer();
+  TaintedPtrFromOffsetCastUpper = EmitConditionalTaintedP2OAdaptor(TaintedPtrFromOffsetCastUpper);
+  if(TaintedPtrFromOffsetCastUpper == NULL)
+    TaintedPtrFromOffsetCastUpper = CastUpper.getPointer();
+
+  llvm::Value *TaintedPtrFromOffsetUpper = Upper.getPointer();
+  TaintedPtrFromOffsetUpper = EmitConditionalTaintedP2OAdaptor(TaintedPtrFromOffsetUpper);
+  if(TaintedPtrFromOffsetUpper == NULL)
+    TaintedPtrFromOffsetUpper = Upper.getPointer();
+
 
   // Make the upper check (CastUpper <= Upper)
   Value *UpperChk = Builder.CreateICmpULE(
-      CastUpper.getPointer(), Upper.getPointer(), "_Dynamic_check.upper");
+      TaintedPtrFromOffsetCastUpper, TaintedPtrFromOffsetUpper, "_Dynamic_check.upper");
 
   // Make Both Checks
   Value *CastCond =
@@ -374,6 +567,138 @@ void CodeGenFunction::EmitDynamicCheckBlocks(Value *Condition) {
   Builder.SetInsertPoint(DyCkSuccess);
 }
 
+void CodeGenFunction::EmitDynamicTaintedCacheCheckBlocks(Value *Condition, Value *PointerAsInt64) {
+  assert(Condition->getType()->isIntegerTy(1) &&
+         "May only dynamic check boolean conditions");
+  ++NumDynamicChecksInserted;
+
+  BasicBlock *DyCkSuccess = createBasicBlock("_Tainted_Cache.HIT");
+  BasicBlock *DyCkFail = EmitTaintedL1_CacheMissBlock(DyCkSuccess, PointerAsInt64);
+
+  Builder.CreateCondBr(Condition, DyCkSuccess, DyCkFail);
+  // This ensures the success block comes directly after the branch
+  EmitBlock(DyCkSuccess);
+  Builder.SetInsertPoint(DyCkSuccess);
+}
+
+Value*
+CodeGenFunction::EmitDynamicTaintedPtrAdaptorBlock(const Address BaseAddr) {
+
+   if (!(CGM.getCodeGenOpts().wasmsbx || CGM.getCodeGenOpts().heapsbx))
+     return NULL;
+    ++NumDynamicChecksTainted;
+
+    Value *PointerVal = BaseAddr.getPointer();
+    // check if PointerVal is a constant
+    if (isa<Constant>(PointerVal)) {
+     // Hell naw!..we aint gon be instrumenting constants
+     return NULL;
+    }
+
+    if (CGM.getCodeGenOpts().wasmsbx) {
+     //First Fetch the Heap Trackers
+     GlobalVariable *sbxHeapRange = CGM.getModule().getNamedGlobal("sbxHeapRange");
+     GlobalVariable *sbxHeapBase =  CGM.getModule().getNamedGlobal("sbxHeap");
+     // Load them Heap Trackers
+     Value *SbxHeapRangeLoadedVal = Builder.CreateAlignedLoad(
+         llvm::Type::getInt32Ty(BaseAddr.getPointer()->getContext()),
+         sbxHeapRange, 8, false);
+     Value *SbxHeapBaseLoadedVal = Builder.CreateAlignedLoad(
+         llvm::Type::getInt64Ty(BaseAddr.getPointer()->getContext()),
+         sbxHeapBase, 8, false);
+
+     llvm::Type *BitCastType = BaseAddr.getType();
+
+    if (BitCastType->isTStructTy() ||
+        (BitCastType->isPointerTy() &&
+         BitCastType->getCoreElementType()->isTStructTy())) {
+      BitCastType = ChangeStructName(
+          reinterpret_cast<StructType *>(BitCastType->getCoreElementType()));
+      if ((BitCastType != NULL) && (BitCastType->isDecoyed())) {
+        llvm::Type *CurrentTypeReferences = BaseAddr.getType();
+        while (CurrentTypeReferences->isPointerTy()) {
+          CurrentTypeReferences =
+              CurrentTypeReferences->getPointerElementType();
+          BitCastType = BitCastType->getPointerTo(0);
+        }
+        BaseAddr.setType(BitCastType);
+      } else
+        BitCastType = BaseAddr.getType();
+    }
+
+     Value *ValidTPtrOffset = NULL;
+     Value *ConditionVal = PointerVal;
+
+     if (!BaseAddr.getType()->getCoreElementType()->isFunctionTy()) {
+      // fetch codegen options
+      Value *OffsetVal32 = Builder.CreatePtrToInt(
+          BaseAddr.getPointer(),
+          llvm::Type::getInt32Ty(BaseAddr.getPointer()->getContext()));
+      Value *OffsetVal64 = Builder.CreateZExt(
+          OffsetVal32,
+          llvm::Type::getInt64Ty(BaseAddr.getPointer()->getContext()));
+      ValidTPtrOffset = OffsetVal32;
+      Value *OffsetValWithHeap = SbxHeapBaseLoadedVal;
+      Value *OffsetValWithHeapAndOffset =
+          Builder.CreateAdd(OffsetValWithHeap, OffsetVal64);
+      // Bitcast this to the type of the pointer
+      PointerVal = OffsetValWithHeapAndOffset;
+      ConditionVal =
+          Builder.CreateICmpULT(ValidTPtrOffset, SbxHeapRangeLoadedVal);
+
+      EmitDynamicCheckBlocks(ConditionVal);
+     }
+
+     llvm::Type *DestTy = BitCastType;
+     llvm::Type *DecoyedDestTy = BitCastType;
+     if (DestTy->isTStructTy() ||
+         (DestTy->isPointerTy() &&
+          DestTy->getCoreElementType()->isTStructTy())) {
+      DestTy = DecoyedDestTy =
+          ChangeStructName(reinterpret_cast<StructType *>(DestTy));
+
+      if (DecoyedDestTy != NULL) {
+        auto *CurrentTypeReferences = DestTy;
+        while (CurrentTypeReferences->isPointerTy()) {
+          CurrentTypeReferences =
+              CurrentTypeReferences->getPointerElementType();
+          DecoyedDestTy = DecoyedDestTy->getPointerTo(0);
+        }
+      } else
+        DecoyedDestTy = BitCastType;
+     }
+
+     Value *CastedPointer = ConditionVal;
+     if (!BaseAddr.getType()->getCoreElementType()->isFunctionTy())
+      CastedPointer = Builder.CreateIntToPtr(PointerVal, DecoyedDestTy);
+
+     return CastedPointer;
+    }
+    else if (CGM.getCodeGenOpts().heapsbx)
+    {
+     //First Fetch the global heap variables
+     GlobalVariable *lowerbound_1 = CGM.getModule().getNamedGlobal("lowerbound_1");
+     GlobalVariable *upperbound_1 =  CGM.getModule().getNamedGlobal("upperbound_1");
+     Value *lowerboundVal_1 = Builder.CreateAlignedLoad(
+         llvm::Type::getInt64Ty(PointerVal->getContext()),
+         lowerbound_1, 8, false);
+     Value *upperboundVal_1 = Builder.CreateAlignedLoad(
+         llvm::Type::getInt64Ty(PointerVal->getContext()),
+         upperbound_1, 8, false);
+
+     Value *PointerAsInt64 = Builder.CreatePtrToInt(
+         BaseAddr.getPointer(),
+         llvm::Type::getInt64Ty(PointerVal->getContext()));
+     auto UpperChk_1 = Builder.CreateICmpULE(PointerAsInt64, upperboundVal_1,
+                                      "_Dynamic_check.Cache_upper");
+     auto LowerChk_1= Builder.CreateICmpUGE(PointerAsInt64, lowerboundVal_1,
+                                          "_Tainted_check.Cache_lower");
+     llvm::Value *Condition_1 =
+         Builder.CreateAnd(LowerChk_1, UpperChk_1, "_Dynamic_check.cache_range_1");
+     EmitDynamicTaintedCacheCheckBlocks(Condition_1, PointerAsInt64);
+     return BaseAddr.getPointer();
+    }
+}
 BasicBlock *CodeGenFunction::EmitDynamicCheckFailedBlock() {
   // Save current insert point
   BasicBlock *Begin = Builder.GetInsertBlock();
@@ -396,6 +721,63 @@ BasicBlock *CodeGenFunction::EmitDynamicCheckFailedBlock() {
   TrapCall->setDoesNotReturn();
   TrapCall->setDoesNotThrow();
   Builder.CreateUnreachable();
+
+  // Return the insert point back to the saved insert point
+  Builder.SetInsertPoint(Begin);
+
+  return FailBlock;
+}
+
+BasicBlock *CodeGenFunction::EmitTaintedL1_CacheMissBlock(BasicBlock * CacheHit, Value* PointerAsInt64) {
+    ++NumDynamicChecksInserted;
+    // Save current insert point
+  BasicBlock *Begin = Builder.GetInsertBlock();
+
+  // Add a "failed block", which will be inserted at the end of CurFn
+  BasicBlock *FailBlock = createBasicBlock("_Tainted_Cache_L1.MISS", CurFn);
+  Builder.SetInsertPoint(FailBlock);
+  BasicBlock *DyCkSuccess = createBasicBlock("_Tainted_Cache_L2.HIT");
+  BasicBlock *DyCkFail = EmitTaintedL2_CacheMissBlock(DyCkSuccess, PointerAsInt64);
+
+  GlobalVariable *lowerbound_2 = CGM.getModule().getNamedGlobal("lowerbound_2");
+  GlobalVariable *upperbound_2 =  CGM.getModule().getNamedGlobal("upperbound_2");
+  Value *lowerboundVal_2 = Builder.CreateAlignedLoad(
+      llvm::Type::getInt64Ty(PointerAsInt64->getContext()),
+      lowerbound_2, 8, false);
+  Value *upperboundVal_2 = Builder.CreateAlignedLoad(
+      llvm::Type::getInt64Ty(PointerAsInt64->getContext()),
+      upperbound_2, 8, false);
+  auto UpperChk_2 = Builder.CreateICmpULE(PointerAsInt64, upperboundVal_2,
+                                          "_Dynamic_check.Cache_upper");
+  auto LowerChk_2= Builder.CreateICmpUGE(PointerAsInt64, lowerboundVal_2,
+                                          "_Tainted_check.Cache_lower");
+  llvm::Value *Condition_2 =
+      Builder.CreateAnd(LowerChk_2, UpperChk_2, "_Dynamic_check.cache_range_2");
+  Builder.CreateCondBr(Condition_2, DyCkSuccess, DyCkFail);
+  // This ensures the success block comes directly after the branch
+  EmitBlock(DyCkSuccess);
+  Builder.SetInsertPoint(DyCkSuccess);
+
+
+  //jump back to the cache hit block
+  Builder.CreateBr(CacheHit);
+
+  // Return the insert point back to the saved insert point
+  Builder.SetInsertPoint(Begin);
+
+  return FailBlock;
+}
+
+BasicBlock *CodeGenFunction::EmitTaintedL2_CacheMissBlock(BasicBlock * CacheHit, Value* PointerAsInt64) {
+  // Save current insert point
+  BasicBlock *Begin = Builder.GetInsertBlock();
+
+  // Add a "failed block", which will be inserted at the end of CurFn
+  BasicBlock *FailBlock = createBasicBlock("_Tainted_Cache_L2.MISS", CurFn);
+  Builder.SetInsertPoint(FailBlock);
+  Builder.CreateIsTaintedPtr(PointerAsInt64, "_Tainted_Cache_L1L2.Cache_update_and_check");
+  //jump back to the cache hit block
+  Builder.CreateBr(CacheHit);
 
   // Return the insert point back to the saved insert point
   Builder.SetInsertPoint(Begin);

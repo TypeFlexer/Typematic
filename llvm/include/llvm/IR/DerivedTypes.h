@@ -121,7 +121,7 @@ public:
 
   bool isVarArg() const { return getSubclassData()!=0; }
   Type *getReturnType() const { return ContainedTys[0]; }
-
+  void setReturnType(Type* RetType) {ContainedTys[0] = RetType; }
   using param_iterator = Type::subtype_iterator;
 
   param_iterator param_begin() const { return ContainedTys + 1; }
@@ -132,7 +132,7 @@ public:
 
   /// Parameter type accessors.
   Type *getParamType(unsigned i) const { return ContainedTys[i+1]; }
-
+  void setParamType(unsigned i, Type* Ty)  { ContainedTys[i+1] = Ty; }
   /// Return the number of fixed parameters this function type requires.
   /// This does not consider varargs.
   unsigned getNumParams() const { return NumContainedTys - 1; }
@@ -230,6 +230,10 @@ public:
   StructType(const StructType &) = delete;
   StructType &operator=(const StructType &) = delete;
 
+  /*
+   * This is to indicate if the current Tstruct is Decoyed or not
+   *
+   */
   /// This creates an identified struct.
   static StructType *create(LLVMContext &Context, StringRef Name);
   static StructType *create(LLVMContext &Context);
@@ -266,10 +270,10 @@ public:
     SmallVector<llvm::Type *, 8> StructFields({elt1, elts...});
     return llvm::StructType::get(Ctx, StructFields);
   }
-
   /// Return the type with the specified name, or null if there is none by that
   /// name.
   static StructType *getTypeByName(LLVMContext &C, StringRef Name);
+
 
   bool isPacked() const { return (getSubclassData() & SCDB_Packed) != 0; }
 
@@ -341,6 +345,8 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeID() == StructTyID;
   }
+  /// Return the type with the specified name, or null if there is none by that
+  /// name.
 };
 
 StringRef Type::getStructName() const {
@@ -355,6 +361,9 @@ Type *Type::getStructElementType(unsigned N) const {
   return cast<StructType>(this)->getElementType(N);
 }
 
+Type *Type::getStructTypeFromName(LLVMContext &C, StringRef Name) const {
+  return reinterpret_cast<Type*>(cast<StructType>(this)->getTypeByName(C, Name));
+}
 /// Class to represent array types.
 class ArrayType : public Type {
   /// The element type of the array.

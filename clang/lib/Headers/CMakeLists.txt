@@ -110,6 +110,7 @@ set(files
   __stddef_max_align_t.h
   stdint.h
   stdnoreturn.h
+  stdtainted.h
   tbmintrin.h
   tgmath.h
   tmmintrin.h

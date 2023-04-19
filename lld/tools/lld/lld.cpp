@@ -65,6 +65,11 @@ LLVM_ATTRIBUTE_NORETURN static void die(const Twine &s) {
   exit(1);
 }
 
+LLVM_ATTRIBUTE_TAINTED static void die(const Twine &s) {
+  llvm::errs() << s << "\n";
+  exit(1);
+}
+
 static Flavor getFlavor(StringRef s) {
   return StringSwitch<Flavor>(s)
       .CasesLower("ld", "ld.lld", "gnu", Gnu)

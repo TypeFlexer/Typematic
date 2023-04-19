@@ -274,6 +274,24 @@ struct PragmaCheckedScopeHandler : public PragmaHandler {
                     Token &FirstToken) override;
 };
 
+struct PragmaTlibScopeHandler : public PragmaHandler {
+  PragmaTlibScopeHandler() : PragmaHandler("TLIB_SCOPE") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+struct PragmaMirrorScopeHandler : public PragmaHandler {
+  PragmaMirrorScopeHandler() : PragmaHandler("MIRROR_SCOPE") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+struct PragmaTaintedScopeHandler : public PragmaHandler {
+  PragmaTaintedScopeHandler() : PragmaHandler("TAINTED_SCOPE") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
 /// PragmaAttributeHandler - "\#pragma clang attribute ...".
 struct PragmaAttributeHandler : public PragmaHandler {
   PragmaAttributeHandler(AttributeFactory &AttrFactory)
@@ -431,6 +449,15 @@ void Parser::initializePragmaHandlers() {
 
   CheckedScopeHandler.reset(new PragmaCheckedScopeHandler());
   PP.AddPragmaHandler(CheckedScopeHandler.get());
+
+  TlibScopeHandler.reset(new PragmaTlibScopeHandler());
+  PP.AddPragmaHandler(TlibScopeHandler.get());
+
+  MirrorScopeHandler.reset(new PragmaMirrorScopeHandler());
+  PP.AddPragmaHandler(MirrorScopeHandler.get());
+
+  TaintedScopeHandler.reset(new PragmaTaintedScopeHandler());
+  PP.AddPragmaHandler(TaintedScopeHandler.get());
 }
 
 void Parser::resetPragmaHandlers() {
@@ -550,6 +577,12 @@ void Parser::resetPragmaHandlers() {
 
   PP.RemovePragmaHandler(CheckedScopeHandler.get());
   CheckedScopeHandler.reset();
+  PP.RemovePragmaHandler(TaintedScopeHandler.get());
+  TaintedScopeHandler.reset();
+  PP.RemovePragmaHandler(TlibScopeHandler.get());
+  TlibScopeHandler.reset();
+  PP.RemovePragmaHandler(MirrorScopeHandler.get());
+  MirrorScopeHandler.reset();
 }
 
 /// Handle the annotation token produced for #pragma unused(...)
@@ -745,7 +778,10 @@ StmtResult Parser::HandlePragmaCaptured()
 
   SourceLocation Loc = Tok.getLocation();
 
-  ParseScope CapturedRegionScope(this, Scope::FnScope | Scope::DeclScope |
+  ParseScope CapturedRegionScope(this, Scope::FnScope |
+//                                           Scope::TaintedFunctionScope |
+//                                           Scope::CallbackFunctionScope |
+                                           Scope::DeclScope |
                                            Scope::CompoundStmtScope);
   Actions.ActOnCapturedRegionStart(Loc, getCurScope(), CR_Default,
                                    /*NumParams=*/1);
@@ -1736,6 +1772,35 @@ void Parser::HandlePragmaCheckedScope() {
   Actions.ActOnPragmaCheckedScope(Kind, PragmaLoc);
 }
 
+// #pragma TLIB [on|off|relax|push|pop]
+void Parser::HandlePragmaTlibScope() {
+  assert(Tok.is(tok::annot_pragma_tlib_scope));
+  Sema::PragmaTlibScopeKind Kind =
+      static_cast<Sema::PragmaTlibScopeKind>(
+          reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
+  SourceLocation PragmaLoc = ConsumeAnnotationToken();
+  Actions.ActOnPragmaTlibScope(Kind, PragmaLoc);
+}
+
+// #pragma TAINTED_SCOPE [on|off|_Bounds_decl|push|pop]
+void Parser::HandlePragmaTaintedScope() {
+  assert(Tok.is(tok::annot_pragma_tainted_scope));
+  Sema::PragmaTaintedScopeKind Kind =
+      static_cast<Sema::PragmaTaintedScopeKind>(
+          reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
+  SourceLocation PragmaLoc = ConsumeAnnotationToken();
+  Actions.ActOnPragmaTaintedScope(Kind, PragmaLoc);
+}
+
+// #pragma MIRROR_SCOPE [on|off|_Bounds_decl|push|pop]
+void Parser::HandlePragmaMirrorScope() {
+  assert(Tok.is(tok::annot_pragma_mirror_scope));
+  Sema::PragmaMirrorScopeKind Kind =
+      static_cast<Sema::PragmaMirrorScopeKind>(
+          reinterpret_cast<uintptr_t>(Tok.getAnnotationValue()));
+  SourceLocation PragmaLoc = ConsumeAnnotationToken();
+  Actions.ActOnPragmaMirrorScope(Kind, PragmaLoc);
+}
 // #pragma GCC visibility comes in two variants:
 //   'push' '(' [visibility] ')'
 //   'pop'
@@ -3778,6 +3843,173 @@ void PragmaCheckedScopeHandler::HandlePragma(Preprocessor &PP,
                               1);
   Toks[0].startToken();
   Toks[0].setKind(tok::annot_pragma_checked_scope);
+  Toks[0].setLocation(Tok.getLocation());
+  Toks[0].setAnnotationEndLoc(Tok.getLocation());
+  Toks[0].setAnnotationValue(
+      reinterpret_cast<void *>(static_cast<uintptr_t>(Kind)));
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true, /*IsReinject=*/false);
+}
+
+// Handle the checkcbox top level scope checked property.
+// #pragma TLIB [OFF|ON|off|on|push|pop]
+// To handle precise scope property, annotation token is better
+void PragmaTlibScopeHandler::HandlePragma(Preprocessor &PP,
+                                             PragmaIntroducer Introducer,
+                                             Token &Tok) {
+  PP.Lex(Tok);
+  Sema::PragmaTlibScopeKind Kind = Sema::TLIB_On;
+
+  if (Tok.is(tok::identifier)) {
+    IdentifierInfo *II = Tok.getIdentifierInfo();
+    if (II->isStr("ON"))
+      Kind = Sema::TLIB_On;
+    else if (II->isStr("on"))
+      Kind = Sema::TLIB_On;
+    else if (II->isStr("On"))
+      Kind = Sema::TLIB_On;
+    else if (II->isStr("OFF"))
+      Kind = Sema::TLIB_Off;
+    else if (II->isStr("off"))
+      Kind = Sema::TLIB_Off;
+    else if (II->isStr("Off"))
+      Kind = Sema::TLIB_Off;
+    else if (II->isStr("push"))
+      Kind = Sema::TLIB_Push;
+    else if (II->isStr("pop"))
+      Kind = Sema::TLIB_Pop;
+    else if (II->isStr("Push"))
+      Kind = Sema::TLIB_Push;
+    else if (II->isStr("Pop"))
+      Kind = Sema::TLIB_Pop;
+    else if (II->isStr("RELAX"))
+      Kind = Sema::TLIB_RELAX;
+    else if (II->isStr("relax"))
+      Kind = Sema::TLIB_RELAX;
+    else {
+      PP.Diag(Tok, diag::err_pragma_tlib_scope_invalid_argument)
+          << PP.getSpelling(Tok);
+      return;
+    }
+  } else {
+    PP.Diag(Tok, diag::err_pragma_tlib_scope_invalid_argument)
+        << PP.getSpelling(Tok);
+    return;
+  }
+
+  PP.Lex(Tok);
+  // Verify that this is followed by EOD.
+  if (Tok.isNot(tok::eod))
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+        << "TLIB";
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Toks[0].startToken();
+  Toks[0].setKind(tok::annot_pragma_tlib_scope);
+  Toks[0].setLocation(Tok.getLocation());
+  Toks[0].setAnnotationEndLoc(Tok.getLocation());
+  Toks[0].setAnnotationValue(
+      reinterpret_cast<void *>(static_cast<uintptr_t>(Kind)));
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true, /*IsReinject=*/false);
+}
+
+// Handle the checkcbox-c top level scope checked property.
+// #pragma TAINTED_SCOPE [OFF|ON|off|on|push|pop]
+// To handle precise scope property, annotation token is better
+void PragmaTaintedScopeHandler::HandlePragma(Preprocessor &PP,
+                                             PragmaIntroducer Introducer,
+                                             Token &Tok) {
+  PP.Lex(Tok);
+  Sema::PragmaTaintedScopeKind Kind = Sema::TAINTED_On;
+
+  if (Tok.is(tok::identifier)) {
+    IdentifierInfo *II = Tok.getIdentifierInfo();
+    if (II->isStr("ON"))
+      Kind = Sema::TAINTED_On;
+    else if (II->isStr("on"))
+      Kind = Sema::TAINTED_On;
+    else if (II->isStr("OFF"))
+      Kind = Sema::TAINTED_Off;
+    else if (II->isStr("off"))
+      Kind = Sema::TAINTED_Off;
+    else if (II->isStr("push"))
+      Kind = Sema::TAINTED_Push;
+    else if (II->isStr("pop"))
+      Kind = Sema::TAINTED_Pop;
+    else {
+      PP.Diag(Tok, diag::err_pragma_tainted_scope_invalid_argument)
+          << PP.getSpelling(Tok);
+      return;
+    }
+  } else if (Tok.is(tok::kw__Bounds_only))
+    Kind = Sema::TAINTED_BoundsOnly;
+  else {
+    PP.Diag(Tok, diag::err_pragma_checked_scope_invalid_argument)
+        << PP.getSpelling(Tok);
+    return;
+  }
+
+  PP.Lex(Tok);
+  // Verify that this is followed by EOD.
+  if (Tok.isNot(tok::eod))
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+        << "TAINTED_SCOPE";
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Toks[0].startToken();
+  Toks[0].setKind(tok::annot_pragma_tainted_scope);
+  Toks[0].setLocation(Tok.getLocation());
+  Toks[0].setAnnotationEndLoc(Tok.getLocation());
+  Toks[0].setAnnotationValue(
+      reinterpret_cast<void *>(static_cast<uintptr_t>(Kind)));
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true, /*IsReinject=*/false);
+}
+
+// Handle the checked-c top level scope checked property.
+// #pragma MIRROR_SCOPE [OFF|ON|off|on|push|pop]
+// To handle precise scope property, annotation token is better
+void PragmaMirrorScopeHandler::HandlePragma(Preprocessor &PP,
+                                             PragmaIntroducer Introducer,
+                                             Token &Tok) {
+  PP.Lex(Tok);
+  Sema::PragmaMirrorScopeKind Kind = Sema::MIRROR_On;
+
+  if (Tok.is(tok::identifier)) {
+    IdentifierInfo *II = Tok.getIdentifierInfo();
+    if (II->isStr("ON"))
+      Kind = Sema::MIRROR_On;
+    else if (II->isStr("on"))
+      Kind = Sema::MIRROR_On;
+    else if (II->isStr("OFF"))
+      Kind = Sema::MIRROR_Off;
+    else if (II->isStr("off"))
+      Kind = Sema::MIRROR_Off;
+    else if (II->isStr("push"))
+      Kind = Sema::MIRROR_Push;
+    else if (II->isStr("pop"))
+      Kind = Sema::MIRROR_Pop;
+    else {
+      PP.Diag(Tok, diag::err_pragma_mirror_scope_invalid_argument)
+          << PP.getSpelling(Tok);
+      return;
+    }
+  } else {
+    PP.Diag(Tok, diag::err_pragma_mirror_scope_invalid_argument)
+        << PP.getSpelling(Tok);
+    return;
+  }
+
+  PP.Lex(Tok);
+  // Verify that this is followed by EOD.
+  if (Tok.isNot(tok::eod))
+    PP.Diag(Tok.getLocation(), diag::warn_pragma_extra_tokens_at_eol)
+        << "MIRROR_SCOPE";
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(1),
+                              1);
+  Toks[0].startToken();
+  Toks[0].setKind(tok::annot_pragma_mirror_scope);
   Toks[0].setLocation(Tok.getLocation());
   Toks[0].setAnnotationEndLoc(Tok.getLocation());
   Toks[0].setAnnotationValue(

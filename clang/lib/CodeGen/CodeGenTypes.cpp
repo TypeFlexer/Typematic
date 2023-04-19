@@ -88,6 +88,8 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
 /// a type.  For example, the scalar representation for _Bool is i1, but the
 /// memory representation is usually i8 or i32, depending on the target.
 llvm::Type *CodeGenTypes::ConvertTypeForMem(QualType T, bool ForBitField) {
+  // If QualType is also a Decoyed Type, apply this specifier to the LLVM return
+  //type
   if (T->isConstantMatrixType()) {
     const Type *Ty = Context.getCanonicalType(T).getTypePtr();
     const ConstantMatrixType *MT = cast<ConstantMatrixType>(Ty);
@@ -421,7 +423,11 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     // 'struct List _For_any(T)', and 'R2' is the RecordDecl for the type application
     // 'struct List<int>'. Then codegen 'struct List<int>' as we would codegen 'struct List'.
     if (RecDecl->isInstantiated()) RecDecl = RecDecl->genericBaseDecl();
-    return ConvertRecordDeclType(RecDecl);
+    auto RetTy =  ConvertRecordDeclType(RecDecl);
+    if (T->isTaintedPointerType())
+      RetTy->setTaintedPtrTy(true);
+
+    return RetTy;
   }
 
   // See if type is already cached.
@@ -806,6 +812,17 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   assert(ResultType && "Didn't convert a type?");
 
   TypeCache[Ty] = ResultType;
+  if(T->isTaintedStructureType())
+    ResultType->setTStructTy(true);
+
+  if (T->isTaintedPointerType())
+    ResultType->setTaintedPtrTy(true);
+  else
+    ResultType->setTaintedPtrTy(false);
+
+  if (getFunctionExtInfo(T).isDecoyedType())
+    ResultType->setDecoyed(true);
+
   return ResultType;
 }
 
@@ -831,6 +848,12 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD) {
     addRecordTypeName(RD, Entry, "");
   }
   llvm::StructType *Ty = Entry;
+
+  if (RD->getTypeForDecl()->getCanonicalTypeInternal()->isTaintedStructureType())
+    Ty->setTStructTy(true);
+
+  if (RD->isDecoyDecl())
+    Ty->setDecoyed(true);
 
   // If this is still a forward declaration, or the LLVM type is already
   // complete, there's nothing more to do.

@@ -266,7 +266,22 @@ llvm::Constant *CodeGenModule::getOrCreateStaticVarDecl(
   llvm::GlobalVariable *GV = new llvm::GlobalVariable(
       getModule(), LTy, Ty.isConstant(getContext()), Linkage, Init, Name,
       nullptr, llvm::GlobalVariable::NotThreadLocal, TargetAS);
-  GV->setAlignment(getContext().getDeclAlign(&D).getAsAlign());
+  if (D.getType()->isTaintedPointerType())
+  {
+    // check if -m32 flag is set
+    if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+    {
+          // set the GV to be 32-bit
+          GV->setAlignment(CharUnits::Two().getAsAlign());
+    }
+    else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+    {
+          // set the GV to be 64-bit
+          GV->setAlignment(CharUnits::Four().getAsAlign());
+    }
+  }
+  else
+    GV->setAlignment(getContext().getDeclAlign(&D).getAsAlign());
 
   if (supportsCOMDAT() && GV->isWeakForLinker())
     GV->setComdat(TheModule.getOrInsertComdat(GV->getName()));
@@ -398,6 +413,9 @@ void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
   llvm::Constant *addr = CGM.getOrCreateStaticVarDecl(D, Linkage);
   CharUnits alignment = getContext().getDeclAlign(&D);
 
+  if (D.getType()->isTaintedPointerType())
+    alignment = alignment.Four();
+
   // Store into LocalDeclMap before generating initializer to handle
   // circular references.
   setAddrOfLocalVar(&D, Address(addr, alignment));
@@ -424,7 +442,23 @@ void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
   if (D.getInit() && !isCudaSharedVar)
     var = AddInitializerToStaticVarDecl(D, var);
 
-  var->setAlignment(alignment.getAsAlign());
+    if (D.getType()->isTaintedPointerType())
+    {
+      // check if -m32 flag is set
+      if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+      {
+        // set the GV to be 32-bit
+        var->setAlignment(CharUnits::Two().getAsAlign());
+      }
+      else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+      {
+        // set the GV to be 64-bit
+        var->setAlignment(CharUnits::Four().getAsAlign());
+      }
+    }
+    else
+        var->setAlignment(alignment.getAsAlign());
+
 
   if (D.hasAttr<AnnotateAttr>())
     CGM.AddGlobalAnnotations(&D, var);
@@ -1130,11 +1164,41 @@ Address CodeGenModule::createUnnamedGlobalFrom(const VarDecl &D,
     llvm::GlobalVariable *GV = new llvm::GlobalVariable(
         getModule(), Ty, isConstant, llvm::GlobalValue::PrivateLinkage,
         Constant, Name, InsertBefore, llvm::GlobalValue::NotThreadLocal, AS);
-    GV->setAlignment(Align.getAsAlign());
+    if (D.getType()->isTaintedPointerType())
+    {
+      // check if -m32 flag is set
+      if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+      {
+        // set the GV to be 32-bit
+        GV->setAlignment(CharUnits::Two().getAsAlign());
+      }
+      else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+      {
+        // set the GV to be 64-bit
+        GV->setAlignment(CharUnits::Four().getAsAlign());
+      }
+    }
+    else
+        GV->setAlignment(Align.getAsAlign());
     GV->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     CacheEntry = GV;
   } else if (CacheEntry->getAlignment() < Align.getQuantity()) {
-    CacheEntry->setAlignment(Align.getAsAlign());
+      if (D.getType()->isTaintedPointerType())
+      {
+        // check if -m32 flag is set
+        if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+        {
+          // set the GV to be 32-bit
+          CacheEntry->setAlignment(CharUnits::Two().getAsAlign());
+        }
+        else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+        {
+          // set the GV to be 64-bit
+          CacheEntry->setAlignment(CharUnits::Four().getAsAlign());
+        }
+      }
+      else
+            CacheEntry->setAlignment(Align.getAsAlign());
   }
 
   return Address(CacheEntry, Align);
@@ -1414,7 +1478,8 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
   emission.IsEscapingByRef = isEscapingByRef;
 
   CharUnits alignment = getContext().getDeclAlign(&D);
-
+  if (D.getType()->isTaintedPointerType())
+    alignment = alignment.Four();
   // If the type is variably-modified, emit all the VLA sizes for it.
   if (Ty->isVariablyModifiedType())
     EmitVariablyModifiedType(Ty);
@@ -1512,8 +1577,47 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
       } else {
         allocaTy = ConvertTypeForMem(Ty);
         allocaAlignment = alignment;
+        if (Ty->isTaintedPointerType())
+          allocaAlignment = allocaAlignment.Four();
       }
 
+      /*
+       * Tstruct pointers can be of two types:
+       * 1.) Tstruct *tstruct_ptr; --> Structure members follow generic 64-bit layout.
+       * 2.) _Decoy Tstruct *Spl_tstruct_ptr; --> Structure members follow WASM-compatible 32-bit layout.
+       *
+       * The below code evaluates if there is a user-defined case for the above,
+       * and hijacks the appropriate type (Decoy Sibling Type) into the flow.
+       *
+       */
+      llvm::Type* DecoyTy = NULL;
+      if (Ty->isTaintedPointerType()) {
+        const auto coreType = Ty->getCoreTypeInternal();
+        if (coreType->isTaintedStructureType()) {
+          const RecordDecl *coreDecl = coreType->getAsStructureType()->getDecl();
+          const std::string coreRecordDeclName = coreDecl->getNameAsString();
+          auto start = coreRecordDeclName.find(' ');
+          auto FinalcoreRecordDeclName = coreRecordDeclName.substr(start+1);
+          const std::string decoyRecordDeclName = "Tstruct.Spl_" + FinalcoreRecordDeclName;
+
+          if(llvm::StructType::getTypeByName(CGM.getModule().getContext(),
+                                              StringRef(decoyRecordDeclName))!= NULL)
+          {
+            DecoyTy = llvm::StructType::getTypeByName(CGM.getModule().getContext(),
+                                                      StringRef(decoyRecordDeclName));
+          }
+
+
+          if ((DecoyTy != NULL) && (DecoyTy->isDecoyed())) {
+            auto temp = Ty;
+            while (temp->isPointerType()) {
+              temp = temp->getPointeeType();
+              DecoyTy = DecoyTy->getPointerTo();
+            }
+            allocaTy = DecoyTy;
+          }
+        }
+      }
       // Create the alloca.  Note that we set the name separately from
       // building the instruction so that it's there even in no-asserts
       // builds.
@@ -2460,9 +2564,24 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
              CGM.getDataLayout().getAllocaAddrSpace());
       auto DestAS = getContext().getTargetAddressSpace(DestLangAS);
       auto *T = V->getType()->getPointerElementType()->getPointerTo(DestAS);
+      auto DeclAlignment = DeclPtr.getAlignment();
+      if (D.getType()->isTaintedPointerType())
+      {
+        // check if -m32 flag is set
+        if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+        {
+          // set the GV to be 32-bit
+          DeclAlignment = CharUnits::Two();
+        }
+        else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+        {
+          // set the GV to be 64-bit
+          DeclAlignment = CharUnits::Four();
+        }
+      }
       DeclPtr = Address(getTargetHooks().performAddrSpaceCast(
                             *this, V, SrcLangAS, DestLangAS, T, true),
-                        DeclPtr.getAlignment());
+                        DeclAlignment);
     }
 
     // Push a destructor cleanup for this parameter if the ABI requires it.
@@ -2491,7 +2610,22 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
       DeclPtr = OpenMPLocalAddr;
     } else {
       // Otherwise, create a temporary to hold the value.
-      DeclPtr = CreateMemTemp(Ty, getContext().getDeclAlign(&D),
+      auto align = getContext().getDeclAlign(&D);
+      if (Ty->isTaintedPointerType())
+      {
+        // check if -m32 flag is set
+        if (getTarget().getTriple().getArch() == llvm::Triple::x86)
+        {
+          // set the GV to be 32-bit
+          align = CharUnits::Two();
+        }
+        else if(getTarget().getTriple().getArch() == llvm::Triple::x86_64)
+        {
+          // set the GV to be 64-bit
+          align = CharUnits::Four();
+        }
+      }
+      DeclPtr = CreateMemTemp(Ty, align,
                               D.getName() + ".addr");
     }
     DoStore = true;

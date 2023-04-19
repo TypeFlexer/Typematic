@@ -213,6 +213,7 @@ enum Kind {
   kw_noprofile,
   kw_noredzone,
   kw_noreturn,
+  kw_tainted,
   kw_nosync,
   kw_nocf_check,
   kw_nounwind,

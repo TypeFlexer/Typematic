@@ -86,6 +86,8 @@ namespace Intrinsic {
   /// the intrinsic.
   Function *getDeclaration(Module *M, ID id, ArrayRef<Type*> Tys = None);
 
+  Function* SandboxTaintedMemCheckFunction(Module *M);
+  Function* Offset2Pointer(Module *M);
   /// Looks up Name in NameTable via binary search. NameTable must be sorted
   /// and all entries must start with "llvm.".  If NameTable contains an exact
   /// match for Name or a prefix of Name followed by a dot, its index in

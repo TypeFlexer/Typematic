@@ -44,6 +44,9 @@ public:
     return llvm::cast<llvm::PointerType>(getPointer()->getType());
   }
 
+  void  *setType(llvm::Type* Val) const {
+    getPointer()->setType(Val);
+  }
   /// Return the type of the values stored in this address.
   ///
   /// When IR pointer types lose their element type, we should simply
@@ -66,6 +69,10 @@ public:
   CharUnits getAlignment() const {
     assert(isValid());
     return Alignment;
+  }
+
+  void SetAlignment(CharUnits alignment) {
+    Alignment = alignment;
   }
 };
 

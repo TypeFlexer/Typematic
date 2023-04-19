@@ -821,7 +821,11 @@ Sema::ActOnCXXThrow(Scope *S, SourceLocation OpLoc, Expr *Ex) {
             }
 
             if (S->getFlags() &
-                (Scope::FnScope | Scope::ClassScope | Scope::BlockScope |
+                (Scope::FnScope | Scope::TaintedFunctionScope |
+                 Scope::MirrorFunctionScope |
+                 Scope::CallbackFunctionScope |
+                 Scope::TLIBFunctionScope |
+                 Scope::ClassScope | Scope::BlockScope |
                  Scope::FunctionPrototypeScope | Scope::ObjCMethodScope |
                  Scope::TryScope))
               break;
@@ -2294,7 +2298,7 @@ Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
     else if (ArraySize)
       InitType =
           Context.getIncompleteArrayType(AllocType, ArrayType::Normal, 0,
-                                         CheckedArrayKind::Unchecked);
+                                         CheckCBox_ArrayKind::Unchecked);
     else
       InitType = AllocType;
 
@@ -6716,6 +6720,7 @@ QualType Sema::FindCompositePointerType(SourceLocation Loc,
             EPI1.ExtInfo.getNoReturn() && EPI2.ExtInfo.getNoReturn();
         EPI1.ExtInfo = EPI1.ExtInfo.withNoReturn(Noreturn);
         EPI2.ExtInfo = EPI2.ExtInfo.withNoReturn(Noreturn);
+
 
         // The result is nothrow if both operands are.
         SmallVector<QualType, 8> ExceptionTypeStorage;

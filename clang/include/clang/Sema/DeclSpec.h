@@ -282,6 +282,7 @@ public:
   static const TST TST_enum = clang::TST_enum;
   static const TST TST_union = clang::TST_union;
   static const TST TST_struct = clang::TST_struct;
+  static const TST TST_Tstruct = clang::TST_Tstruct;
   static const TST TST_interface = clang::TST_interface;
   static const TST TST_class = clang::TST_class;
   static const TST TST_typename = clang::TST_typename;
@@ -297,6 +298,9 @@ public:
   static const TST TST_plainPtr = clang::TST_plainPtr;
   static const TST TST_arrayPtr = clang::TST_arrayPtr;
   static const TST TST_nt_arrayPtr = clang::TST_ntarrayPtr;
+  static const TST TST_t_plainPtr = clang::TST_t_plainPtr;
+  static const TST TST_t_arrayPtr = clang::TST_t_arrayPtr;
+  static const TST TST_t_nt_arrayPtr = clang::TST_t_ntarray_Ptr;
   static const TST TST_exists = clang::TST_exists;
 #define GENERIC_IMAGE_TYPE(ImgType, Id) \
   static const TST TST_##ImgType##_t = clang::TST_##ImgType##_t;
@@ -312,7 +316,18 @@ public:
     TQ_unaligned   = 8,
     // This has no corresponding Qualifiers::TQ value, because it's not treated
     // as a qualifier in our type system.
-    TQ_atomic      = 16
+    TQ_atomic      = 16,
+    TQ_Decoy = 32
+  };
+
+  bool isTaintedStruct;
+
+  // Note: Introduced for Tainted Struct to enforce rules on its pointer members
+  enum PointerTypes {
+    PT_None = 0, // this declSpec has no pointer members involved
+    PT_Generic_C = 1, // This declSpec has generic pointer members
+    PT_Checked_C = 2, // This DeclSpec has checkedc pointers  as members
+    PT_Tainted_C = 4 // This declSpec has tainted pointers as members
   };
 
   /// ParsedSpecifiers - Flags to query which specifiers were applied.  This is
@@ -331,6 +346,22 @@ public:
   static const CSS CSS_Unchecked = clang::CSS_Unchecked;
   static const CSS CSS_Bounds = clang::CSS_Bounds;
   static const CSS CSS_Memory = clang::CSS_Memory;
+
+  typedef TaintedScopeSpecifier TaintedSS;
+  static const TaintedSS Tainted_None = clang::Tainted_None;
+  static const TaintedSS Tainted_Bounds = clang::Tainted_Bounds;
+  static const TaintedSS Tainted_Memory = clang::Tainted_Memory;
+
+  typedef MirrorScopeSpecifier MirrorSS;
+  static const MirrorSS Mirror_None = clang::Mirror_None;
+  static const MirrorSS Mirror_Bounds = clang::Mirror_Bounds;
+  static const MirrorSS Mirror_Memory = clang::Mirror_Memory;
+
+  typedef TLIBScopeSpecifier TLIBSS;
+  static const TLIBSS TLIB_None = clang::TLIB_None;
+  static const TLIBSS TLIB_Relax = clang::TLIB_Relax_cast;
+  static const TLIBSS TLIB_Bounds = clang::TLIB_Bounds;
+  static const TLIBSS TLIB_Memory = clang::TLIB_Memory;
 
 
 private:
@@ -353,15 +384,28 @@ private:
   unsigned ConstrainedAuto : 1;
 
   // type-qualifiers
-  unsigned TypeQualifiers : 5;  // Bitwise OR of TQ.
+  unsigned TypeQualifiers : 7;  // Bitwise OR of TQ.
+
+  unsigned PointerTypeQualifiers : 3;
 
   // function-specifier
   unsigned FS_inline_specified : 1;
   unsigned FS_forceinline_specified: 1;
   unsigned FS_virtual_specified : 1;
   unsigned FS_noreturn_specified : 1;
+
   // friend-specifier
   unsigned Friend_specified : 1;
+
+  unsigned FS_tainted_specified : 2;
+
+  unsigned FS_tainted_callback_specified : 1;
+
+  unsigned FS_Decoy_specified : 1;
+
+  unsigned FS_tainted_mirror_specified : 2;
+
+  unsigned FS_tainted_lib_specified : 2;
 
   // constexpr-specifier
   unsigned ConstexprSpecifier : 2;
@@ -411,9 +455,13 @@ private:
   /// TSTNameLoc provides source range info for tag types.
   SourceLocation TSTNameLoc;
   SourceRange TypeofParensRange;
-  SourceLocation TQ_constLoc, TQ_restrictLoc, TQ_volatileLoc, TQ_atomicLoc,
+  SourceLocation TQ_constLoc, TQ_restrictLoc, TQ_volatileLoc, TQ_atomicLoc, TQ_DecoyLoc,
       TQ_unalignedLoc;
-  SourceLocation FS_inlineLoc, FS_virtualLoc, FS_explicitLoc, FS_noreturnLoc;
+  SourceLocation PT_Generic_C_Loc, PT_Checked_C_Loc , PT_Tainted_C_Loc;
+  SourceLocation FS_inlineLoc, FS_virtualLoc, FS_explicitLoc, FS_noreturnLoc,
+      FS_taintedLoc, FS_tainted_callbackLoc, FS_Decoy_specifiedLoc,
+      FS_tainted_MirrorLoc,
+      FS_tainted_LibLoc;
   SourceLocation FS_explicitCloseParenLoc;
   SourceLocation FS_forceinlineLoc;
   // Checked C - checked keyword location
@@ -432,7 +480,9 @@ private:
     return (T == TST_typename || T == TST_typeofType ||
             T == TST_underlyingType || T == TST_atomic ||
             T == TST_plainPtr || T == TST_arrayPtr ||
-            T == TST_nt_arrayPtr || T == TST_exists);
+            T == TST_nt_arrayPtr || T == TST_exists ||
+            T == TST_t_arrayPtr || T == TST_t_plainPtr ||
+            T == TST_t_nt_arrayPtr);
   }
   static bool isExprRep(TST T) {
     return (T == TST_typeofExpr || T == TST_decltype || T == TST_extint);
@@ -447,22 +497,26 @@ public:
   static bool isDeclRep(TST T) {
     return (T == TST_enum || T == TST_struct ||
             T == TST_interface || T == TST_union ||
-            T == TST_class || T == TST_exists);
+            T == TST_class || T == TST_exists || T == TST_Tstruct);
   }
 
   DeclSpec(AttributeFactory &attrFactory)
-      : StorageClassSpec(SCS_unspecified),
+      : isTaintedStruct(false),
+        StorageClassSpec(SCS_unspecified),
         ThreadStorageClassSpec(TSCS_unspecified),
         SCS_extern_in_linkage_spec(false),
-        TypeSpecWidth(static_cast<unsigned>(TypeSpecifierWidth::Unspecified)),
-        TypeSpecComplex(TSC_unspecified),
+        TypeSpecWidth(static_cast<unsigned>(TypeSpecifierWidth::Unspecified)), TypeSpecComplex(TSC_unspecified),
         TypeSpecSign(static_cast<unsigned>(TypeSpecifierSign::Unspecified)),
         TypeSpecType(TST_unspecified), TypeAltiVecVector(false),
         TypeAltiVecPixel(false), TypeAltiVecBool(false), TypeSpecOwned(false),
         TypeSpecPipe(false), TypeSpecSat(false), ConstrainedAuto(false),
-        TypeQualifiers(TQ_unspecified), FS_inline_specified(false),
+        TypeQualifiers(TQ_unspecified), PointerTypeQualifiers(PT_None),
+        FS_inline_specified(false),
 	FS_forceinline_specified(false), FS_virtual_specified(false),
 	FS_noreturn_specified(false), Friend_specified(false),
+        FS_tainted_specified(false), FS_tainted_callback_specified(false),
+        FS_Decoy_specified(false),
+        FS_tainted_mirror_specified(Mirror_None),FS_tainted_lib_specified(TLIB_None),
         ConstexprSpecifier(
             static_cast<unsigned>(ConstexprSpecKind::Unspecified)),
         FS_explicit_specifier(), Attrs(attrFactory),
@@ -566,6 +620,8 @@ public:
   SourceRange getTypeofParensRange() const { return TypeofParensRange; }
   void setTypeofParensRange(SourceRange range) { TypeofParensRange = range; }
 
+  void setTaintedStruct(bool value) {isTaintedStruct = value;}
+
   bool hasAutoTypeSpec() const {
     return (TypeSpecType == TST_auto || TypeSpecType == TST_auto_type ||
             TypeSpecType == TST_decltype_auto);
@@ -577,6 +633,7 @@ public:
   static const char *getSpecifierName(DeclSpec::TST T,
                                       const PrintingPolicy &Policy);
   static const char *getSpecifierName(DeclSpec::TQ Q);
+  static const char *getMemberPointerType(DeclSpec::PointerTypes PT);
   static const char *getSpecifierName(TypeSpecifierSign S);
   static const char *getSpecifierName(DeclSpec::TSC C);
   static const char *getSpecifierName(TypeSpecifierWidth W);
@@ -595,6 +652,12 @@ public:
   SourceLocation getUnalignedSpecLoc() const { return TQ_unalignedLoc; }
   SourceLocation getPipeLoc() const { return TQ_pipeLoc; }
 
+  /// get Member Pointer Type Presence
+  unsigned getPointerPresence() const {return PointerTypeQualifiers; }
+  SourceLocation getLastLocOfGenericCPtrMember() const { return PT_Generic_C_Loc; }
+  SourceLocation getLastLocOfCheckedCPtrMember() const { return PT_Checked_C_Loc; }
+  SourceLocation getLastLocOfTaintedCPtrMember() const { return PT_Tainted_C_Loc; }
+
   /// Clear out all of the type qualifiers.
   void ClearTypeQualifiers() {
     TypeQualifiers = 0;
@@ -602,8 +665,17 @@ public:
     TQ_restrictLoc = SourceLocation();
     TQ_volatileLoc = SourceLocation();
     TQ_atomicLoc = SourceLocation();
+    TQ_DecoyLoc = SourceLocation();
     TQ_unalignedLoc = SourceLocation();
     TQ_pipeLoc = SourceLocation();
+  }
+
+  /// Clear out all the pointer type qualifiers
+  void ClearPointerTypeQualifiers() {
+    PointerTypeQualifiers |= 0;
+    PT_Checked_C_Loc = SourceLocation();
+    PT_Checked_C_Loc = SourceLocation();
+    PT_Tainted_C_Loc = SourceLocation();
   }
 
   // function-specifier
@@ -617,6 +689,8 @@ public:
   ExplicitSpecifier getExplicitSpecifier() const {
     return FS_explicit_specifier;
   }
+
+  bool isDSTaintedStruct() const {return isTaintedStruct ;}
 
   bool isVirtualSpecified() const { return FS_virtual_specified; }
   SourceLocation getVirtualSpecLoc() const { return FS_virtualLoc; }
@@ -632,10 +706,32 @@ public:
   }
 
   bool isNoreturnSpecified() const { return FS_noreturn_specified; }
+  bool isTaintedSpecified() const {return FS_tainted_specified; }
+  bool isTaintedMirrorSpecified() const {return FS_tainted_mirror_specified;}
+  bool isCallbackSpecified() const {return FS_tainted_callback_specified; }
+  bool isTLIBSpecified() const {return FS_tainted_lib_specified; }
+  bool isDecoyDeclSpecified() const {return FS_Decoy_specified; }
   SourceLocation getNoreturnSpecLoc() const { return FS_noreturnLoc; }
+  SourceLocation getTaintedSpecLoc() const { return FS_taintedLoc; }
+  SourceLocation getTaintedCallbackSpecLoc() const { return FS_tainted_callbackLoc;}
+  SourceLocation getDecoySpecLoc() const { return TQ_DecoyLoc;}
+  SourceLocation getTaintedMirrorSpecLoc() const { return FS_tainted_MirrorLoc;}
+  SourceLocation getTLIBSpecLoc() const { return FS_tainted_LibLoc;}
+  SourceLocation getPointerTypeChecked() const {return PT_Checked_C_Loc; }
+  SourceLocation getPointerTypeTainted() const {return PT_Tainted_C_Loc; }
+  SourceLocation getPointerTypeGeneric() const {return PT_Generic_C_Loc; }
 
   CheckedScopeSpecifier getCheckedScopeSpecifier() const {
     return (CheckedScopeSpecifier) FS_checked_specified;
+  }
+  TaintedScopeSpecifier getTaintedScopeSpecifier() const {
+    return (TaintedScopeSpecifier) FS_tainted_specified;
+  }
+  MirrorScopeSpecifier getMirrorScopeSpecifier() const {
+    return (MirrorScopeSpecifier) FS_tainted_mirror_specified;
+  }
+  TLIBScopeSpecifier getTLIBScopeSpecifier() const {
+    return (TLIBScopeSpecifier) FS_tainted_lib_specified;
   }
   SourceLocation getCheckedSpecLoc() const { return FS_checkedLoc; }
 
@@ -686,7 +782,17 @@ public:
     FS_explicitLoc = SourceLocation();
     FS_explicitCloseParenLoc = SourceLocation();
     FS_noreturn_specified = false;
+    FS_tainted_specified = false;
+    FS_tainted_mirror_specified = Tainted_None;
+    FS_tainted_callback_specified = false;
+    FS_Decoy_specified = false;
+    FS_tainted_lib_specified = TLIB_None;
     FS_noreturnLoc = SourceLocation();
+    FS_taintedLoc = SourceLocation();
+    FS_tainted_callbackLoc = SourceLocation();
+    FS_Decoy_specifiedLoc = SourceLocation();
+    FS_tainted_MirrorLoc = SourceLocation();
+    FS_tainted_LibLoc = SourceLocation();
     FS_checked_specified = CSS_None;
     FS_checkedLoc = SourceLocation();
     FS_forany_specified = false;
@@ -813,8 +919,13 @@ public:
 
   bool SetTypeQual(TQ T, SourceLocation Loc);
 
+  bool SetPointerTypeQual (PointerTypes T, SourceLocation Loc);
+
   bool SetTypeQual(TQ T, SourceLocation Loc, const char *&PrevSpec,
                    unsigned &DiagID, const LangOptions &Lang);
+
+  bool SetPointerTypeQual (enum PointerTypes PT, SourceLocation Loc, const char *&PrevSpec,
+                          unsigned &DiagID, const LangOptions &Lang);
 
   bool setFunctionSpecInline(SourceLocation Loc, const char *&PrevSpec,
                              unsigned &DiagID);
@@ -827,10 +938,10 @@ public:
                                SourceLocation CloseParenLoc);
   bool setFunctionSpecNoreturn(SourceLocation Loc, const char *&PrevSpec,
                                unsigned &DiagID);
+  bool setFunctionSpecTainted(SourceLocation Loc, TaintedScopeSpecifier TaintedSS,
+                              const char *&PrevSpec, unsigned &DiagID);
   bool setFunctionSpecChecked(SourceLocation Loc, CheckedScopeSpecifier CSS,
                               const char *&PrevSpec, unsigned &DiagID);
-  bool setFunctionSpecUnchecked(SourceLocation Loc, const char *&PrevSpec,
-                                unsigned &DiagID);
   bool setSpecForany(SourceLocation Loc, const char *&PrevSpec,
                                 unsigned &DiagID);
   bool setSpecItypeforany(SourceLocation Loc, const char *&PrevSpec,
@@ -913,6 +1024,18 @@ public:
   ///
   /// Only tag declspecs can stand alone.
   bool isMissingDeclaratorOk();
+  bool setFunctionSpecCallback(SourceLocation Loc, const char *&PrevSpec,
+                               unsigned int &DiagID);
+  bool setFunctionSpecMirror(SourceLocation Loc,
+                             MirrorScopeSpecifier MirrorSS,
+                             const char *&PrevSpec,
+                             unsigned int &DiagID);
+  bool setFunctionSpecTLIB(SourceLocation Loc,
+                           TLIBScopeSpecifier TLIBSS,
+                           const char *&PrevSpec,
+                           unsigned int &DiagID);
+  bool setFunctionSpecDecoy(SourceLocation Loc, const char *&PrevSpec,
+                            unsigned int &DiagID);
 };
 
 /// Captures information about "declaration specifiers" specific to
@@ -1723,7 +1846,7 @@ struct DeclaratorChunk {
   /// Return a DeclaratorChunk for an array.
   static DeclaratorChunk getArray(unsigned TypeQuals,
                                   bool isStatic, bool isStar,
-                                  CheckedArrayKind kind, Expr *NumElts,
+                                  CheckCBox_ArrayKind kind, Expr *NumElts,
                                   SourceLocation LBLoc, SourceLocation RBLoc) {
     DeclaratorChunk I;
     I.Kind          = Array;
@@ -1906,7 +2029,7 @@ enum class DeclaratorContext {
   TemplateTypeArg,     // Template type argument (in default argument).
   AliasDecl,           // C++11 alias-declaration.
   AliasTemplate,       // C++11 alias-declaration template.
-  RequiresExpr         // C++2a requires-expression.
+  RequiresExpr        // C++2a requires-expression.
 };
 
 /// Information about one declarator, including the parsed type

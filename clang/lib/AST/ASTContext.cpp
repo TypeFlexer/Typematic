@@ -3165,7 +3165,7 @@ QualType ASTContext::getComplexType(QualType T) const {
 
 /// getPointerType - Return the uniqued reference to the type for a pointer to
 /// the specified type.
-QualType ASTContext::getPointerType(QualType T, CheckedPointerKind kind) const {
+QualType ASTContext::getPointerType(QualType T, CheckCBox_PointerKind kind) const {
   // Unique pointers, to guarantee there is only one pointer of a particular
   // structure.
   llvm::FoldingSetNodeID ID;
@@ -3408,7 +3408,7 @@ QualType ASTContext::getConstantArrayType(QualType EltTy,
                                           const Expr *SizeExpr,
                                           ArrayType::ArraySizeModifier ASM,
                                           unsigned IndexTypeQuals,
-                                          CheckedArrayKind Kind) const {
+                                          CheckCBox_ArrayKind Kind) const {
   assert((EltTy->isDependentType() ||
           EltTy->isIncompleteType() || EltTy->isConstantSizeType()) &&
          "Constant array of VLAs is illegal!");
@@ -3703,7 +3703,7 @@ QualType ASTContext::getDependentSizedArrayType(QualType elementType,
 QualType ASTContext::getIncompleteArrayType(QualType elementType,
                                             ArrayType::ArraySizeModifier ASM,
                                             unsigned elementTypeQuals,
-                                            CheckedArrayKind Kind) const {
+                                            CheckCBox_ArrayKind Kind) const {
   llvm::FoldingSetNodeID ID;
   IncompleteArrayType::Profile(ID, elementType, ASM, elementTypeQuals,
                                Kind);
@@ -6165,18 +6165,27 @@ QualType ASTContext::getArrayDecayedType(QualType Ty) const {
   const ArrayType *PrettyArrayType = getAsArrayType(Ty);
   assert(PrettyArrayType && "Not an array type!");
 
-  CheckedArrayKind Kind = PrettyArrayType->getKind();
-  CheckedPointerKind checkedKind = CheckedPointerKind::Unchecked;
+  CheckCBox_ArrayKind Kind = PrettyArrayType->getKind();
+  CheckCBox_PointerKind checkedKind = CheckCBox_PointerKind::Unchecked;
+
   switch (Kind) {
-    case CheckedArrayKind::Unchecked:
-      checkedKind = CheckedPointerKind::Unchecked;
+    case CheckCBox_ArrayKind::Unchecked:
+      checkedKind = CheckCBox_PointerKind::Unchecked;
       break;
-    case CheckedArrayKind::Checked:
-      checkedKind = CheckedPointerKind::Array;
+    case CheckCBox_ArrayKind::Checked:
+      checkedKind = CheckCBox_PointerKind::Array;
       break;
-    case CheckedArrayKind::NtChecked:
-      checkedKind = CheckedPointerKind::NtArray;
-  }
+    case CheckCBox_ArrayKind::NtChecked:
+      checkedKind = CheckCBox_PointerKind::NtArray;
+      break;
+    case CheckCBox_ArrayKind::Tainted:
+      checkedKind = CheckCBox_PointerKind::t_array;
+      break;
+    case CheckCBox_ArrayKind::Nt_tainted:
+      checkedKind = CheckCBox_PointerKind::t_nt_array;
+      break;
+
+    }
   QualType PtrTy = getPointerType(PrettyArrayType->getElementType(),
                                   checkedKind);
 
@@ -9367,8 +9376,8 @@ QualType ASTContext::matchArrayCheckedness(QualType LHS, QualType RHS) {
   if (LHS->isArrayType() && RHS->isArrayType()) {
     const ArrayType *lhsTy = cast<ArrayType>(LHS);
     const ArrayType *rhsTy = cast<ArrayType>(RHS);
-    if (!(lhsTy->getKind() == CheckedArrayKind::Checked &&
-          rhsTy->getKind() == CheckedArrayKind::Unchecked))
+    if (!(lhsTy->getKind() == CheckCBox_ArrayKind::Checked &&
+          rhsTy->getKind() == CheckCBox_ArrayKind::Unchecked))
       return RHS;
     assert((lhsTy->isConstantArrayType() || lhsTy->isIncompleteArrayType()) && 
            "unexpected checked array type");
@@ -9381,14 +9390,14 @@ QualType ASTContext::matchArrayCheckedness(QualType LHS, QualType RHS) {
           const ConstantArrayType *rhsca = cast<ConstantArrayType>(rhsTy);
           QualType result = getConstantArrayType(elemTy, rhsca->getSize(), rhsca->getSizeExpr(),
                                                  rhsca->getSizeModifier(), RHS.getCVRQualifiers(),
-                                                 CheckedArrayKind::Checked);
+                                                 CheckCBox_ArrayKind::Checked);
           return result;
       }
       else if (rhsTypeClass == Type::IncompleteArray) {
           const IncompleteArrayType *rhsic = cast<IncompleteArrayType>(rhsTy);
           QualType result = getIncompleteArrayType(elemTy, rhsic->getSizeModifier(),
                                                    RHS.getCVRQualifiers(),
-                                                   CheckedArrayKind::Checked);
+                                                   CheckCBox_ArrayKind::Checked);
           return result;
       }
     }
@@ -9509,6 +9518,7 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
 
   // FIXME: some uses, e.g. conditional exprs, really want this to be 'both'.
   bool NoReturn = lbaseInfo.getNoReturn() || rbaseInfo.getNoReturn();
+  bool Tainted = lbaseInfo.getTainted() || rbaseInfo.getTainted();
 
   if (lbaseInfo.getNoReturn() != NoReturn)
     allLTypes = false;
@@ -9516,6 +9526,9 @@ QualType ASTContext::mergeFunctionTypes(QualType lhs, QualType rhs,
     allRTypes = false;
 
   FunctionType::ExtInfo einfo = lbaseInfo.withNoReturn(NoReturn);
+  einfo = lbaseInfo.setTainted(Tainted);
+  einfo = lbaseInfo.setCallback(lbaseInfo.getCallback() || rbaseInfo.getCallback());
+
   unsigned NumTypeVars = 0;
   bool IsITypeGenericFunction = false;
 
@@ -9952,7 +9965,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   {
     const ArrayType *LHSArrayType = getAsArrayType(LHS);
     const ArrayType *RHSArrayType = getAsArrayType(RHS);
-    CheckedArrayKind Kind = LHSArrayType->getKind();
+    CheckCBox_ArrayKind Kind = LHSArrayType->getKind();
     if (Kind != RHSArrayType->getKind()) {
       return QualType();
     }
@@ -10280,7 +10293,8 @@ bool ASTContext::isAtLeastAsCheckedAs(QualType T1, QualType T2) const {
   case Type::Pointer: {
     const PointerType *T1PtrType = cast<PointerType>(T1Type);
     const PointerType *T2PtrType = cast<PointerType>(T2Type);
-    if (lessThan(T1PtrType->isChecked(), T2PtrType->isChecked()))
+    if (lessThan((T1PtrType->isChecked() || T1PtrType->isTaintedPointerType()),
+                 (T2PtrType->isChecked() || T1PtrType->isTaintedPointerType()) ))
       return false;
 
     QualType T1PointeeType = T1PtrType->getPointeeType();
@@ -11195,7 +11209,21 @@ QualType ASTContext::GetBuiltinType(unsigned Id,
 
   FunctionType::ExtInfo EI(getDefaultCallingConvention(
       Variadic, /*IsCXXMethod=*/false, /*IsBuiltin=*/true));
-  if (BuiltinInfo.isNoReturn(Id)) EI = EI.withNoReturn(true);
+  if (BuiltinInfo.isNoReturn(Id)) {
+    EI = EI.withNoReturn(true);
+  }
+  if (BuiltinInfo.isTainted(Id)) {
+    EI = EI.setTainted(true);
+  }
+  if(BuiltinInfo.isTaintedCallback(Id)){
+    EI = EI.setCallback(true);
+  }
+  if(BuiltinInfo.isMirror(Id)){
+    EI = EI.setMirror(true);
+  }
+  if(BuiltinInfo.isMirror(Id)){
+    EI = EI.setMirror(true);
+  }
 
 
   // We really shouldn't be making a no-proto type here.
@@ -11768,7 +11796,7 @@ unsigned ASTContext::getParameterIndex(const ParmVarDecl *D) const {
 
 QualType ASTContext::getStringLiteralArrayType(QualType EltTy,
                                                unsigned Length,
-                                               CheckedArrayKind Kind) const {
+                                               CheckCBox_ArrayKind Kind) const {
   // A C++ string literal has a const-qualified element type (C++ 2.13.4p1).
   if (getLangOpts().CPlusPlus || getLangOpts().ConstStrings)
     EltTy = EltTy.withConst();

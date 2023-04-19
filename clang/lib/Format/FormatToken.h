@@ -1151,6 +1151,8 @@ struct AdditionalKeywords {
     case tok::kw_sizeof:
     case tok::kw_static:
     case tok::kw_struct:
+    //Tainted struct is not a CSharp keyword
+    //case tok::kw_Tstruct:
     case tok::kw_switch:
     case tok::kw_this:
     case tok::kw_throw:

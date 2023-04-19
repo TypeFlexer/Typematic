@@ -341,6 +341,7 @@ public:
   MOCK_SYMBOL_ACCESSOR(hasNestedTypes)
   MOCK_SYMBOL_ACCESSOR(hasNoInlineAttribute)
   MOCK_SYMBOL_ACCESSOR(hasNoReturnAttribute)
+  MOCK_SYMBOL_ACCESSOR(hasTaintedAttribute)
   MOCK_SYMBOL_ACCESSOR(hasOptimizedCodeDebugInfo)
   MOCK_SYMBOL_ACCESSOR(hasOverloadedOperator)
   MOCK_SYMBOL_ACCESSOR(hasSEH)

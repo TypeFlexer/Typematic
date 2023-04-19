@@ -1169,7 +1169,6 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
 
   // Emit the result value, even if unused, to evaluate the side effects.
   const Expr *RV = S.getRetValue();
-
   // Record the result expression of the return statement. The recorded
   // expression is used to determine whether a block capture's lifetime should
   // end at the end of the full expression as opposed to the end of the scope

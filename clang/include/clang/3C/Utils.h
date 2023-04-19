@@ -98,8 +98,8 @@ clang::FunctionDecl *getDeclaration(clang::FunctionDecl *FD);
 
 clang::FunctionDecl *getDefinition(clang::FunctionDecl *FD);
 
-clang::CheckedPointerKind
-getCheckedPointerKind(clang::InteropTypeExpr *ItypeExpr);
+clang::CheckCBox_PointerKind
+getCheckCBox_PointerKind(clang::InteropTypeExpr *ItypeExpr);
 
 std::string getStorageQualifierString(clang::Decl *D);
 

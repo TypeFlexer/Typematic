@@ -3673,7 +3673,10 @@ void Parser::ParseLexedObjCMethodDefs(LexedMethod &LM, bool parseMethod) {
          "Inline objective-c method not starting with '{' or 'try' or ':'");
   // Enter a scope for the method or c-function body.
   ParseScope BodyScope(this, (parseMethod ? Scope::ObjCMethodScope : 0) |
-                                 Scope::FnScope | Scope::DeclScope |
+                                 Scope::FnScope |
+//                                 Scope::TaintedFunctionScope |
+//                                 Scope::CallbackFunctionScope |
+                                 Scope::DeclScope |
                                  Scope::CompoundStmtScope);
 
   // Tell the actions module that we have entered a method or c-function definition

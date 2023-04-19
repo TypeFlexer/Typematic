@@ -80,7 +80,7 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 config.substitutions.append(
     ('%hmaptool', "'%s' %s" % (config.python_executable,
-                             os.path.join(config.clang_tools_dir, 'hmaptool'))))
+                               os.path.join(config.clang_tools_dir, 'hmaptool'))))
 
 # Plugins (loadable modules)
 # TODO: This should be supplied by Makefile or autoconf.
@@ -99,9 +99,9 @@ if config.clang_default_cxx_stdlib != '':
 
 # Enabled/disabled features
 if config.clang_staticanalyzer:
-   config.available_features.add('staticanalyzer')
-   if config.clang_staticanalyzer_z3 == '1':
-       config.available_features.add('z3')
+    config.available_features.add('staticanalyzer')
+    if config.clang_staticanalyzer_z3 == '1':
+        config.available_features.add('z3')
 
 # As of 2011.08, crash-recovery tests still do not pass on FreeBSD.
 if platform.system() not in ['FreeBSD']:
@@ -176,7 +176,7 @@ def calculate_arch_features(arch_string):
 llvm_config.feature_config(
     [('--assertion-mode', {'ON': 'asserts'}),
      ('--cxxflags', {r'-D_GLIBCXX_DEBUG\b': 'libstdcxx-safe-mode'}),
-        ('--targets-built', calculate_arch_features)
+     ('--targets-built', calculate_arch_features)
      ])
 
 if lit.util.which('xmllint'):

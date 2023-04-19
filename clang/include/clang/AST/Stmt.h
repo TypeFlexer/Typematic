@@ -104,8 +104,11 @@ protected:
     unsigned sClass : 8;
     /// The checked scope specifier for the statement.
     unsigned CSS : 2;
+    unsigned TaintedSS : 2;
+    unsigned MirrorSS : 2;
+    unsigned TLIBSS : 2;
   };
-  enum { NumStmtBits = 10 };
+  enum { NumStmtBits = 16 };
 
   class NullStmtBitfields {
     friend class ASTStmtReader;
@@ -485,7 +488,7 @@ protected:
     unsigned HasFPFeatures : 1;
 
     /// Padding used to align OffsetToTrailingObjects to a byte multiple.
-    unsigned : 24 - 3 - NumExprBits;
+    unsigned : 30 - 3 - NumExprBits;
 
     /// The offset in bytes from the this pointer to the start of the
     /// trailing objects belonging to CallExpr. Intentionally byte sized
@@ -602,7 +605,7 @@ protected:
     // These don't need to be particularly wide, because they're
     // strictly limited by the forms of expressions we permit.
     unsigned NumSubExprs : 8;
-    unsigned ResultIndex : 32 - 8 - NumExprBits;
+    unsigned ResultIndex : 38 - 8 - NumExprBits;
   };
 
   class SourceLocExprBitfields {
@@ -1195,7 +1198,7 @@ public:
   Stmt &operator=(Stmt &&) = delete;
 
   Stmt(StmtClass SC) {
-    static_assert(sizeof(*this) <= 8,
+    static_assert(sizeof(*this) <= 16,
                   "changing bitfields changed sizeof(Stmt)");
     static_assert(sizeof(*this) % alignof(void *) == 0,
                   "Insufficient alignment!");
@@ -1215,6 +1218,30 @@ public:
 
   void setCheckedScopeSpecifier(CheckedScopeSpecifier CSS) {
     StmtBits.CSS = CSS;
+  }
+
+  TaintedScopeSpecifier getTaintedScopeSpecifier() const {
+    return static_cast<TaintedScopeSpecifier>(StmtBits.TaintedSS);
+  }
+
+  void setTaintedScopeSpecifier(TaintedScopeSpecifier CSS) {
+    StmtBits.TaintedSS = CSS;
+  }
+
+  MirrorScopeSpecifier getMirrorScopeSpecifier() const {
+    return static_cast<MirrorScopeSpecifier>(StmtBits.MirrorSS);
+  }
+
+  void setMirrorScopeSpecifier(MirrorScopeSpecifier CSS) {
+    StmtBits.MirrorSS = CSS;
+  }
+
+  TLIBScopeSpecifier getTLIBScopeSpecifier() const {
+    return static_cast<TLIBScopeSpecifier>(StmtBits.TLIBSS);
+  }
+
+  void setTLIBScopeSpecifier(TLIBScopeSpecifier CSS) {
+    StmtBits.TLIBSS = CSS;
   }
 
   /// SourceLocation tokens are not useful in isolation - they are low level
@@ -1502,8 +1529,25 @@ class CompoundStmt final : public Stmt,
   // Inferred checked scope specifier, using information from parent
   // scope also.
   unsigned CSS : 2;
+  //Written tainted scope specifier
+  unsigned WrittenTaintedSS : 2;
+  unsigned TaintedSS : 2;
+  unsigned WrittenMirrorSS : 2;
+  unsigned MirrorSS : 2;
+  unsigned WrittenTLIBSS : 3;
+  unsigned TLIBSS : 3;
+
   // Checked scope keyword (_Checked / _Unchecked) location.
   SourceLocation CSSLoc;
+
+  // _Tainted scope keyword (_Tainted) location
+  SourceLocation TaintedLoc;
+
+  // _Mirror scope keyword (_Mirror) location
+  SourceLocation MirrorLoc;
+
+  // _TLIB scope keyword (_TLIB) location
+  SourceLocation TLIBLoc;
 
   // Checked scope modifier (_Bounds_only) location.
   SourceLocation CSMLoc;
@@ -1514,12 +1558,26 @@ class CompoundStmt final : public Stmt,
   CompoundStmt(ArrayRef<Stmt *> Stmts, SourceLocation LB, SourceLocation RB,
                CheckedScopeSpecifier WrittenCSS = CSS_None,
                CheckedScopeSpecifier CSS = CSS_Unchecked,
+               TaintedScopeSpecifier WrittenTaintedSS = Tainted_None,
+               TaintedScopeSpecifier TaintedSS = Tainted_None,
+               MirrorScopeSpecifier WrittenMirrorSS = Mirror_None,
+               MirrorScopeSpecifier MirrorSS = Mirror_None,
+               TLIBScopeSpecifier WrittenTLIBSS = TLIB_None,
+               TLIBScopeSpecifier TLIBSS = TLIB_None,
                SourceLocation CSSLoc = SourceLocation(),
+               SourceLocation TaintedLoc = SourceLocation(),
+               SourceLocation MirrorLoc = SourceLocation(),
+               SourceLocation TLIBLoc = SourceLocation(),
                SourceLocation CSMLoc = SourceLocation(),
                SourceLocation BNDLoc = SourceLocation());
 
   explicit CompoundStmt(EmptyShell Empty) : Stmt(CompoundStmtClass, Empty),
-       WrittenCSS(CSS_None), CSS(CSS_Unchecked), CSSLoc(), CSMLoc(), BNDLoc() {}
+       WrittenCSS(CSS_None), CSS(CSS_Unchecked),
+       WrittenTaintedSS(Tainted_None), TaintedSS(Tainted_None),
+       WrittenMirrorSS(Mirror_None), MirrorSS(Mirror_None), WrittenTLIBSS(TLIB_None)
+, TLIBSS(TLIB_None), CSSLoc(),
+TaintedLoc(), MirrorLoc(), TLIBLoc(),
+                                            CSMLoc(), BNDLoc() {}
 
   void setStmts(ArrayRef<Stmt *> Stmts);
 
@@ -1529,13 +1587,26 @@ public:
                CheckedScopeSpecifier WrittenCSS = CSS_None,
                CheckedScopeSpecifier CSS = CSS_Unchecked,
                SourceLocation CSSLoc = SourceLocation(),
+               TaintedScopeSpecifier WrittenTaintedSS = Tainted_None,
+               TaintedScopeSpecifier TaintedSS = Tainted_None,
+               SourceLocation TaintedLoc = SourceLocation(),
+               MirrorScopeSpecifier WrittenMirrorSS = Mirror_None,
+               MirrorScopeSpecifier MirrorSS = Mirror_None,
+               SourceLocation MirrorLoc = SourceLocation(),
+               TLIBScopeSpecifier WrittenTLIBSS = TLIB_None,
+               TLIBScopeSpecifier TLIBSS = TLIB_None,
+               SourceLocation TLIBLoc = SourceLocation(),
                SourceLocation CSMLoc = SourceLocation(),
                SourceLocation BNDLoc = SourceLocation());
 
   // Build an empty compound statement with a location.
   explicit CompoundStmt(SourceLocation Loc)
-      : Stmt(CompoundStmtClass), RBraceLoc(Loc),  WrittenCSS(CSS_None),
-        CSS(CSS_Unchecked), CSSLoc(Loc), CSMLoc(Loc), BNDLoc(SourceLocation()) {
+      : Stmt(CompoundStmtClass), RBraceLoc(Loc),
+        WrittenCSS(CSS_None), CSS(CSS_Unchecked), WrittenTaintedSS(Tainted_None),
+        TaintedSS(Tainted_None), WrittenMirrorSS(Mirror_None), MirrorSS(Mirror_None),
+        WrittenTLIBSS(TLIB_None), TLIBSS(TLIB_None), CSSLoc(Loc),
+        TaintedLoc(Loc), MirrorLoc(Loc), TLIBLoc(Loc),
+        CSMLoc(Loc), BNDLoc(SourceLocation()) {
     CompoundStmtBits.NumStmts = 0;
     CompoundStmtBits.LBraceLoc = Loc;
   }
@@ -1550,13 +1621,34 @@ public:
     return (CheckedScopeSpecifier) WrittenCSS;
   }
 
+  TaintedScopeSpecifier getWrittenTaintedSpecifier() const {
+    return (TaintedScopeSpecifier) WrittenTaintedSS;
+  }
+
+  MirrorScopeSpecifier getWrittenMirrorSpecifier() const {
+    return (MirrorScopeSpecifier) WrittenMirrorSS;
+  }
+
+  TLIBScopeSpecifier getWrittenTLIBSpecifier() const {
+    return (TLIBScopeSpecifier) WrittenTLIBSS;
+  }
+
   CheckedScopeSpecifier getCheckedSpecifier() const {
     return (CheckedScopeSpecifier) CSS;
   }
 
   void setWrittenCheckedSpecifiers(CheckedScopeSpecifier NS) { WrittenCSS = NS; }
+  void setWrittenTaintedSpecifiers(TaintedScopeSpecifier NS) { WrittenTaintedSS = NS; }
+  void setWrittenTLIBSpecifiers(TLIBScopeSpecifier NS) { WrittenTLIBSS = NS; }
+  void setWrittenMirrorSpecifiers(MirrorScopeSpecifier NS) { WrittenMirrorSS = NS; }
   void setCheckedSpecifiers(CheckedScopeSpecifier NS) { CSS = NS; }
+  void setTaintedSpecifiers(TaintedScopeSpecifier NS) { TaintedSS = NS; }
+  void setMirrorSpecifiers(MirrorScopeSpecifier NS) { MirrorSS = NS; }
+  void setTLIBSpecifiers(TLIBScopeSpecifier NS) { TLIBSS = NS; }
   bool isCheckedScope() const { return CSS != CSS_Unchecked; }
+  bool isTaintedPragmaScope() const { return TaintedSS != Tainted_None; }
+  bool isMirrorPragmaScope() const { return MirrorSS != Mirror_None; }
+  bool isTLIBScope() const { return TLIBSS != TLIB_None; }
   bool isBundledStmt() const { return BNDLoc.isValid(); }
 
   using body_iterator = Stmt **;
@@ -1639,6 +1731,9 @@ public:
   SourceLocation getLBracLoc() const { return CompoundStmtBits.LBraceLoc; }
   SourceLocation getRBracLoc() const { return RBraceLoc; }
   SourceLocation getCheckedSpecifierLoc() const { return CSSLoc; }
+  SourceLocation getTaintedSpecifierLoc() const { return TaintedLoc; }
+  SourceLocation getMirrorSpecifierLoc() const { return MirrorLoc; }
+  SourceLocation getTLIBSpecifierLoc() const { return TLIBLoc; }
   SourceLocation getSpecifierModifierLoc() const { return CSMLoc; }
   SourceLocation getBundledSpecifierLoc() const { return BNDLoc; }
 

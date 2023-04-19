@@ -1826,6 +1826,7 @@
 // WEBASSEMBLY-NOT:#define __WINT_UNSIGNED__
 // WEBASSEMBLY-NEXT:#define __WINT_WIDTH__ 32
 // WEBASSEMBLY-NEXT:#define __checkedc {{.*}}
+// WEBASSEMBLY-NEXT:#define __checkcbox {{.*}}
 // WEBASSEMBLY-NEXT:#define __clang__ 1
 // WEBASSEMBLY-NEXT:#define __clang_major__ {{.*}}
 // WEBASSEMBLY-NEXT:#define __clang_minor__ {{.*}}

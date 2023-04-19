@@ -692,7 +692,8 @@ static bool ShouldBreakBeforeBrace(const FormatStyle &Style,
     return Style.BraceWrapping.AfterClass;
   if (InitialToken.is(tok::kw_union))
     return Style.BraceWrapping.AfterUnion;
-  if (InitialToken.is(tok::kw_struct))
+  if ((InitialToken.is(tok::kw_struct))
+      || (InitialToken.is(tok::kw_Tstruct)))
     return Style.BraceWrapping.AfterStruct;
   return false;
 }
@@ -1302,6 +1303,7 @@ void UnwrappedLineParser::parseStructuralElement() {
         parseEnum();
       break;
     case tok::kw_struct:
+    case tok::kw_Tstruct:
     case tok::kw_union:
     case tok::kw_class:
       // parseRecord falls through and does not yet add an unwrapped line as a
@@ -2437,7 +2439,8 @@ bool UnwrappedLineParser::parseEnum() {
     return false;
 
   // Eat up enum class ...
-  if (FormatTok->Tok.is(tok::kw_class) || FormatTok->Tok.is(tok::kw_struct))
+  if (FormatTok->Tok.is(tok::kw_class) || FormatTok->Tok.is(tok::kw_struct)
+      || FormatTok->Tok.is(tok::kw_Tstruct))
     nextToken();
 
   while (FormatTok->Tok.getIdentifierInfo() ||

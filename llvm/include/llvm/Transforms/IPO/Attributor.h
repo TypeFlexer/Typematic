@@ -2751,6 +2751,36 @@ struct AANoReturn
   static const char ID;
 };
 
+/// An AbstractAttribute for noreturn.
+struct AATainted
+    : public IRAttribute<Attribute::Tainted,
+                         StateWrapper<BooleanState, AbstractAttribute>> {
+  AATainted(const IRPosition &IRP, Attributor &A) : IRAttribute(IRP) {}
+
+  /// Return true if the underlying object is assumed to never return.
+  bool isAssumedTainted() const { return getAssumed(); }
+
+  /// Return true if the underlying object is known to never return.
+  bool isKnownTainted() const { return getKnown(); }
+
+  /// Create an abstract attribute view for the position \p IRP.
+  static AATainted &createForPosition(const IRPosition &IRP, Attributor &A);
+
+  /// See AbstractAttribute::getName()
+  const std::string getName() const override { return "AATainted"; }
+
+  /// See AbstractAttribute::getIdAddr()
+  const char *getIdAddr() const override { return &ID; }
+
+  /// This function should return true if the type of the \p AA is AATainted
+  static bool classof(const AbstractAttribute *AA) {
+    return (AA->getIdAddr() == &ID);
+  }
+
+  /// Unique ID (due to the unique address)
+  static const char ID;
+};
+
 /// An abstract interface for liveness abstract attribute.
 struct AAIsDead : public StateWrapper<BooleanState, AbstractAttribute> {
   using Base = StateWrapper<BooleanState, AbstractAttribute>;

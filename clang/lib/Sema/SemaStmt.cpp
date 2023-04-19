@@ -405,6 +405,12 @@ StmtResult Sema::ActOnCompoundStmt(SourceLocation L, SourceLocation R,
                                    ArrayRef<Stmt *> Elts, bool isStmtExpr,
                                    CheckedScopeSpecifier WrittenCSS,
                                    SourceLocation CSSLoc,
+                                   TaintedScopeSpecifier WrittenTaintedSS,
+                                   SourceLocation TaintedLoc,
+                                   MirrorScopeSpecifier WrittenMirrorSS,
+                                   SourceLocation MirrorLoc,
+                                   TLIBScopeSpecifier WrittenTLIBSS,
+                                   SourceLocation TLIBLoc,
                                    SourceLocation CSMLoc,
                                    SourceLocation BNDLoc) {
   const unsigned NumElts = Elts.size();
@@ -439,6 +445,13 @@ StmtResult Sema::ActOnCompoundStmt(SourceLocation L, SourceLocation R,
 
   // Get the inferred checked scope specifier for this compound statement.
   CheckedScopeSpecifier InferredCSS = GetCheckedScopeInfo();
+
+  // Get the inferred tainted scope specifier for this compound statement.
+  TaintedScopeSpecifier InferredTaintedSS = GetTaintedScopeInfo();
+  // Get the inferred checked scope specifier for this compound statement.
+  MirrorScopeSpecifier InferredMirrorSS = GetMirrorScopeInfo();
+  // Get the inferred checked scope specifier for this compound statement.
+  TLIBScopeSpecifier InferredTLIBSS = GetTLIBScopeInfo();
 
   bool IsBundledBlk = BNDLoc.isValid();
   bool ValidBundledBlk = IsBundledBlk;
@@ -479,6 +492,9 @@ StmtResult Sema::ActOnCompoundStmt(SourceLocation L, SourceLocation R,
     // Set the checked scope specifiers for all statements that are part of
     // this compound statement.
     S->setCheckedScopeSpecifier(InferredCSS);
+    S->setTaintedScopeSpecifier(InferredTaintedSS);
+    S->setMirrorScopeSpecifier(InferredMirrorSS);
+    S->setTLIBScopeSpecifier(InferredTLIBSS);
   }
 
   if (IsBundledBlk) {
@@ -497,8 +513,12 @@ StmtResult Sema::ActOnCompoundStmt(SourceLocation L, SourceLocation R,
     }
   }
 
-  return CompoundStmt::Create(Context, Elts, L, R, WrittenCSS,
-                              InferredCSS, CSSLoc, CSMLoc, BNDLoc);
+  return CompoundStmt::Create(Context, Elts, L, R,
+                              WrittenCSS, InferredCSS, CSSLoc,
+                              WrittenTaintedSS, InferredTaintedSS, TaintedLoc,
+                              WrittenMirrorSS, InferredMirrorSS, MirrorLoc,
+                              WrittenTLIBSS, InferredTLIBSS, TLIBLoc,
+                              CSMLoc, BNDLoc);
 }
 
 ExprResult

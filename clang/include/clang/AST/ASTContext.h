@@ -1236,11 +1236,11 @@ public:
   /// Return the uniqued reference to the type for a pointer to
   /// the specified type.
   QualType getPointerType(QualType T,
-                          CheckedPointerKind kind =
-                            CheckedPointerKind::Unchecked) const;
+                          CheckCBox_PointerKind kind =
+                            CheckCBox_PointerKind::Unchecked) const;
   CanQualType getPointerType(CanQualType T,
-                             CheckedPointerKind kind =
-                               CheckedPointerKind::Unchecked) const {
+                             CheckCBox_PointerKind kind =
+                               CheckCBox_PointerKind::Unchecked) const {
     return CanQualType::CreateUnsafe(getPointerType((QualType) T, kind));
   }
 
@@ -1359,8 +1359,8 @@ public:
   QualType getIncompleteArrayType(QualType EltTy,
                                   ArrayType::ArraySizeModifier ASM,
                                   unsigned IndexTypeQuals,
-                                  CheckedArrayKind Kind =
-                                    CheckedArrayKind::Unchecked) const;
+                                  CheckCBox_ArrayKind Kind =
+                                      CheckCBox_ArrayKind::Unchecked) const;
 
   /// Return the unique reference to the type for a constant array of
   /// the specified element type.
@@ -1368,15 +1368,15 @@ public:
                                 const Expr *SizeExpr,
                                 ArrayType::ArraySizeModifier ASM,
                                 unsigned IndexTypeQuals,
-                                CheckedArrayKind Kind =
-                                  CheckedArrayKind::Unchecked
+                                CheckCBox_ArrayKind Kind =
+                                    CheckCBox_ArrayKind::Unchecked
                                 ) const;
 
   /// Return a type for a constant array for a string literal of the
   /// specified element type and length.
   QualType getStringLiteralArrayType(QualType EltTy, unsigned Length,
-                                     CheckedArrayKind Kind =
-                                       CheckedArrayKind::Unchecked) const;
+                                     CheckCBox_ArrayKind Kind =
+                                         CheckCBox_ArrayKind::Unchecked) const;
 
   /// Returns a vla type where known sizes are replaced with [*].
   QualType getVariableArrayDecayedType(QualType Ty) const;

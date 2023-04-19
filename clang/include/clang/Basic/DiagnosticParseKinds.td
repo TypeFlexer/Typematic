@@ -166,6 +166,15 @@ def ext_c11_feature : Extension<
 def err_c11_noreturn_misplaced : Error<
   "'_Noreturn' keyword must precede function declarator">;
 
+def err_c11_tainted_misplaced : Error<
+  "'_Tainted' keyword must precede function declarator">;
+
+def err_c11_tainted_callback_misplaced : Error<
+  "'_Callback' keyword must precede function declarator">;
+
+def err_c11_tainted_mirror_misplaced : Error<
+  "'_Mirror' keyword must precede function declarator">;
+
 def ext_gnu_indirect_goto : Extension<
   "use of GNU indirect-goto extension">, InGroup<GNULabelsAsValue>;
 def ext_gnu_address_of_label : Extension<
@@ -1527,6 +1536,19 @@ def err_single_bounds_expr_allowed : Error<
 def err_single_itype_expr_allowed : Error<
   "only one itype expression allowed">;
 
+//CheckCBox Parsing errors
+def err_invalid_tainted_ptr_checked : Error<
+  "Tainted Pointers cannot point to Checked pointers">;
+
+def err_invalid_tainted_ptr_unchecked : Error<
+  "Tainted Pointer cannot point to Un-Checked pointers">;
+
+def err_tainted_struct_member_ptr : Error<
+  "Tainted Structs can only have member pointers of Tainted Type">;
+
+def err_tainted_struct_member_struct : Error<
+  "Tainted Structs can only have member structs of Tainted Type">;
+
 // generic function declaration parsing error.
 def err_forany_type_variable_declaration_expected : Error<
   "expected list of type variables">;
@@ -1568,6 +1590,19 @@ def err_unpack_expected_existential_initializer : Error<
 def err_pragma_checked_scope_invalid_argument : Error<
   "unexpected argument '%0' to '#pragma CHECKED_SCOPE'; "
   "expected 'on','off', '_Bounds_only', 'push', or 'pop'">;
+
+// CHECKCBOX pragmas
+def err_pragma_tlib_scope_invalid_argument : Error<
+  "unexpected argument '%0' to '#pragma TLIB'; "
+  "expected 'on','off', 'push', or 'pop'">;
+
+def err_pragma_tainted_scope_invalid_argument : Error<
+  "unexpected argument '%0' to '#pragma TAINTED_SCOPE'; "
+  "expected 'on','off', 'push', '_Bounds_only', or 'pop'">;
+
+def err_pragma_mirror_scope_invalid_argument : Error<
+  "unexpected argument '%0' to '#pragma MIRROR_SCOPE'; "
+  "expected 'on','off', 'push', or 'pop'">;
 
 def err_expected_expr_in_where_clause : Error<
   "expected bounds declaration or equality expression in where clause">;

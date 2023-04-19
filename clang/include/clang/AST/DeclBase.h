@@ -236,6 +236,7 @@ public:
     ModulePrivate
   };
 
+
 protected:
   /// The next declaration within the same lexical
   /// DeclContext. These pointers form the linked list that is
@@ -312,6 +313,11 @@ private:
   /// Whether statistic collection is enabled.
   static bool StatisticsEnabled;
 
+  unsigned TaintedDecl: 1;
+  unsigned MirrorDecl : 1;
+  unsigned LIBDecl : 1;
+  unsigned CallbackDecl : 1;
+  unsigned DecoyDecl : 1;
 protected:
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
@@ -380,7 +386,8 @@ protected:
   Decl(Kind DK, DeclContext *DC, SourceLocation L)
       : NextInContextAndBits(nullptr, getModuleOwnershipKindForChildOf(DC)),
         DeclCtx(DC), Loc(L), DeclKind(DK), InvalidDecl(false), HasAttrs(false),
-        Implicit(false), Used(false), Referenced(false),
+        TaintedDecl(false), MirrorDecl(false), LIBDecl(false), CallbackDecl(false),
+        Implicit(false), Used(false), Referenced(false), DecoyDecl(false),
         TopLevelDeclInObjCContainer(false), Access(AS_none), FromASTFile(0),
         IdentifierNamespace(getIdentifierNamespaceForKind(DK)),
         CacheValidAndLinkage(0) {
@@ -389,6 +396,8 @@ protected:
 
   Decl(Kind DK, EmptyShell Empty)
       : DeclKind(DK), InvalidDecl(false), HasAttrs(false), Implicit(false),
+        TaintedDecl(false), MirrorDecl(false), LIBDecl(false), CallbackDecl(false),
+        DecoyDecl(false),
         Used(false), Referenced(false), TopLevelDeclInObjCContainer(false),
         Access(AS_none), FromASTFile(0),
         IdentifierNamespace(getIdentifierNamespaceForKind(DK)),
@@ -562,6 +571,25 @@ public:
   /// was written explicitly in the source code.
   bool isImplicit() const { return Implicit; }
   void setImplicit(bool I = true) { Implicit = I; }
+
+  /*
+   * CheckcBox
+   */
+  bool isTaintedDecl() const {return TaintedDecl; }
+  void setTaintedDecl(bool I = false) {TaintedDecl = I; }
+
+  bool isMirrorDecl() const {return MirrorDecl; }
+  void setMirrorDecl(bool I = false) {MirrorDecl = I; }
+
+  bool isLibDecl() const {return LIBDecl; }
+  void setLibDecl(bool I = false) {LIBDecl = I; }
+
+  bool isCallbackDecl() const {return CallbackDecl;}
+  void setCallbackDecl(bool I = false) {CallbackDecl = I;}
+
+  bool isDecoyDecl() const {return DecoyDecl; }
+  void setDecoyDecl(bool I = false) {DecoyDecl = I;}
+
 
   /// Whether *any* (re-)declaration of the entity was used, meaning that
   /// a definition is required.
@@ -1565,6 +1593,9 @@ class DeclContext {
 
     // End of Checked C extensions
 
+    // Tainted C Extension to Checked-C
+    //uint64_t IsTaintedFunction : 1 = false;
+
     /// Indicates that this function is a multiversioned
     /// function using attribute 'target'.
     uint64_t IsMultiVersion : 1;
@@ -1754,7 +1785,7 @@ protected:
   /// This anonymous union stores the bits belonging to DeclContext and classes
   /// deriving from it. The goal is to use otherwise wasted
   /// space in DeclContext to store data belonging to derived classes.
-  /// The space saved is especially significient when pointers are aligned
+  /// The space saved is especially significant when pointers are aligned
   /// to 8 bytes. In this case due to alignment requirements we have a
   /// little less than 8 bytes free in DeclContext which we can use.
   /// We check that none of the classes in this union is larger than

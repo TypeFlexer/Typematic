@@ -30,6 +30,7 @@ enum class SymbolKind : uint8_t {
 
   Enum,
   Struct,
+  Tstruct,
   Class,
   Protocol,
   Extension,

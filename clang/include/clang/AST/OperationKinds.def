@@ -357,13 +357,21 @@ CAST_OPERATION(AddressSpaceConversion)
 // Convert an integer initializer to an OpenCL sampler.
 CAST_OPERATION(IntToOCLSampler)
 
-// CK_DynamicPtrBounds - A conversion from a Unchecked pointer to checkedc
+// CK_DynamicPtrBounds - A conversion from an Unchecked pointer to checked-c
 // pointer
 CAST_OPERATION(DynamicPtrBounds)
 
-// CK_AssumePtrBounds - A conversion from a Unchecked pointer to checkedc
+// CK_AssumePtrBounds - A conversion from an Unchecked pointer to checked-c
 // pointer
 CAST_OPERATION(AssumePtrBounds)
+
+//CK_TaintedDynamicPtrBounds = Operation that permits the change of bounds of
+// a tainted pointer
+CAST_OPERATION(TaintedDynamicPtrBounds)
+
+//CK_TaintedAssumePtrBounds = Operation that permits the change of bounds of a
+// tainted pointer
+CAST_OPERATION(TaintedAssumePtrBounds)
 
 //===- Binary Operations  -------------------------------------------------===//
 // Operators listed in order of precedence.

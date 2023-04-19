@@ -243,8 +243,8 @@ private:
 
       if (Tok && Tok->is(tok::kw_typedef))
         Tok = Tok->getNextNonComment();
-      if (Tok && Tok->isOneOf(tok::kw_class, tok::kw_struct, tok::kw_union,
-                              tok::kw_extern, Keywords.kw_interface))
+      if (Tok && Tok->isOneOf(tok::kw_class, tok::kw_struct, tok::kw_Tstruct,
+                              tok::kw_union, tok::kw_extern, Keywords.kw_interface))
         return !Style.BraceWrapping.SplitEmptyRecord && EmptyBlock
                    ? tryMergeSimpleBlock(I, E, Limit)
                    : 0;
@@ -377,7 +377,8 @@ private:
             const FormatToken *PreviousPrevious =
                 Previous->getPreviousNonComment();
             if (PreviousPrevious &&
-                PreviousPrevious->isOneOf(tok::kw_class, tok::kw_struct))
+                PreviousPrevious->isOneOf(tok::kw_class, tok::kw_struct,
+                                          tok::kw_Tstruct))
               return 0;
           }
         }
@@ -620,7 +621,7 @@ private:
           RecordTok = RecordTok->Next;
         if (RecordTok &&
             RecordTok->isOneOf(tok::kw_class, tok::kw_union, tok::kw_struct,
-                               Keywords.kw_interface))
+                               tok::kw_Tstruct, Keywords.kw_interface))
           return 0;
 
         // Check that we still have three lines and they fit into the limit.

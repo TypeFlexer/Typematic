@@ -348,7 +348,8 @@ int main(int argc_, const char **argv_) {
                         "source, and associated run script.\n");
   SmallVector<const char *, 256> argv(argv_, argv_ + argc_);
 
-  if (llvm::sys::Process::FixupStandardFileDescriptors())
+
+ if (llvm::sys::Process::FixupStandardFileDescriptors())
     return 1;
 
   llvm::InitializeAllTargets();

@@ -1,0 +1,34 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/CMakeFiles/libcxx_fuzzer_i386-configure"
+		},
+		{
+			"file" : "/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/CMakeFiles/libcxx_fuzzer_i386-configure.rule"
+		},
+		{
+			"file" : "/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-stamps/libcxx_fuzzer_i386-configure.rule"
+		},
+		{
+			"file" : "/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-stamps/libcxx_fuzzer_i386-update.rule"
+		},
+		{
+			"file" : "/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-stamps/libcxx_fuzzer_i386-patch.rule"
+		},
+		{
+			"file" : "/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-stamps/libcxx_fuzzer_i386-download.rule"
+		},
+		{
+			"file" : "/home/twinturbo/Desktop/ExtraSpace/CheckCBox_Compiler/compiler-rt/lib/fuzzer/libcxx_fuzzer_i386-stamps/libcxx_fuzzer_i386-mkdir.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"libcxx_fuzzer_i386"
+		],
+		"name" : "libcxx_fuzzer_i386-configure"
+	}
+}

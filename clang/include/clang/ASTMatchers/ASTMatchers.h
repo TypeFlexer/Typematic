@@ -4827,6 +4827,9 @@ AST_POLYMORPHIC_MATCHER_P(parameterCountIs,
 /// \endcode
 AST_MATCHER(FunctionDecl, isNoReturn) { return Node.isNoReturn(); }
 
+/// Matches \c FunctionDecls that have a tainted attribute.
+AST_MATCHER(FunctionDecl, isTainted) { return Node.isTainted(); }
+
 /// Matches the return type of a function declaration.
 ///
 /// Given:

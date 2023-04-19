@@ -345,12 +345,22 @@ void ASTDumper::VisitUnaryOperator(const UnaryOperator *Node) {
 void ASTDumper::VisitCompoundStmt(const CompoundStmt *Node) {
   VisitStmt(Node);
   CheckedScopeSpecifier WrittenCSS = Node->getWrittenCheckedSpecifier();
+  TaintedScopeSpecifier WrittenTaintedSS = Node->getWrittenTaintedSpecifier();
+  MirrorScopeSpecifier WrittenMirrorSS = Node->getWrittenMirrorSpecifier();
+  TLIBScopeSpecifier WrittenTLIBSS = Node->getWrittenTLIBSpecifier();
   switch (WrittenCSS) {
     case CSS_None: break;
     case CSS_Unchecked: OS << " _Unchecked "; break;
     case CSS_Bounds: OS <<  " _Checked _Bounds_only "; break;
     case CSS_Memory: OS << " _Checked "; break;
   }
+  switch (WrittenTaintedSS) {
+  case Tainted_None: break;
+  case Tainted_UnTainted: break;
+  case Tainted_Bounds: OS <<  " _Tainted _Bounds_only "; break;
+  case Tainted_Memory: OS << " _Tainted "; break;
+  }
+  //Repeat the above for Mirror and TLIB too
 
   CheckedScopeSpecifier CSS = Node->getCheckedSpecifier();
   if (CSS != CSS_Unchecked) {

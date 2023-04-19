@@ -8555,7 +8555,7 @@ ExprResult InitializationSequence::Perform(Sema &S,
 
       QualType LHSType = Step->Type;
       QualType LHSInteropType;
-      if (S.getLangOpts().CheckedC && LHSType->isUncheckedPointerType()) {
+      if (S.getLangOpts().CheckedC && (LHSType->isUncheckedPointerType())) {
         if (const InteropTypeExpr *IB = Entity.getAnnots().getInteropTypeExpr()) {
           bool IsParam = Entity.isParameterKind();
           LHSInteropType = S.Context.getInteropTypeAndAdjust(IB, IsParam);
@@ -8566,6 +8566,47 @@ ExprResult InitializationSequence::Perform(Sema &S,
         S.CheckSingleAssignmentConstraints(LHSType, Result, true,
            Entity.getKind() == InitializedEntity::EK_Parameter_CF_Audited,
                                            true, LHSInteropType);
+
+      /*
+       * In the case of Tainted Functions itypes
+       */
+      QualType InterOpedLHSType = Entity.getInterOpSymbioteType();
+      if (!InterOpedLHSType.isNull() &&
+          ConvTy == clang::Sema::IncompatibleTaintedAssignment)
+      {
+        auto SymbioteLHSPtrType = InterOpedLHSType;
+        auto CallParameterPtrType = SourceType;
+        /*
+         * if the Symbiotes are canonically of the same type, but only differ as in one of them is checked
+         * and the other is Unchecked --> Go ahead and make convTy compatible
+         *
+         */
+        bool isCallParameterPtrTypeChecked = CallParameterPtrType->isCheckedArrayType() || CallParameterPtrType->isCheckedPointerType();
+        bool isSymbioteLHSPtrTypeChecked = SymbioteLHSPtrType->isCheckedArrayType() || SymbioteLHSPtrType->isCheckedPointerType();
+        bool IsModallySafe = ((isCallParameterPtrTypeChecked &&
+                             !isSymbioteLHSPtrTypeChecked) ||
+                              (!isCallParameterPtrTypeChecked &&
+                               isSymbioteLHSPtrTypeChecked));
+
+        if (CallParameterPtrType->isPointerType())
+                CallParameterPtrType = CallParameterPtrType->getCoreTypeInternal();
+        else
+          CallParameterPtrType = CallParameterPtrType->getPointeeOrArrayElementType()->getCoreTypeInternal();
+
+        if (SymbioteLHSPtrType->isPointerType())
+          SymbioteLHSPtrType = SymbioteLHSPtrType->getCoreTypeInternal();
+        else
+          SymbioteLHSPtrType = SymbioteLHSPtrType->getPointeeOrArrayElementType()->getCoreTypeInternal();
+
+        SymbioteLHSPtrType.removeLocalConst();
+        CallParameterPtrType.removeLocalConst();
+        auto str1 = SymbioteLHSPtrType.getAsString();
+        auto str2 = CallParameterPtrType.getAsString();
+        bool IsCanonicallySame = (strcmp(str1.c_str(),
+                                  str2.c_str()) == 0);
+        if (IsModallySafe && IsCanonicallySame)
+          ConvTy = Sema::Compatible;
+      }
 
       if (Result.isInvalid())
         return ExprError();

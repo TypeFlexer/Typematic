@@ -362,8 +362,19 @@ int64_t Stmt::getID(const ASTContext &Context) const {
 }
 
 CompoundStmt::CompoundStmt(ArrayRef<Stmt*> Stmts, SourceLocation LB,
-                           SourceLocation RB, CheckedScopeSpecifier WrittenCSS,
-                           CheckedScopeSpecifier CSS, SourceLocation CSSLoc,
+                           SourceLocation RB,
+                           CheckedScopeSpecifier WrittenCSS,
+                           CheckedScopeSpecifier CSS,
+                           TaintedScopeSpecifier WrittenTaintedSS,
+                           TaintedScopeSpecifier TaintedSS,
+                           MirrorScopeSpecifier WrittenMirrorSS,
+                           MirrorScopeSpecifier MirrorSS,
+                           TLIBScopeSpecifier WrittenTLIBSS,
+                           TLIBScopeSpecifier TLIBSS,
+                           SourceLocation CSSLoc,
+                           SourceLocation TaintedLoc,
+                           SourceLocation MirrorLoc,
+                           SourceLocation TLIBLoc,
                            SourceLocation CSMLoc, SourceLocation BNDLoc)
   : Stmt(CompoundStmtClass), RBraceLoc(RB), WrittenCSS(WrittenCSS),
     CSS(CSS), CSSLoc(CSSLoc), CSMLoc(CSMLoc), BNDLoc(BNDLoc) {
@@ -384,12 +395,31 @@ CompoundStmt *CompoundStmt::Create(const ASTContext &C, ArrayRef<Stmt *> Stmts,
                                    CheckedScopeSpecifier WrittenCSS,
                                    CheckedScopeSpecifier CSS,
                                    SourceLocation CSSLoc,
+                                   TaintedScopeSpecifier WrittenTaintedSS,
+                                   TaintedScopeSpecifier TaintedSS,
+                                   SourceLocation TaintedLoc,
+                                   MirrorScopeSpecifier WrittenMirrorSS,
+                                   MirrorScopeSpecifier MirrorSS,
+                                   SourceLocation MirrorLoc,
+                                   TLIBScopeSpecifier WrittenTLIBSS,
+                                   TLIBScopeSpecifier TLIBSS,
+                                   SourceLocation TLIBLoc,
                                    SourceLocation CSMLoc,
                                    SourceLocation BNDLoc) {
   void *Mem =
       C.Allocate(totalSizeToAlloc<Stmt *>(Stmts.size()), alignof(CompoundStmt));
   return new (Mem) CompoundStmt(Stmts, LB, RB, WrittenCSS, CSS,
-                                CSSLoc, CSMLoc, BNDLoc);
+                                WrittenTaintedSS,
+                                TaintedSS,
+                                WrittenMirrorSS,
+                                MirrorSS,
+                                WrittenTLIBSS,
+                                TLIBSS,
+                                CSSLoc,
+                                TaintedLoc,
+                                MirrorLoc,
+                                TLIBLoc,
+                                CSMLoc, BNDLoc);
 }
 
 CompoundStmt *CompoundStmt::CreateEmpty(const ASTContext &C,

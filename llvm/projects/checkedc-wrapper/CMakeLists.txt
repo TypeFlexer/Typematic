@@ -23,59 +23,59 @@ if(CHECKEDC_IN_TREE)
   string(REPLACE ${CMAKE_CFG_INTDIR} ${LLVM_BUILD_MODE} CLANG_TOOLS_DIR ${LLVM_RUNTIME_OUTPUT_INTDIR})
 
   configure_lit_site_cfg(
-    ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
-    ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
-    MAIN_CONFIG
-    ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
-    )
+          ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
+          ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
+          MAIN_CONFIG
+          ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
+  )
 
   list(APPEND CHECKEDC_TEST_DEPS
-    clang clang-resource-headers checkedc-headers
-    )
+          checkedc-headers
+          )
 
   if(CLANG_ENABLE_STATIC_ANALYZER)
     list(APPEND CLANG_TEST_DEPS
-      clang-check
-      )
+            clang-check
+            )
   endif()
 
   set(CHECKEDC_TEST_PARAMS
-    checkedc_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
-    )
+          checkedc_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
+          )
 
-if( NOT CLANG_BUILT_STANDALONE )
-  list(APPEND CHECKEDC_TEST_DEPS
-    llvm-config
-    FileCheck count not
-    opt
-    )
-endif()
+  if( NOT CLANG_BUILT_STANDALONE )
+    list(APPEND CHECKEDC_TEST_DEPS
+            llvm-config
+            FileCheck count not
+            opt
+            )
+  endif()
 
   add_custom_target(checkedc-test-depends DEPENDS ${CHECKEDC_TEST_DEPS})
 
   add_lit_testsuite(check-checkedc "Running the Checked C regression tests"
-    ${CMAKE_CURRENT_BINARY_DIR}
-    #LIT ${LLVM_LIT}
-    PARAMS ${CHECKEDC_TEST_PARAMS}
-    DEPENDS ${CHECKEDC_TEST_DEPS}
-    ARGS ${CHECKEDC_TEST_EXTRA_ARGS}
-    )
+          ${CMAKE_CURRENT_BINARY_DIR}
+          #LIT ${LLVM_LIT}
+          PARAMS ${CHECKEDC_TEST_PARAMS}
+          DEPENDS ${CHECKEDC_TEST_DEPS}
+          ARGS ${CHECKEDC_TEST_EXTRA_ARGS}
+          )
 
   set_target_properties(check-checkedc PROPERTIES FOLDER "Checked C tests")
 
-# Add a lit target to run the checkedc tests for ARM.
-if (CHECKEDC_ARM_SYSROOT AND CHECKEDC_ARM_RUNUNDER)
-  set(CHECKEDC_TEST_EXTRA_ARGS "-DCHECKEDC_TARGET=ARM")
+  # Add a lit target to run the checkedc tests for ARM.
+  if (CHECKEDC_ARM_SYSROOT AND CHECKEDC_ARM_RUNUNDER)
+    set(CHECKEDC_TEST_EXTRA_ARGS "-DCHECKEDC_TARGET=ARM")
 
-  add_lit_testsuite(check-checkedc-arm "Running the Checked C regression tests for ARM"
-    ${CMAKE_CURRENT_BINARY_DIR}
-    #LIT ${LLVM_LIT}
-    PARAMS ${CHECKEDC_TEST_PARAMS}
-    DEPENDS ${CHECKEDC_TEST_DEPS}
-    ARGS ${CHECKEDC_TEST_EXTRA_ARGS}
-    )
+    add_lit_testsuite(check-checkedc-arm "Running the Checked C regression tests for ARM"
+            ${CMAKE_CURRENT_BINARY_DIR}
+            #LIT ${LLVM_LIT}
+            PARAMS ${CHECKEDC_TEST_PARAMS}
+            DEPENDS ${CHECKEDC_TEST_DEPS}
+            ARGS ${CHECKEDC_TEST_EXTRA_ARGS}
+            )
 
-  set_target_properties(check-checkedc-arm PROPERTIES FOLDER "Checked C tests for ARM")
-endif()
+    set_target_properties(check-checkedc-arm PROPERTIES FOLDER "Checked C tests for ARM")
+  endif()
 
 endif()

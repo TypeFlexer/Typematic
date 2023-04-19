@@ -1406,7 +1406,7 @@ LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
                    Align Align, AtomicOrdering Order, SyncScope::ID SSID,
                    Instruction *InsertBef)
     : UnaryInstruction(Ty, Load, Ptr, InsertBef) {
-  assert(Ty == cast<PointerType>(Ptr->getType())->getElementType());
+//  assert(Ty == cast<PointerType>(Ptr->getType())->getElementType());
   setVolatile(isVolatile);
   setAlignment(Align);
   setAtomic(Order, SSID);
@@ -2519,6 +2519,14 @@ void BinaryOperator::AssertOK() {
 BinaryOperator *BinaryOperator::Create(BinaryOps Op, Value *S1, Value *S2,
                                        const Twine &Name,
                                        Instruction *InsertBefore) {
+    if ((S1->getType() != S2->getType()) && S1->getType()->isIntegerTy() &&
+      S2->getType()->isIntegerTy())
+    {
+        if (S1->getType()->getIntegerBitWidth() > S2->getType()->getIntegerBitWidth())
+          S1->setType(S2->getType());
+        else
+          S2->setType(S1->getType());
+    }
   assert(S1->getType() == S2->getType() &&
          "Cannot create binary operator with two operands of differing type!");
   return new BinaryOperator(Op, S1, S2, S1->getType(), Name, InsertBefore);

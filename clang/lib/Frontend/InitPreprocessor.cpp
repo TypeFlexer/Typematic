@@ -374,8 +374,10 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
       Builder.defineMacro("__STDC_VERSION__", "199901L");
     else if (!LangOpts.GNUMode && LangOpts.Digraphs)
       Builder.defineMacro("__STDC_VERSION__", "199409L");
-    if (LangOpts.CheckedC)
+    if (LangOpts.CheckedC) {
       Builder.defineMacro("__checkedc", "202104L");
+      Builder.defineMacro("__checkcbox", "202206L");
+    }
   } else {
     //   -- __cplusplus
     // FIXME: Use correct value for C++23.

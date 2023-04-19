@@ -237,7 +237,9 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> MaxTokensHerePragmaHandler;
   std::unique_ptr<PragmaHandler> MaxTokensTotalPragmaHandler;
   std::unique_ptr<PragmaHandler> CheckedScopeHandler;
-
+  std::unique_ptr<PragmaHandler> TlibScopeHandler;
+  std::unique_ptr<PragmaHandler> MirrorScopeHandler;
+  std::unique_ptr<PragmaHandler> TaintedScopeHandler;
   std::unique_ptr<CommentHandler> CommentSemaHandler;
 
   /// Whether the '>' token acts as an operator or not. This will be
@@ -823,6 +825,12 @@ public:
     return PP.LookAhead(0);
   }
 
+  /// NextTokenAtLoc - This peeks "Loc" tokens ahead and returns it without
+  /// consuming it
+  const Token &NextToken(int Loc) {
+    return PP.LookAhead(Loc);
+  }
+
   /// getTypeAnnotation - Read a parsed type out of an annotation token.
   static TypeResult getTypeAnnotation(const Token &Tok) {
     if (!Tok.getAnnotationValue())
@@ -1116,7 +1124,7 @@ public:
     // ParseScope - Construct a new object to manage a scope in the
     // parser Self where the new Scope is created with the flags
     // ScopeFlags, but only when we aren't about to enter a compound statement.
-    ParseScope(Parser *Self, unsigned ScopeFlags, bool EnteredScope = true,
+    ParseScope(Parser *Self, long ScopeFlags, bool EnteredScope = true,
                bool BeforeCompoundStmt = false)
       : Self(Self) {
       if (EnteredScope && !BeforeCompoundStmt)
@@ -1129,6 +1137,12 @@ public:
       }
     }
 
+    void UpdateFlags(Parser *Self, long ScopeFlags)
+    {
+      auto CurScopeFlags = Self->getCurScope()->getFlags();
+      CurScopeFlags = CurScopeFlags | ScopeFlags;
+      Self->UpdateNewFlags(CurScopeFlags);
+    }
     // Exit - Exit the scope associated with this object now, rather
     // than waiting until the object is destroyed.
     void Exit() {
@@ -1153,7 +1167,7 @@ public:
 
   public:
     MultiParseScope(Parser &Self) : Self(Self) {}
-    void Enter(unsigned ScopeFlags) {
+    void Enter(long ScopeFlags) {
       Self.EnterScope(ScopeFlags);
       ++NumScopes;
     }
@@ -1169,7 +1183,7 @@ public:
   };
 
   /// EnterScope - Start a new scope.
-  void EnterScope(unsigned ScopeFlags);
+  void EnterScope(long ScopeFlags);
 
   /// ExitScope - Pop a scope off the scope stack.
   void ExitScope();
@@ -1186,7 +1200,7 @@ private:
     void operator=(const ParseScopeFlags &) = delete;
 
   public:
-    ParseScopeFlags(Parser *Self, unsigned ScopeFlags, bool ManageFlags = true);
+    ParseScopeFlags(Parser *Self, long ScopeFlags, bool ManageFlags = true);
     ~ParseScopeFlags();
   };
 
@@ -1645,7 +1659,10 @@ private:
   void SkipFunctionBody();
   Decl *ParseFunctionDefinition(ParsingDeclarator &D,
                  const ParsedTemplateInfo &TemplateInfo = ParsedTemplateInfo(),
-                 LateParsedAttrList *LateParsedAttrs = nullptr);
+                 LateParsedAttrList *LateParsedAttrs = nullptr,
+                                TaintedScopeSpecifier TaintedSS = Tainted_None,
+                                MirrorScopeSpecifier MirrorSS = Mirror_None,
+                                TLIBScopeSpecifier TLIBSS = TLIB_None);
   void ParseKNRParamDeclarations(Declarator &D);
   // EndLoc is filled with the location of the last token of the simple-asm.
   ExprResult ParseSimpleAsm(bool ForAsmLabel, SourceLocation *EndLoc);
@@ -2080,8 +2097,9 @@ private:
   void SkipInvalidBoundsExpr(SourceLocation CurrentLoc);
 
   ExprResult ParseBoundsCastExpression();
+  ExprResult ParseTaintedPtrBoundsCastExpression();
 
-  ExprResult ParseBoundsExpression();
+      ExprResult ParseBoundsExpression();
   ExprResult ParseGenericFunctionApplication(ExprResult TypeFunc, SourceLocation Loc);
 
   using TypeArgVector = SmallVector<TypeArgument, 4>;
@@ -2179,26 +2197,60 @@ private:
                  ParsedStmtContext StmtCtx = ParsedStmtContext::SubStmt);
   StmtResult ParseStatementOrDeclaration(
       StmtVector &Stmts, ParsedStmtContext StmtCtx,
-      SourceLocation *TrailingElseLoc = nullptr);
+      SourceLocation *TrailingElseLoc = nullptr,
+      TaintedScopeSpecifier WrittenTaintedSS = Tainted_None,
+      MirrorScopeSpecifier WrittenMirrorSS = Mirror_None,
+      TLIBScopeSpecifier WrittenTLIBSS = TLIB_None);
+
   StmtResult ParseStatementOrDeclarationAfterAttributes(
                                          StmtVector &Stmts,
                                          ParsedStmtContext StmtCtx,
                                          SourceLocation *TrailingElseLoc,
-                                         ParsedAttributesWithRange &Attrs);
-  StmtResult ParseExprStatement(ParsedStmtContext StmtCtx);
+                                         ParsedAttributesWithRange &Attrs,
+                                  TaintedScopeSpecifier WrittenTaintedSS = Tainted_None,
+                                  MirrorScopeSpecifier WrittenMirrorSS = Mirror_None,
+                                  TLIBScopeSpecifier WrittenTLIBSS = TLIB_None);
+
+  StmtResult ParseExprStatement(ParsedStmtContext StmtCtx,
+                                TaintedScopeSpecifier
+                                    TaintedSS = Tainted_None,
+                                MirrorScopeSpecifier MirrorSS = Mirror_None,
+                                TLIBScopeSpecifier TLIBSS = TLIB_None);
   StmtResult ParseLabeledStatement(ParsedAttributesWithRange &attrs,
                                    ParsedStmtContext StmtCtx);
   StmtResult ParseCaseStatement(ParsedStmtContext StmtCtx,
                                 bool MissingCase = false,
                                 ExprResult Expr = ExprResult());
   StmtResult ParseDefaultStatement(ParsedStmtContext StmtCtx);
-  StmtResult ParseCompoundStatement(bool isStmtExpr = false);
-  StmtResult ParseCompoundStatement(bool isStmtExpr, unsigned ScopeFlags);
+  StmtResult ParseCompoundStatement(bool isStmtExpr = false, TaintedScopeSpecifier TaintedSS
+                                    = Tainted_None
+                                    ,MirrorScopeSpecifier MirrorSS = Mirror_None,
+                                    TLIBScopeSpecifier TLIBSS = TLIB_None);
+  StmtResult ParseCompoundStatement(bool isStmtExpr, long ScopeFlags, TaintedScopeSpecifier TaintedSS
+                                    = Tainted_None,
+                                    MirrorScopeSpecifier MirrorSS
+                                    = Mirror_None, TLIBScopeSpecifier TLIBSS
+                                    = TLIB_None,
+                                    SourceLocation TaintedLoc = SourceLocation(),
+                                    SourceLocation MirrorLoc = SourceLocation(),
+                                    SourceLocation TLIBLoc = SourceLocation());
   void ParseCompoundStatementLeadingPragmas();
   bool ConsumeNullStmt(StmtVector &Stmts);
   StmtResult ParseCompoundStatementBody(bool isStmtExpr = false,
                                         CheckedScopeSpecifier WrittenCSS = CSS_None,
+                                        TaintedScopeSpecifier WrittenTaintedSS
+                                        = Tainted_None,
+                                        MirrorScopeSpecifier WrittenMirrorSS
+                                        = Mirror_None,
+                                        TLIBScopeSpecifier WrittenTLIBSS
+                                        = TLIB_None,
                                         SourceLocation CSSLoc = SourceLocation(),
+                                        SourceLocation TaintedLoc
+                                        = SourceLocation(),
+                                        SourceLocation MirrorLoc
+                                        = SourceLocation(),
+                                        SourceLocation TLIBLoc
+                                        = SourceLocation(),
                                         SourceLocation CSMLoc = SourceLocation(),
                                         SourceLocation BNDLoc = SourceLocation());
 
@@ -2449,7 +2501,10 @@ private:
       const ParsedTemplateInfo &TemplateInfo = ParsedTemplateInfo(),
       ForRangeInit *FRI = nullptr);
   Decl *ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope,
-                                   CheckedScopeSpecifier Kind = CSS_None);
+                                           CheckedScopeSpecifier CSSKind = CSS_None,
+                                           TaintedScopeSpecifier TaintedSSKind = Tainted_None,
+                                           MirrorScopeSpecifier MirrorSSKind = Mirror_None,
+                                           TLIBScopeSpecifier TLIBSSKind = TLIB_None);
   Decl *ParseFunctionTryBlock(Decl *Decl, ParseScope &BodyScope);
 
   /// When in code-completion, skip parsing of the function/method body
@@ -2949,6 +3004,8 @@ private:
   void ParseForanySpecifier(DeclSpec &DS);
   bool ParseForanySpecifierHelper(DeclSpec &DS, Scope::ScopeFlags S);
   void ParseItypeforanySpecifier(DeclSpec &DS);
+  void ParseTaintedPointerSpecifiers(DeclSpec &DS);
+  bool CheckCurrentTaintedPointerSanity();
 
   ExprResult ParseAlignArgument(SourceLocation Start,
                                 SourceLocation &EllipsisLoc);
@@ -3043,7 +3100,10 @@ private:
          DeclaratorContext DeclaratorContext,
          ParsedAttributes &attrs,
          SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo,
-         SourceLocation &EllipsisLoc);
+         SourceLocation &EllipsisLoc, bool isTaintedDeclaration = false,
+      bool isMirrorDecl = false, bool isTLIBDecl = false);
+  void CheckTaintedFunctionDeclarationIntegrity(SourceLocation &EllipsisLoc);
+  void CheckTaintedFunctionDeclarationIntegrity(Declarator&);
   void ParseBracketDeclarator(Declarator &D);
   void ParseMisplacedBracketDeclarator(Declarator &D);
 
@@ -3529,6 +3589,10 @@ private:
   bool isGNUAsmQualifier(const Token &TokAfterAsm) const;
   GNUAsmQualifiers::AQ getGNUAsmQualifier(const Token &Tok) const;
   bool parseGNUAsmQualifierListOpt(GNUAsmQualifiers &AQ);
+  void HandlePragmaTlibScope();
+  void HandlePragmaTaintedScope();
+  void HandlePragmaMirrorScope();
+  void UpdateNewFlags(long ScopeFlags);
 };
 
 }  // end namespace clang

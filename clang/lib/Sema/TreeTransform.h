@@ -837,7 +837,7 @@ public:
   ///
   /// By default, performs semantic analysis when building the pointer type.
   /// Subclasses may override this routine to provide different behavior.
-  QualType RebuildPointerType(QualType PointeeType, CheckedPointerKind kind, SourceLocation Sigil);
+  QualType RebuildPointerType(QualType PointeeType, CheckCBox_PointerKind kind, SourceLocation Sigil);
 
   /// Build a new block pointer type given its pointee type.
   ///
@@ -904,7 +904,7 @@ public:
                             const llvm::APInt *Size,
                             Expr *SizeExpr,
                             unsigned IndexTypeQuals,
-                            CheckedArrayKind Kind,
+                            CheckCBox_ArrayKind Kind,
                             SourceRange BracketsRange);
 
   /// Build a new constant array type given the element type, size
@@ -917,7 +917,7 @@ public:
                                     const llvm::APInt &Size,
                                     Expr *SizeExpr,
                                     unsigned IndexTypeQuals,
-                                    CheckedArrayKind Kind,
+                                    CheckCBox_ArrayKind Kind,
                                     SourceRange BracketsRange);
 
   /// Build a new incomplete array type given the element type, size
@@ -928,7 +928,7 @@ public:
   QualType RebuildIncompleteArrayType(QualType ElementType,
                                       ArrayType::ArraySizeModifier SizeMod,
                                       unsigned IndexTypeQuals,
-                                      CheckedArrayKind Kind,
+                                      CheckCBox_ArrayKind Kind,
                                       SourceRange BracketsRange);
 
   /// Build a new variable-length array type given the element type,
@@ -1353,9 +1353,19 @@ public:
                                        bool IsStmtExpr,
                                        CheckedScopeSpecifier WrittenCSS,
                                        SourceLocation CSSLoc,
+                                       TaintedScopeSpecifier WrittenTaintedSS,
+                                       SourceLocation TaintedLoc,
+                                       MirrorScopeSpecifier WrittenMirrorSS,
+                                       SourceLocation MirrorLoc,
+                                       TLIBScopeSpecifier WrittenTLIBSS,
+                                       SourceLocation TLIBLoc,
                                        SourceLocation CSMLoc) {
     return getSema().ActOnCompoundStmt(LBraceLoc, RBraceLoc, Statements,
-                                       IsStmtExpr, WrittenCSS, CSSLoc, CSMLoc);
+                                       IsStmtExpr, WrittenCSS, CSSLoc,
+                                       WrittenTaintedSS, TaintedLoc,
+                                       WrittenMirrorSS, MirrorLoc,
+                                       WrittenTLIBSS, TLIBLoc,
+                                       CSMLoc);
   }
 
   /// Build a new case statement.
@@ -7411,6 +7421,12 @@ TreeTransform<Derived>::TransformCompoundStmt(CompoundStmt *S,
                                           IsStmtExpr,
                                           S->getWrittenCheckedSpecifier(),
                                           S->getCheckedSpecifierLoc(),
+                                          S->getWrittenTaintedSpecifier(),
+                                          S->getTaintedSpecifierLoc(),
+                                          S->getWrittenMirrorSpecifier(),
+                                          S->getMirrorSpecifierLoc(),
+                                          S->getWrittenTLIBSpecifier(),
+                                          S->getTLIBSpecifierLoc(),
                                           S->getCheckedSpecifierLoc());
 }
 
@@ -14240,11 +14256,26 @@ ExprResult TreeTransform<Derived>::TransformBoundsCastExpr(BoundsCastExpr *E) {
   if (!getDerived().AlwaysRebuild() && Type == E->getTypeInfoAsWritten() &&
       SubExpr.get() == E->getSubExpr() && Bounds == E->getBoundsExpr())
     return E;
+  tok::TokenKind tok_kind ;
+  if(E->getCastKind() == CK_DynamicPtrBounds)
+  {
+    tok_kind = tok::TokenKind::kw__Dynamic_bounds_cast;
+  }
+  else if (E->getCastKind() == CK_AssumePtrBounds)
+  {
+    tok_kind = tok::TokenKind::kw__Assume_bounds_cast;
+  }
+  else if(E->getCastKind() == CK_TaintedDynamicPtrBounds)
+  {
+    tok_kind = tok::TokenKind::kw__Tainted_Dynamic_bounds_cast;
+  }
+  else if(E->getCastKind() == CK_TaintedAssumePtrBounds)
+  {
+    tok_kind = tok::TokenKind::kw__Tainted_Assume_bounds_cast;
+  }
 
   return getDerived().RebuildBoundsCastExpr(
-      E->getOperatorLoc(), (E->getCastKind() == CK_DynamicPtrBounds)
-                               ? tok::TokenKind::kw__Dynamic_bounds_cast
-                               : tok::TokenKind::kw__Assume_bounds_cast,
+      E->getOperatorLoc(), tok_kind,
       Type, E->getAngleBrackets(), E->getRParenLoc(), SubExpr.get(), Bounds);
 }
 
@@ -14285,7 +14316,7 @@ TreeTransform<Derived>::TransformBoundsValueExpr(
 
 template<typename Derived>
 QualType TreeTransform<Derived>::RebuildPointerType(QualType PointeeType,
-                                                    CheckedPointerKind Kind,
+                                                    CheckCBox_PointerKind Kind,
                                                     SourceLocation Star) {
   return SemaRef.BuildPointerType(PointeeType, Kind, Star,
                                   getDerived().getBaseEntity());
@@ -14361,7 +14392,7 @@ TreeTransform<Derived>::RebuildArrayType(QualType ElementType,
                                          const llvm::APInt *Size,
                                          Expr *SizeExpr,
                                          unsigned IndexTypeQuals,
-                                         CheckedArrayKind Kind,
+                                         CheckCBox_ArrayKind Kind,
                                          SourceRange BracketsRange) {
   if (SizeExpr || !Size)
     return SemaRef.BuildArrayType(ElementType, SizeMod, SizeExpr,
@@ -14399,7 +14430,7 @@ TreeTransform<Derived>::RebuildConstantArrayType(QualType ElementType,
                                                  const llvm::APInt &Size,
                                                  Expr *SizeExpr,
                                                  unsigned IndexTypeQuals,
-                                                 CheckedArrayKind Kind,
+                                                 CheckCBox_ArrayKind Kind,
                                                  SourceRange BracketsRange) {
   return getDerived().RebuildArrayType(ElementType, SizeMod, &Size, SizeExpr,
                                         IndexTypeQuals, Kind, BracketsRange);
@@ -14410,7 +14441,7 @@ QualType
 TreeTransform<Derived>::RebuildIncompleteArrayType(QualType ElementType,
                                           ArrayType::ArraySizeModifier SizeMod,
                                                  unsigned IndexTypeQuals,
-                                                   CheckedArrayKind Kind,
+                                                   CheckCBox_ArrayKind Kind,
                                                    SourceRange BracketsRange) {
   return getDerived().RebuildArrayType(ElementType, SizeMod, nullptr, nullptr,
                                        IndexTypeQuals, Kind,
@@ -14427,7 +14458,7 @@ TreeTransform<Derived>::RebuildVariableArrayType(QualType ElementType,
   return getDerived().RebuildArrayType(ElementType, SizeMod, nullptr,
                                        SizeExpr,
                                        IndexTypeQuals,
-                                       CheckedArrayKind::Unchecked,
+                                       CheckCBox_ArrayKind::Unchecked,
                                        BracketsRange);
 }
 
@@ -14441,7 +14472,7 @@ TreeTransform<Derived>::RebuildDependentSizedArrayType(QualType ElementType,
   return getDerived().RebuildArrayType(ElementType, SizeMod, nullptr,
                                        SizeExpr,
                                        IndexTypeQuals,
-                                       CheckedArrayKind::Unchecked,
+                                       CheckCBox_ArrayKind::Unchecked,
                                        BracketsRange);
 }
 

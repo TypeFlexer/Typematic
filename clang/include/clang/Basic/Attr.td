@@ -1169,6 +1169,13 @@ def CXX11NoReturn : InheritableAttr {
   let SimpleHandler = 1;
 }
 
+def C11Tainted : InheritableAttr {
+  let Spellings = [Keyword<"_Tainted">];
+  let Subjects = SubjectList<[Function], ErrorDiag>;
+  let SemaHandler = 0;
+  let Documentation = [];
+}
+
 // Similar to CUDA, OpenCL attributes do not receive a [[]] spelling because
 // the specification does not expose them with one currently.
 def OpenCLKernel : InheritableAttr {
@@ -1887,6 +1894,13 @@ def AllocAlign : InheritableAttr {
 
 def NoReturn : InheritableAttr {
   let Spellings = [GCC<"noreturn">, Declspec<"noreturn">];
+  // FIXME: Does GCC allow this on the function instead?
+  let Documentation = [Undocumented];
+}
+
+def Tainted : InheritableAttr {
+  let Spellings = [GCC<"tainted">, Declspec<"tainted">];
+  let Subjects = SubjectList<[Function]>;
   // FIXME: Does GCC allow this on the function instead?
   let Documentation = [Undocumented];
 }

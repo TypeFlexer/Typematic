@@ -2531,6 +2531,19 @@ def fbasic_block_sections_EQ : Joined<["-"], "fbasic-block-sections=">, Group<f_
 defm data_sections : BoolFOption<"data-sections",
   CodeGenOpts<"DataSections">, DefaultFalse,
   PosFlag<SetTrue, [CC1Option], "Place each data in its own section">, NegFlag<SetFalse>>;
+
+defm wasmsbx : BoolFOption<"wasmsbx",
+  CodeGenOpts<"wasmsbx">, DefaultFalse,
+  PosFlag<SetTrue, [CC1Option], "Enables WASM SBX instrumentation">, NegFlag<SetFalse>>;
+
+defm noopsbx : BoolFOption<"noopsbx",
+  CodeGenOpts<"noopsbx">, DefaultFalse,
+  PosFlag<SetTrue, [CC1Option], "Enables NOOP SBX instrumentation">, NegFlag<SetFalse>>;
+
+defm heapsbx : BoolFOption<"heapsbx",
+  CodeGenOpts<"heapsbx">, DefaultFalse,
+  PosFlag<SetTrue, [CC1Option], "Enables HEAP SBX instrumentation">, NegFlag<SetFalse>>;
+
 defm stack_size_section : BoolFOption<"stack-size-section",
   CodeGenOpts<"StackSizeSection">, DefaultFalse,
   PosFlag<SetTrue, [CC1Option], "Emit section containing metadata on function stack sizes">,

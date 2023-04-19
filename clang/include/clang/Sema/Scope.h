@@ -147,7 +147,19 @@ public:
     ExistentialTypeScope = 0x8000000,
 
     /// Checked C - Where clause scope.
-    WhereClauseScope = 0x10000000
+    WhereClauseScope = 0x10000000,
+
+    /// CheckCBox - Tainted Function scope
+    TaintedFunctionScope = 0x20000000,
+
+    /// CheckCBox - Callback Function scope
+    CallbackFunctionScope = 0x40000000,
+
+    /// CheckCBox - Callback Function scope
+    MirrorFunctionScope = 0x80000000,
+
+    /// CheckCBox - TLIB Function scope
+    TLIBFunctionScope =  0x100000000
   };
 
 private:
@@ -157,7 +169,7 @@ private:
 
   /// Flags - This contains a set of ScopeFlags, which indicates how the scope
   /// interrelates with other control flow statements.
-  unsigned Flags;
+  long Flags;
 
   /// Depth - This is the depth of this scope.  The translation-unit scope has
   /// depth 0.
@@ -222,18 +234,18 @@ private:
   /// this scope, or over-defined. The bit is true when over-defined.
   llvm::PointerIntPair<VarDecl *, 1, bool> NRVO;
 
-  void setFlags(Scope *Parent, unsigned F);
+  void setFlags(Scope *Parent, long F);
 
 public:
-  Scope(Scope *Parent, unsigned ScopeFlags, DiagnosticsEngine &Diag)
+  Scope(Scope *Parent, long ScopeFlags, DiagnosticsEngine &Diag)
       : ErrorTrap(Diag) {
     Init(Parent, ScopeFlags);
   }
 
   /// getFlags - Return the flags for this scope.
-  unsigned getFlags() const { return Flags; }
+  long getFlags() const { return Flags; }
 
-  void setFlags(unsigned F) { setFlags(getParent(), F); }
+  void setFlags(long F) { setFlags(getParent(), F); }
 
   /// isBlockScope - Return true if this scope correspond to a closure.
   bool isBlockScope() const { return Flags & BlockScope; }
@@ -363,6 +375,26 @@ public:
   /// isFunctionScope() - Return true if this scope is a function scope.
   bool isFunctionScope() const { return (getFlags() & Scope::FnScope); }
 
+  /// isTaintedFunctionScope() - Return true if this scope is a tainted
+  /// function's scope.
+  bool isTaintedFunctionScope() const {
+    return (getFlags() & Scope::TaintedFunctionScope); }
+
+  /// isCallbackFunctionScope() - Return true if this scope is a callback
+  /// function's scope.
+  bool isCallbackFunctionScope() const {
+    return (getFlags() & Scope::CallbackFunctionScope); }
+
+  /// isMirrorFunctionScope() - Return true if this scope is a Mirror
+  /// function's scope.
+  bool isMirrorFunctionScope() const {
+    return (getFlags() & Scope::MirrorFunctionScope); }
+
+  /// isMirrorFunctionScope() - Return true if this scope is a Mirror
+  /// function's scope.
+  bool isTLIBFunctionScope() const {
+    return (getFlags() & Scope::TLIBFunctionScope); }
+
   /// isClassScope - Return true if this scope is a class/struct/union scope.
   bool isClassScope() const {
     return (getFlags() & Scope::ClassScope);
@@ -442,7 +474,11 @@ public:
     for (const Scope *S = this; S; S = S->getParent()) {
       if (S->getFlags() & Scope::SwitchScope)
         return true;
-      else if (S->getFlags() & (Scope::FnScope | Scope::ClassScope |
+      else if (S->getFlags() & (Scope::FnScope | Scope::TaintedFunctionScope |
+                                Scope::CallbackFunctionScope |
+                                Scope::MirrorFunctionScope |
+                                Scope::TLIBFunctionScope |
+                                Scope::ClassScope |
                                 Scope::BlockScope | Scope::TemplateParamScope |
                                 Scope::FunctionPrototypeScope |
                                 Scope::AtCatchScope | Scope::ObjCMethodScope))
@@ -535,11 +571,11 @@ public:
   void mergeNRVOIntoParent();
 
   /// Init - This is used by the parser to implement scope caching.
-  void Init(Scope *parent, unsigned flags);
+  void Init(Scope *parent, long flags);
 
   /// Sets up the specified scope flags and adjusts the scope state
   /// variables accordingly.
-  void AddFlags(unsigned Flags);
+  void AddFlags(long Flags);
 
   void dumpImpl(raw_ostream &OS) const;
   void dump() const;

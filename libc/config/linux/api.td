@@ -67,6 +67,7 @@ def AssertMacro : MacroDef<"assert"> {
     extern "C"
     #endif
     _Noreturn void __assert_fail(const char *, const char *, unsigned, const char *);
+    _Tainted void __assert_fail(const char *, const char *, unsigned, const char *);
 
     #define assert(e)  \
       ((e) ? (void)0 : __assert_fail(#e, __FILE__, __LINE__, __PRETTY_FUNCTION__))

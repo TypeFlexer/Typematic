@@ -331,6 +331,86 @@ static CallInst *getReductionIntrinsic(IRBuilderBase *Builder, Intrinsic::ID ID,
   auto Decl = Intrinsic::getDeclaration(M, ID, Tys);
   return createCallHelper(Decl, Ops, Builder);
 }
+ static CallInst *CreateTaintedPtrMemCheckInternal(IRBuilderBase *Builder, Value *Src){
+ Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+ Value *Ops[] = {Src};
+ auto *Decl = Intrinsic::SandboxTaintedMemCheckFunction(M);
+ return createCallHelper(Decl, Ops, Builder);
+}
+
+static CallInst *CreateregisterTaintedFunctionInternal(IRBuilderBase *Builder, Value *Src){
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = {Src};
+  auto *Decl = Intrinsic::SandboxRegisterTaintedFunction(M);
+  return createCallHelper(Decl, Ops, Builder);
+}
+
+static CallInst *CreateregisterCallbackFunctionInternal(IRBuilderBase *Builder, Value *Src){
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = {Src};
+  auto *Decl = Intrinsic::SandboxRegisterTaintedFunction(M);
+  return createCallHelper(Decl, Ops, Builder);
+}
+
+static CallInst *CreateunregisterCallbackFunctionInternal(IRBuilderBase *Builder, Value *Src){
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = {Src};
+  auto *Decl = Intrinsic::SandboxUNRegisterCallbackFunction(M);
+  return createCallHelper(Decl, Ops, Builder);
+}
+
+static CallInst *CreateIsLegalCallEdgeCheckInternal(IRBuilderBase *Builder,
+                                                    Value *pValue) {
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = {pValue};
+  auto *Decl = Intrinsic::CreateIsLegalCallEdgeCheckInternal(M);
+  return Builder->CreateCall(Decl, Ops);
+}
+static CallInst *CreateCondlTaintedO2PtrInternal(IRBuilderBase *Builder, Value *Src){
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = {Src};
+  auto *Decl = Intrinsic::SandboxCondlTaintedO2PtrFunction(M);
+  return createCallHelper(Decl, Ops, Builder);
+}
+
+static CallInst *CreateCondlTaintedPToOInternal(IRBuilderBase *Builder, Value *Src){
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = {Src};
+  auto *Decl = Intrinsic::SandboxTaintedPtr2OFunction(M);
+  return createCallHelper(Decl, Ops, Builder);
+}
+
+static CallInst *createTaintedOffset2Ptr(IRBuilderBase *Builder, Value *Offset){
+    Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+    Value *Ops[] = {Offset};
+    auto *Decl = Intrinsic::Offset2Pointer(M);
+    return createCallHelper(Decl, Ops, Builder);
+}
+
+static CallInst *sbxInit(IRBuilderBase *Builder){
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  auto *Decl = Intrinsic::InitSbx(M);
+  //create a call to this function
+  return Builder->CreateCall(Decl);
+}
+
+static CallInst *fetchSbxHeapAddress(IRBuilderBase *Builder){
+  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = { 0 };
+  auto *Decl = Intrinsic::fetchSbxHeapAddress(M);
+  //create a call to this function
+  return Builder->CreateCall(Decl);
+}
+
+static CallInst *fetchSbxHeapBound(IRBuilderBase *Builder, Module *M_){
+  if (M_ == nullptr)
+    M_ = Builder->GetInsertBlock()->getParent()->getParent();
+//  Module *M = Builder->GetInsertBlock()->getParent()->getParent();
+  Value *Ops[] = { 0 };
+  auto *Decl = Intrinsic::fetchSbxHeapBound(M_);
+  //create a call to this function
+  return Builder->CreateCall(Decl);
+}
 
 CallInst *IRBuilderBase::CreateFAddReduce(Value *Acc, Value *Src) {
   Module *M = GetInsertBlock()->getParent()->getParent();
@@ -372,6 +452,79 @@ CallInst *IRBuilderBase::CreateIntMaxReduce(Value *Src, bool IsSigned) {
   auto ID =
       IsSigned ? Intrinsic::vector_reduce_smax : Intrinsic::vector_reduce_umax;
   return getReductionIntrinsic(this, ID, Src);
+}
+
+CallInst *IRBuilderBase::CreateTaintedPtrMemCheck(Value* Src){
+    //if the parsed Source Value is not a void pointer type, it must be casted to a void pointer -->
+    if(Src->getType() != Type::getInt8PtrTy(this->getContext()))
+    {
+      //cast it to void pointer
+      Src = CreateIntToPtr(Src,Type::getInt8PtrTy(this->getContext()));
+    }
+    return CreateTaintedPtrMemCheckInternal(this, Src);
+}
+
+CallInst *IRBuilderBase::registerTaintedFunction(Value *Src)
+{
+    //if the parsed Source Value is not a void pointer type, it must be casted to a void pointer -->
+    if(Src->getType() != Type::getInt8PtrTy(this->getContext()))
+    {
+      //cast it to void pointer
+      Src = CreateBitCast(Src,Type::getInt8PtrTy(this->getContext()));
+    }
+    return CreateregisterTaintedFunctionInternal(this, Src);
+}
+
+CallInst *IRBuilderBase::registerCallbackFunction(Value *Src)
+{
+    //if the parsed Source Value is not a void pointer type, it must be casted to a void pointer -->
+    if(Src->getType() != Type::getInt8PtrTy(this->getContext()))
+    {
+      //cast it to void pointer
+      Src = CreateBitCast(Src,Type::getInt8PtrTy(this->getContext()));
+    }
+    return CreateregisterCallbackFunctionInternal(this, Src);
+}
+
+CallInst *IRBuilderBase::unregisterCallbackFunction(Value *Src)
+{
+    //if the parsed Source Value is not a void pointer type, it must be casted to a void pointer -->
+    if(Src->getType() != Type::getInt8PtrTy(this->getContext()))
+    {
+      //cast it to void pointer
+      Src = CreateBitCast(Src,Type::getInt8PtrTy(this->getContext()));
+    }
+    return CreateunregisterCallbackFunctionInternal(this, Src);
+}
+
+CallInst *IRBuilderBase::CreateIsLegalCallEdgeCheck(Value *pValue) {
+    return CreateIsLegalCallEdgeCheckInternal(this, pValue);
+}
+CallInst *IRBuilderBase::CreateTaintedOffset2Ptr(Value *Offset){
+    //if the parsed Source Value is not a Unsigned int, it must be casted to a Unsigned int -->
+
+    if(Offset->getType()->isTaintedPtrTy())
+    {
+        //cast it to uint32 pointer
+        Offset = CreatePtrToInt(Offset,Type::getInt32Ty(this->getContext()));
+    }
+    return createTaintedOffset2Ptr(this, Offset);
+}
+CallInst *IRBuilderBase::InitSbx(){
+  //if the parsed Source Value is not a Unsigned int, it must be casted to a Unsigned int -->
+
+  return sbxInit(this);
+}
+
+CallInst *IRBuilderBase::FetchSbxHeapAddress(){
+  //if the parsed Source Value is not a Unsigned int, it must be casted to a Unsigned int -->
+
+  return fetchSbxHeapAddress(this);
+}
+
+CallInst *IRBuilderBase::FetchSbxHeapBound(Module* M){
+  //if the parsed Source Value is not a Unsigned int, it must be casted to a Unsigned int -->
+    return fetchSbxHeapBound(this, M);
 }
 
 CallInst *IRBuilderBase::CreateIntMinReduce(Value *Src, bool IsSigned) {
@@ -1142,6 +1295,19 @@ CallInst *IRBuilderBase::CreateAlignmentAssumption(const DataLayout &DL,
          "trying to create an alignment assumption on a non-pointer?");
   return CreateAlignmentAssumptionHelper(DL, PtrValue, Alignment, OffsetValue);
 }
+Value *IRBuilderBase::CreateCondlTaintedO2Ptr(Value *pValue) {
+  return CreateCondlTaintedO2PtrInternal(this, pValue);
+}
+
+Value *IRBuilderBase::CreatePToO(Value *pValue) {
+  if(!pValue->getType()->getCoreElementType()->isVoidTy())
+  {
+    //cast it to void* pointer
+    pValue = CreateBitCast(pValue,Type::getInt8PtrTy(this->getContext()));
+  }
+  return CreateCondlTaintedPToOInternal(this, pValue);
+}
+
 
 IRBuilderDefaultInserter::~IRBuilderDefaultInserter() {}
 IRBuilderCallbackInserter::~IRBuilderCallbackInserter() {}

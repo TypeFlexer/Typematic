@@ -173,6 +173,7 @@ Parser::TPResult Parser::TryConsumeDeclarationSpecifier() {
 
   case tok::kw_class:
   case tok::kw_struct:
+  case tok::kw_Tstruct:
   case tok::kw_union:
   case tok::kw___interface:
   case tok::kw_enum:
@@ -1388,6 +1389,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
     // elaborated-type-specifier
   case tok::kw_class:
   case tok::kw_struct:
+  case tok::kw_Tstruct:
   case tok::kw_union:
   case tok::kw___interface:
     // enum-specifier
@@ -1725,6 +1727,7 @@ bool Parser::isCXXDeclarationSpecifierAType() {
     // elaborated-type-specifier
   case tok::kw_class:
   case tok::kw_struct:
+  case tok::kw_Tstruct:
   case tok::kw_union:
   case tok::kw___interface:
   case tok::kw_enum:

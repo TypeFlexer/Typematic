@@ -949,6 +949,18 @@ namespace {
         return true;
       }
 
+      // E->F.  This is equivalent to (*E).F.
+      if (Base->getType()->isTaintedPointerArrayType()) {
+        BoundsExpr *Bounds = S.CheckNonModifyingBounds(BaseBounds, Base);
+        if (Bounds->isUnknown()) {
+          S.Diag(Base->getBeginLoc(), diag::err_expected_bounds) << Base->getSourceRange();
+          Bounds = S.CreateInvalidBoundsExpr();
+        } else {
+          CheckBoundsAtMemoryAccess(E, Bounds, BCK_Normal, CSS, EquivExprs);
+        }
+        E->setBoundsExpr(Bounds);
+        return true;
+      }
       return false;
     }
 
@@ -2488,6 +2500,13 @@ namespace {
       ProofResult Result = ProveBoundsDeclValidity(ExpectedArgBounds, ArgBounds, Cause, &EquivExprs, FreeVars);
       if (Result != ProofResult::True) {
         // Which diagnostic message to print?
+        /*
+         * If this expression is in a TLIB or Tainted Scope, no errors
+         */
+        if(Result == ProofResult::False && TestFailure(Cause, ProofFailure::HasFreeVariables))
+        {
+          printf("hello world");
+        }
         unsigned DiagId =
             (Result == ProofResult::False)
                 ? (TestFailure(Cause, ProofFailure::HasFreeVariables)
@@ -2599,8 +2618,10 @@ namespace {
                                         BoundsExpr *SrcBounds,
                                         CheckedScopeSpecifier CSS) {
       ProofFailure Cause;
-      bool IsStaticPtrCast = (Src->getType()->isCheckedPointerPtrType() &&
-                              Cast->getType()->isCheckedPointerPtrType());
+     bool IsStaticPtrCast = ((Src->getType()->isCheckedPointerPtrType() &&
+                              Cast->getType()->isCheckedPointerPtrType())
+                                      || (Src->getType()->isTaintedPointerPtrType() &&
+                                          Cast->getType()->isTaintedPointerPtrType()));
       ProofStmtKind Kind = IsStaticPtrCast ? ProofStmtKind::StaticBoundsCast :
                              ProofStmtKind::BoundsDeclaration;
       FreeVariableListTy FreeVars;
@@ -2911,6 +2932,12 @@ namespace {
      Cfg->print(llvm::outs(), S.getLangOpts(), true);
      llvm::outs() << "Traversing CFG:\n";
 #endif
+     /*
+      * If the FunctionDecl is tainted, do not perform any bounds analysis
+      *
+      */
+     if(FD->isTainted())
+       return;
 
      // Reset the AbstractSetMgr at the beginning of each function, since
      // the storage of AbstractSets should only persist for one function.
@@ -3138,6 +3165,11 @@ namespace {
           break;
         case Expr::BinaryOperatorClass:
         case Expr::CompoundAssignOperatorClass:
+          if(IsTaintedAssignmentValid(cast<BinaryOperator>(S), CSS)
+              == false)
+          {
+            return CreateBoundsEmpty();
+          }
           ResultBounds = CheckBinaryOperator(cast<BinaryOperator>(S),
                                              CSS, State);
           break;
@@ -3330,6 +3362,36 @@ namespace {
       return false;
     }
 
+    bool IsTaintedAssignmentValid(BinaryOperator *E, CheckedScopeSpecifier CSS)
+    {
+      Expr *LHS = E->getLHS();
+      Expr *RHS = E->getRHS();
+
+      BinaryOperatorKind Op = E->getOpcode();
+
+      if(BinaryOperator::isAssignmentOp(Op))
+      {
+        if(LHS->getType()->isTaintedPointerType())
+        {
+          if(RHS->getType()->isCheckedPointerType())
+          {
+            S.Diag(RHS->getBeginLoc(),
+                   diag::err_incompatible_tainted_pointer_2_checked_assignment)
+                << RHS->getSourceRange();
+            return false;
+          }
+          else if((RHS->getType()->isPointerType())
+                   && (!RHS->getType()->isTaintedPointerType()))
+          {
+            S.Diag(RHS->getBeginLoc(),
+                   diag::err_incompatible_tainted_pointer_2_unchecked_assignment)
+                << RHS->getSourceRange();
+            return false;
+          }
+        }
+      }
+      return true;
+    }
   // Methods to infer bounds for an expression that produces an rvalue.
 
   private:
@@ -3507,6 +3569,11 @@ namespace {
             RHS->getType()->isCheckedPointerPtrType()) {
           // ptr<T> to ptr<T> assignment, no obligation to check assignment bounds
         }
+        else if (!E->isCompoundAssignmentOp() &&
+            LHSType->isTaintedPointerPtrType() &&
+            RHS->getType()->isTaintedPointerPtrType()) {
+          // TPtr<T> to TPtr<T> assignment, no obligation to check assignment bounds
+        }
         else if (LHSType->isCheckedPointerType() ||
                   LHSType->isIntegerType() ||
                   IsBoundsSafeInterfaceAssignment(LHSType, RHS)) {
@@ -3620,6 +3687,12 @@ namespace {
         if (ParamType->isUncheckedPointerType() && !IsBoundsSafeInterfaceAssignment(ParamType, E->getArg(i))) {
           continue;
         }
+
+        if (Arg->getTaintedScopeSpecifier() != clang::Tainted_None
+           || Arg->getTLIBScopeSpecifier() != clang::TLIB_None)
+        {
+          continue;
+        }
         // We want to check the argument expression implies the desired parameter bounds.
         // To compute the desired parameter bounds, we substitute the arguments for
         // parameters in the parameter bounds expression.
@@ -3642,6 +3715,9 @@ namespace {
           continue;
 
         ArgBounds = S.CheckNonModifyingBounds(ArgBounds, Arg);
+        /*
+         * These bounds checks must be relaxed in Tainted and TLIB Scope
+         */
         if (ArgBounds->isUnknown()) {
           S.Diag(Arg->getBeginLoc(),
                   diag::err_expected_bounds_for_argument) << (i + 1) <<
@@ -3707,6 +3783,39 @@ namespace {
       return ResultBounds;
     }
 
+    bool IsCastExpressionValid(CastKind &CK, Expr *SubExpr)
+    {
+
+      /// RULE 1: A Non-Tainted pointer cannot be passed as part of
+      /// an expression in a _Tainted_Dynamic_bounds_cast Operation
+      /// RULE 2: A Tainted pointer cannot be passed as part of
+      /// an expression in a _Dynamic_bounds_cast Operation
+      /// RULE 3: A Non-Tainted pointer cannot be passed as part of
+      /// an expression in a _Tainted_Assume_bounds_cast Operation
+      /// RULE 4: A Tainted pointer cannot be passed as part of
+      /// an expression in a _Assume_bounds_cast Operation
+
+      if((CK == clang::CK_DynamicPtrBounds) ||
+          (CK == clang::CK_AssumePtrBounds))
+      {
+        if(SubExpr->getType()->isTaintedPointerType() == true)
+        {
+          S.Diag(SubExpr->getBeginLoc(), diag::err_bounds_expression_tainted_pointers_not_expected);
+          return false;
+        }
+      }
+      else if((CK == clang::CK_TaintedDynamicPtrBounds) ||
+               (CK == clang::CK_TaintedAssumePtrBounds))
+      {
+        if(SubExpr->getType()->isTaintedPointerType() != true)
+        {
+          S.Diag(SubExpr->getBeginLoc(), diag::err_bounds_expression_expected_tainted_pointer);
+          return false;
+        }
+      }
+      return true;
+    }
+
     // If e is an rvalue, CheckCastExpr returns the bounds for
     // the value produced by e.
     // If e is an lvalue, it returns unknown bounds (CheckCastLValue
@@ -3721,6 +3830,10 @@ namespace {
       Expr *SubExpr = E->getSubExpr();
       CastKind CK = E->getCastKind();
 
+      if(!IsCastExpressionValid(CK, SubExpr))
+      {
+        return ResultBounds;
+      }
       bool IncludeNullTerm =
           E->getType()->getPointeeOrArrayElementType()->isNtCheckedArrayType();
       bool PreviousIncludeNullTerminator = IncludeNullTerminator;
@@ -3772,7 +3885,8 @@ namespace {
       // _Ptr is invalid, that will be diagnosed separately.
       if (E->getStmtClass() == Stmt::ImplicitCastExprClass ||
           E->getStmtClass() == Stmt::CStyleCastExprClass) {
-        if (E->getType()->isCheckedPointerPtrType())
+        if ((E->getType()->isCheckedPointerPtrType())
+            || (E->getType()->isTaintedPointerPtrType()))
           ResultBounds = CreateTypeBasedBounds(E, E->getType(), false, false);
         else
           ResultBounds = RValueCastBounds(E, SubExprTargetBounds,
@@ -3799,7 +3913,8 @@ namespace {
       // - bounds(lb, ub):  If the declared bounds of the cast operation are
       // (e2, e3),  a runtime check that lb <= e2 && e3 <= ub is inserted
       // during code generation.
-      if (CK == CK_DynamicPtrBounds || CK == CK_AssumePtrBounds) {
+      if (CK == CK_DynamicPtrBounds || CK == CK_AssumePtrBounds || CK == CK_TaintedDynamicPtrBounds
+          || CK == CK_TaintedAssumePtrBounds) {
         CHKCBindTemporaryExpr *TempExpr = dyn_cast<CHKCBindTemporaryExpr>(SubExpr);
         assert(TempExpr);
 
@@ -3812,7 +3927,7 @@ namespace {
                                               CastKind::CK_BitCast,
                                               TempUse, true);
 
-        if (CK == CK_AssumePtrBounds)
+        if ((CK == CK_AssumePtrBounds) || (CK == CK_TaintedAssumePtrBounds))
           return BoundsUtil::ExpandToRange(S, SubExprAtNewType, E->getBoundsExpr());
 
         BoundsExpr *DeclaredBounds = E->getBoundsExpr();
@@ -4723,6 +4838,7 @@ namespace {
                               const EquivExprSets EquivExprs,
                               const EqualExprTy RetSameValue,
                               CheckedScopeSpecifier CSS) {
+
       // In an unchecked scope, if the enclosing function has a bounds-safe
       // interface, and the return value has not been implicitly converted
       // to an unchecked pointer, we skip checking the return value bounds.
@@ -5787,7 +5903,7 @@ namespace {
     }
 
     Expr *CreateAddressOfOperator(Expr *E) {
-      QualType Ty = Context.getPointerType(E->getType(), CheckedPointerKind::Array);
+      QualType Ty = Context.getPointerType(E->getType(), CheckCBox_PointerKind::Array);
       return UnaryOperator::Create(Context, E, UnaryOperatorKind::UO_AddrOf, Ty,
                                    ExprValueKind::VK_RValue,
                                    ExprObjectKind::OK_Ordinary,
@@ -5901,7 +6017,7 @@ namespace {
       // Infer target bounds for variables without array type.
 
       bool IsParam = isa<ParmVarDecl>(DRE->getDecl());
-      if (DRE->getType()->isCheckedPointerPtrType())
+      if ((DRE->getType()->isCheckedPointerPtrType()) || (DRE->getType()->isTaintedPointerPtrType()))
         return CreateTypeBasedBounds(DRE, DRE->getType(), IsParam, false);
 
       if (!VD)
@@ -6035,17 +6151,17 @@ namespace {
       // it is a function pointer type, in which case it has no required
       // bounds.
 
-      if (Ty->isCheckedPointerPtrType()) {
+      if ((Ty->isCheckedPointerPtrType()) || (Ty->isTaintedPointerPtrType())){
         if (Ty->isFunctionPointerType())
           BE = CreateBoundsEmpty();
         else if (Ty->isVoidPointerType())
           BE = Context.getPrebuiltByteCountOne();
         else
           BE = Context.getPrebuiltCountOne();
-      } else if (Ty->isCheckedArrayType()) {
+      } else if ((Ty->isCheckedArrayType()) || (Ty->isTaintedArrayType())){
         assert(IsParam && IsBoundsSafeInterface && "unexpected checked array type");
         BE = CreateBoundsForArrayType(Ty);
-      } else if (Ty->isCheckedPointerNtArrayType()) {
+      } else if ((Ty->isCheckedPointerNtArrayType()) || (Ty->isTaintedPointerNtArrayType())) {
         BE = Context.getPrebuiltCountZero();
       }
    
@@ -6125,6 +6241,8 @@ namespace {
         }
         case CastKind::CK_DynamicPtrBounds:
         case CastKind::CK_AssumePtrBounds:
+        case CastKind::CK_TaintedDynamicPtrBounds:
+        case CastKind::CK_TaintedAssumePtrBounds:
           llvm_unreachable("unexpected rvalue bounds cast");
         default:
           return BoundsUtil::CreateBoundsAlwaysUnknown(S);
@@ -6162,7 +6280,8 @@ namespace {
                                CHKCBindTemporaryExpr *ResultName,
                                CheckedScopeSpecifier CSS) {
       BoundsExpr *ReturnBounds = nullptr;
-      if (CE->getType()->isCheckedPointerPtrType()) {
+      if ((CE->getType()->isCheckedPointerPtrType())
+              || (CE->getType()->isTaintedPointerPtrType())){
         if (CE->getType()->isVoidPointerType())
           ReturnBounds = Context.getPrebuiltByteCountOne();
         else
@@ -6495,15 +6614,22 @@ Expr *Sema::GetArrayPtrDereference(Expr *E, QualType &Result) {
     case Expr::ArraySubscriptExprClass: {
       // e1[e2] is a synonym for *(e1 + e2).
       ArraySubscriptExpr *AS = cast<ArraySubscriptExpr>(E);
-      // An important invariant for array types in Checked C is that all
-      // dimensions of a multi-dimensional array are either checked or
-      // unchecked.  This ensures that the intermediate values for
+      // An important invariant for array types in Checked C /CheckCBox C
+      // is that all dimensions of a multi-dimensional array are either
+      // checked, tainted or unchecked.
+      // This ensures that the intermediate values for
       // multi-dimensional array accesses have checked type and preserve
       //  the "checkedness" of the outermost array.
 
       // getBase returns the pointer-typed expression.
       if (getLangOpts().UncheckedPointersDynamicCheck ||
           AS->getBase()->getType()->isCheckedPointerArrayType()) {
+        Result = AS->getBase()->getType();
+        return E;
+      }
+
+      if (getLangOpts().UncheckedPointersDynamicCheck ||
+          AS->getBase()->getType()->isTaintedPointerArrayType()) {
         Result = AS->getBase()->getType();
         return E;
       }
@@ -6527,6 +6653,10 @@ Expr *Sema::GetArrayPtrDereference(Expr *E, QualType &Result) {
         return E;
       }
 
+      if (MS->getBase()->getType()->isTaintedPointerArrayType()) {
+        Result = MS->getBase()->getType();
+        return E;
+      }
       return nullptr;
     }
     default: {
@@ -6588,7 +6718,10 @@ Expr *Sema::MakeAssignmentImplicitCastExplicit(Expr *E) {
 }
 
 void Sema::CheckFunctionBodyBoundsDecls(FunctionDecl *FD, Stmt *Body) {
+
   if (Body == nullptr)
+    return;
+  if(IsTaintedScope())
     return;
 #if TRACE_CFG
   llvm::outs() << "Checking " << FD->getName() << "\n";

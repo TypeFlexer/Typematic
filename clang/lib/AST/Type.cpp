@@ -116,7 +116,7 @@ bool QualType::isConstant(QualType T, const ASTContext &Ctx) {
 //       size is specified by a constant expression that is
 //       value-dependent,
 ArrayType::ArrayType(TypeClass tc, QualType et, QualType can,
-                     ArraySizeModifier sm, unsigned tq, CheckedArrayKind k,
+                     ArraySizeModifier sm, unsigned tq, CheckCBox_ArrayKind k,
                      const Expr *sz)
     // Note, we need to check for DependentSizedArrayType explicitly here
     // because we use a DependentSizedArrayType with no size expression as the
@@ -137,7 +137,7 @@ ArrayType::ArrayType(TypeClass tc, QualType et, QualType can,
       ElementType(et) {
   ArrayTypeBits.IndexTypeQuals = tq;
   ArrayTypeBits.SizeModifier = sm;
-  ArrayTypeBits.CheckedArrayKind = (unsigned)k;
+  ArrayTypeBits.CheckCBox_ArrayKind = (unsigned)k;
 }
 
 void BoundsAnnotations::Profile(llvm::FoldingSetNodeID &ID,
@@ -205,7 +205,7 @@ void ConstantArrayType::Profile(llvm::FoldingSetNodeID &ID,
                                 const ASTContext &Context, QualType ET,
                                 const llvm::APInt &ArraySize,
                                 const Expr *SizeExpr, ArraySizeModifier SizeMod,
-                                unsigned TypeQuals, CheckedArrayKind kind) {
+                                unsigned TypeQuals, CheckCBox_ArrayKind kind) {
   ID.AddPointer(ET.getAsOpaquePtr());
   ID.AddInteger(ArraySize.getZExtValue());
   ID.AddInteger(SizeMod);
@@ -222,7 +222,7 @@ DependentSizedArrayType::DependentSizedArrayType(const ASTContext &Context,
                                                  unsigned tq,
                                                  SourceRange brackets)
     : ArrayType(DependentSizedArray, et, can, sm, tq,
-                CheckedArrayKind::Unchecked, e),
+                CheckCBox_ArrayKind::Unchecked, e),
       Context(Context), SizeExpr((Stmt*) e), Brackets(brackets) {}
 
 void DependentSizedArrayType::Profile(llvm::FoldingSetNodeID &ID,
@@ -584,6 +584,18 @@ bool Type::isStructureType() const {
   return false;
 }
 
+bool Type::isTaintedStructureType() const {
+  if (const auto *RT = getAs<RecordType>())
+    return RT->getDecl()->isTaintedStruct();
+  return false;
+}
+
+bool Type::isCallback() const {
+  if (const auto *RT = getAs<RecordType>())
+    return RT->getDecl()->getAsFunction()->isCallback();
+  return false;
+}
+
 bool Type::isObjCBoxableRecordType() const {
   if (const auto *RT = getAs<RecordType>())
     return RT->getDecl()->hasAttr<ObjCBoxableAttr>();
@@ -661,6 +673,7 @@ const RecordType *Type::getAsStructureType() const {
   if (const auto *RT = dyn_cast<RecordType>(this)) {
     if (RT->getDecl()->isStruct())
       return RT;
+
   }
 
   // If the canonical form of this type isn't the right kind, reject it.
@@ -2815,6 +2828,7 @@ TypeWithKeyword::getKeywordForTypeSpec(unsigned TypeSpec) {
   case TST_typename: return ETK_Typename;
   case TST_class: return ETK_Class;
   case TST_struct: return ETK_Struct;
+  case TST_Tstruct: return ETK_TStruct;
   case TST_interface: return ETK_Interface;
   case TST_union: return ETK_Union;
   case TST_enum: return ETK_Enum;
@@ -2826,6 +2840,7 @@ TypeWithKeyword::getTagTypeKindForTypeSpec(unsigned TypeSpec) {
   switch(TypeSpec) {
   case TST_class: return TTK_Class;
   case TST_struct: return TTK_Struct;
+  case TST_Tstruct: return TTK_Tstruct;
   case TST_interface: return TTK_Interface;
   case TST_union: return TTK_Union;
   case TST_enum: return TTK_Enum;
@@ -2839,6 +2854,7 @@ TypeWithKeyword::getKeywordForTagTypeKind(TagTypeKind Kind) {
   switch (Kind) {
   case TTK_Class: return ETK_Class;
   case TTK_Struct: return ETK_Struct;
+  case TTK_Tstruct: return ETK_TStruct;
   case TTK_Interface: return ETK_Interface;
   case TTK_Union: return ETK_Union;
   case TTK_Enum: return ETK_Enum;
@@ -2851,6 +2867,7 @@ TypeWithKeyword::getTagTypeKindForKeyword(ElaboratedTypeKeyword Keyword) {
   switch (Keyword) {
   case ETK_Class: return TTK_Class;
   case ETK_Struct: return TTK_Struct;
+  case ETK_TStruct: return TTK_Tstruct;
   case ETK_Interface: return TTK_Interface;
   case ETK_Union: return TTK_Union;
   case ETK_Enum: return TTK_Enum;
@@ -2869,6 +2886,7 @@ TypeWithKeyword::KeywordIsTagTypeKind(ElaboratedTypeKeyword Keyword) {
     return false;
   case ETK_Class:
   case ETK_Struct:
+  case ETK_TStruct:
   case ETK_Interface:
   case ETK_Union:
   case ETK_Enum:
@@ -2883,6 +2901,7 @@ StringRef TypeWithKeyword::getKeywordName(ElaboratedTypeKeyword Keyword) {
   case ETK_Typename: return "typename";
   case ETK_Class:  return "class";
   case ETK_Struct: return "struct";
+  case ETK_TStruct : return "Tstruct";
   case ETK_Interface: return "__interface";
   case ETK_Union:  return "union";
   case ETK_Enum:   return "enum";
@@ -4396,34 +4415,35 @@ bool Type::hasSizedVLAType() const {
   return false;
 }
 
-// isOrContainsCheckedType - check whether a type is a checked type or is a
+// isOrContainsCheckedOrTaintedType - check whether a type is a checked or tainted type or is a
 // constructed type (array, pointer, function) that uses a checked type.
-bool Type::isOrContainsCheckedType() const {
+bool Type::isOrContainsCheckedOrTaintedType() const {
   const Type *current = CanonicalType.getTypePtr();
   switch (current->getTypeClass()) {
     case Type::Pointer: {
       const PointerType *ptr = cast<PointerType>(current);
-      if (ptr->isCheckedPointerType()) {
+      if ((ptr->isCheckedPointerType())
+              || (ptr->isTaintedPointerType())){
         return true;
       }
-      return ptr->getPointeeType()->isOrContainsCheckedType();
+      return ptr->getPointeeType()->isOrContainsCheckedOrTaintedType();
     }
     case Type::ConstantArray:
     case Type::DependentSizedArray:
     case Type::IncompleteArray:
     case Type::VariableArray: {
      const ArrayType *arr = cast<ArrayType>(current);
-      if (arr->isChecked())
+      if ((arr->isChecked()) || (arr->isTainted()))
         return true;
-      return arr->getElementType()->isOrContainsCheckedType();
+      return arr->getElementType()->isOrContainsCheckedOrTaintedType();
     }
     case Type::FunctionProto: {
       const FunctionProtoType *fpt =  cast<FunctionProtoType>(current);
-      if (fpt->getReturnType()->isOrContainsCheckedType())
+      if (fpt->getReturnType()->isOrContainsCheckedOrTaintedType())
         return true;
       unsigned int paramCount = fpt->getNumParams();
       for (unsigned int i = 0; i < paramCount; i++) {
-        if (fpt->getParamType(i)->isOrContainsCheckedType())
+        if (fpt->getParamType(i)->isOrContainsCheckedOrTaintedType())
           return true;
       }
       return false;
@@ -4449,7 +4469,7 @@ bool Type::isOrContainsUncheckedType() const {
     case Type::IncompleteArray:
     case Type::VariableArray: {
      const ArrayType *arr = cast<ArrayType>(current);
-      if (!arr->isChecked())
+      if ((!arr->isChecked()) && (!arr->isTainted()))
         return true;
       return arr->getElementType()->isOrContainsUncheckedType();
     }

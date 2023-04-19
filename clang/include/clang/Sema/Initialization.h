@@ -140,6 +140,8 @@ private:
   /// The type of the object or reference being initialized.
   QualType Type;
 
+  /// The Interop type of the object
+  QualType InterOpSymbiote;
   /// The mangling number for the next reference temporary to be created.
   mutable unsigned ManglingNumber = 0;
 
@@ -442,6 +444,24 @@ public:
 
   /// Retrieve type being initialized.
   QualType getType() const { return Type; }
+  /*
+   * Consider an argument having itypes --> const char* : itype(_TNt_array_ptr<const char>)
+   * When the user passed _Checked or _Nt_Checked Array type --> Since the argument
+   * being passed is a checked type --> it would be tallied against the itype.
+   * This would result in a mismatch.
+   * To get around this, we give the an other chance To tally the passed argument type
+   * against the original type (const char*).
+   * We call this original Type fancily as Symbiote Type.
+   */
+  void setInterOpSymbioteType(QualType Ty)
+  {
+          InterOpSymbiote = Ty;
+  }
+
+  const QualType getInterOpSymbioteType()
+  const {
+    return InterOpSymbiote;
+  }
 
   /// Retrieve complete type-source information for the object being
   /// constructed, if known.

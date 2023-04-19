@@ -193,6 +193,7 @@ public:
   virtual bool hasNestedTypes() const = 0;
   virtual bool hasNoInlineAttribute() const = 0;
   virtual bool hasNoReturnAttribute() const = 0;
+  virtual bool hasTaintedAttribute() const = 0;
   virtual bool hasOptimizedCodeDebugInfo() const = 0;
   virtual bool hasOverloadedOperator() const = 0;
   virtual bool hasSEH() const = 0;

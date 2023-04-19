@@ -552,7 +552,7 @@ std::string PointerVariableConstraint::tryExtractBaseType(
 
   if (!TSI)
     TSI = getTypeSourceInfoOfMultiDeclMember(D);
-  if (!QT->isOrContainsCheckedType() && !Ty->getAs<TypedefType>() && TSI) {
+  if (!QT->isOrContainsCheckedOrTaintedType() && !Ty->getAs<TypedefType>() && TSI) {
     // Try to extract the type from original source to preserve defines
     TypeLoc TL = TSI->getTypeLoc();
     bool FoundBaseTypeInSrc = false;

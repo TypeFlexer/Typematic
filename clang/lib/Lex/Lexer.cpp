@@ -1047,6 +1047,24 @@ StringRef Lexer::getImmediateMacroNameForDiagnostics(
   return ExpansionBuffer.substr(ExpansionInfo.second, MacroTokenLength);
 }
 
+StringRef Lexer::getFullMacroExpansion(
+    SourceLocation Loc, const SourceManager &SM, const LangOptions &LangOpts) {
+  std::string FullMacroExpanseStr = "";
+  if (!Loc.isMacroID())
+    return FullMacroExpanseStr;
+  // Walk past macro argument expansions and read all the tokens into the
+  // string
+    /*
+    * Loc will point to the beginning of the charSourceRange of the
+    * complete Macro Expanse
+    */
+  auto CharSourceRange = SM.getExpansionRange(Loc);
+  CharSourceRange.setEnd(CharSourceRange.getEnd().getLocWithOffset(1));
+
+  FullMacroExpanseStr = getSourceText(CharSourceRange, SM, LangOpts).str();
+  return FullMacroExpanseStr;
+}
+
 bool Lexer::isIdentifierBodyChar(char c, const LangOptions &LangOpts) {
   return isIdentifierBody(c, LangOpts.DollarIdents);
 }

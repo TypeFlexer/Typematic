@@ -171,6 +171,7 @@ public:
   bool hasNestedTypes() const override;
   bool hasNoInlineAttribute() const override;
   bool hasNoReturnAttribute() const override;
+  bool hasTaintedAttribute() const override;
   bool hasOptimizedCodeDebugInfo() const override;
   bool hasOverloadedOperator() const override;
   bool hasSEH() const override;

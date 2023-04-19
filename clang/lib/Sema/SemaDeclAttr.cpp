@@ -2111,6 +2111,11 @@ static void handleNoReturnAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
   D->addAttr(::new (S.Context) NoReturnAttr(S.Context, Attrs));
 }
 
+static void handleTaintedAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
+  if (hasDeclarator(D)) return;
+    D->addAttr(::new (S.Context) TaintedAttr(S.Context, Attrs));
+}
+
 static void handleNoCfCheckAttr(Sema &S, Decl *D, const ParsedAttr &Attrs) {
   if (!S.getLangOpts().CFProtectionBranch)
     S.Diag(Attrs.getLoc(), diag::warn_nocf_check_attribute_ignored);
@@ -7876,6 +7881,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_NoReturn:
     handleNoReturnAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_Tainted:
+    handleTaintedAttr(S, D, AL);
     break;
   case ParsedAttr::AT_AnyX86NoCfCheck:
     handleNoCfCheckAttr(S, D, AL);

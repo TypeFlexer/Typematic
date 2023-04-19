@@ -517,6 +517,7 @@ LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef Ty) {
     return LLVMTokenTypeKind;
   case Type::ScalableVectorTyID:
     return LLVMScalableVectorTypeKind;
+
   }
   llvm_unreachable("Unhandled TypeID.");
 }

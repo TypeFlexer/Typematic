@@ -616,6 +616,7 @@ DeclSpec::TST Sema::isTagName(IdentifierInfo &II, Scope *S) {
     if (const TagDecl *TD = R.getAsSingle<TagDecl>()) {
       switch (TD->getTagKind()) {
       case TTK_Struct: return DeclSpec::TST_struct;
+      case TTK_Tstruct: return DeclSpec::TST_Tstruct;
       case TTK_Interface: return DeclSpec::TST_interface;
       case TTK_Union:  return DeclSpec::TST_union;
       case TTK_Class:  return DeclSpec::TST_class;
@@ -813,6 +814,10 @@ static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
 
       case TTK_Union:
         FixItTagName = "union ";
+        break;
+
+      case TTK_Tstruct:
+        FixItTagName = "Tstruct  ";
         break;
     }
 
@@ -2726,7 +2731,12 @@ static void checkNewAttributesAfterDef(Sema &S, Decl *New, const Decl *Old) {
       // C's _Noreturn is allowed to be added to a function after it is defined.
       ++I;
       continue;
-    } else if (isa<UuidAttr>(NewAttribute)) {
+    }
+    else if(isa<C11TaintedAttr>(NewAttribute)){
+      ++I;
+      continue;
+    }
+    else if (isa<UuidAttr>(NewAttribute)) {
       // msvc will allow a subsequent definition to add an uuid to a class
       ++I;
       continue;
@@ -3259,6 +3269,28 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
   if (Old->isInvalidDecl())
     return true;
 
+  /*
+   * Merge Decls
+   * This is scenario where Scope specifier attribute is applied to function
+   * prototype, and now you gotta reflect this attribute to the Function
+   * Definition
+   */
+
+  if(Old->getAsFunction()->isTaintedDecl() ||
+      Old->getAsFunction()->isTainted())
+    New->getAsFunction()->setTaintedDecl(true);
+
+  if(Old->getAsFunction()->isMirrorDecl() ||
+      Old->getAsFunction()->isMirror())
+    New->getAsFunction()->setMirrorDecl(true);
+
+  if(Old->getAsFunction()->isLibDecl() ||
+      Old->getAsFunction()->isTLIB())
+    New->getAsFunction()->setLibDecl(true);
+
+  if(Old->getAsFunction()->isCallback() ||
+      Old->getAsFunction()->isCallbackDecl())
+    New->getAsFunction()->setCallbackDecl(true);
   // Disallow redeclaration of some builtins.
   if (!getASTContext().canBuiltinBeRedeclared(Old)) {
     Diag(New->getLocation(), diag::err_builtin_redeclare) << Old->getDeclName();
@@ -3401,6 +3433,17 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
     NewTypeInfo = NewTypeInfo.withNoReturn(true);
     RequiresAdjustment = true;
   }
+
+  if (OldTypeInfo.getTainted() && !NewTypeInfo.getTainted()) {
+    NewTypeInfo.setTainted(true);
+    RequiresAdjustment = true;
+  }
+
+  if (OldTypeInfo.getCallback() && !NewTypeInfo.getCallback()) {
+    NewTypeInfo.setCallback(true);
+    RequiresAdjustment = true;
+  }
+
 
   // Merge regparm attribute.
   if (OldTypeInfo.getHasRegParm() != NewTypeInfo.getHasRegParm() ||
@@ -3650,6 +3693,23 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
       assert(OldQTypeForComparison.isCanonical());
     }
 
+    if (!OldTypeInfo.getTainted() && NewTypeInfo.getTainted()) {
+      auto *OldType = OldQType->castAs<FunctionProtoType>();
+      const FunctionType *OldTypeForComparison
+          = Context.adjustFunctionType(OldType, OldTypeInfo.setTainted(true));
+      OldQTypeForComparison = QualType(OldTypeForComparison, 0);
+      assert(OldQTypeForComparison.isCanonical());
+    }
+
+    if (!OldTypeInfo.getCallback() && NewTypeInfo.getCallback()) {
+      auto *OldType = OldQType->castAs<FunctionProtoType>();
+      const FunctionType *OldTypeForComparison
+          = Context.adjustFunctionType(OldType, OldTypeInfo.setCallback(true));
+      OldQTypeForComparison = QualType(OldTypeForComparison, 0);
+      assert(OldQTypeForComparison.isCanonical());
+    }
+
+
     if (haveIncompatibleLanguageLinkages(Old, New)) {
       // As a special case, retain the language linkage from previous
       // declarations of a friend function as an extension.
@@ -3688,8 +3748,9 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
 
   // C: Function types need to be compatible, not identical. This handles
   // duplicate function decls like "void f(int); void f(enum X);" properly.
-  if (!getLangOpts().CPlusPlus &&
-      Context.typesAreCompatible(OldQType, NewQType)) {
+    if (!getLangOpts().CPlusPlus &&
+    Context.typesAreCompatible(OldQType, NewQType)) {
+    //if (!getLangOpts().CPlusPlus){
     const FunctionType *OldFuncType = OldQType->getAs<FunctionType>();
     const FunctionType *NewFuncType = NewQType->getAs<FunctionType>();
     const FunctionProtoType *OldProto = nullptr;
@@ -3754,6 +3815,18 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
     QualType MergedReturn = Context.mergeTypes(OldProto->getReturnType(),
                                                NewProto->getReturnType());
     bool LooseCompatible = !MergedReturn.isNull();
+    if (Old->isTaintedDecl())
+      New->setTaintedDecl(true);
+
+    if(Old->isMirrorDecl())
+      New->setMirrorDecl(true);
+
+    if (Old->isLibDecl())
+      New->setLibDecl(true);
+
+    if(Old->isCallbackDecl())
+      New->setCallbackDecl(true);
+
     for (unsigned Idx = 0, End = Old->getNumParams();
          LooseCompatible && Idx != End; ++Idx) {
       ParmVarDecl *OldParm = Old->getParamDecl(Idx);
@@ -4094,7 +4167,7 @@ static bool diagnoseBoundsError(Sema &S,
 
   if (!S.Context.EquivalentBounds(OldBounds, NewBounds)) {
     if (OldBounds && NewBounds)
-      DiagId = diag::err_decl_conflicting_annot;
+      DiagId = diag::err_decl_conflicting_annot; // this is not being hit
     else if (!IsUncheckedType || IsInconsistent)
       DiagId = NewBounds ?
         diag::err_decl_added_annot :
@@ -4146,15 +4219,15 @@ static SourceLocation getInteropLocation(const DeclaratorDecl *D) {
     return SourceLocation();
 }
 
-/// \brief Diagnose Checked C-specific compatibility issues for function decls.
+/// \brief Diagnose CheckCBox-specific compatibility issues for function decls.
 /// Handle cases where (1) there are mismatched bounds declarations for
 /// parameters or return types or (2) cases where one declaration has no
 /// prototype and the other one has a prototype that uses a checked type or has
 /// a bounds interface (Checked C compatibility rules are described in
 /// Section 5.5 of the Checked C language extension specification).
 ////
-/// Returns true if it diagnosed a Checked C bounds-only problem or a
-/// problem involving the Checked C extensions to type compatibility.
+/// Returns true if it diagnosed a CheckCBox bounds-only problem or a
+/// problem involving the CheckCBox extensions to type compatibility.
 bool Sema::DiagnoseCheckedCFunctionCompatibility(FunctionDecl *New,
                                                  FunctionDecl *Old) {
   bool OldHasPrototype = Old->hasPrototype();
@@ -4300,7 +4373,7 @@ bool Sema::CheckedCFunctionDeclCompatibility(FunctionDecl *Old,
   return !Context.typesAreCompatible(OldType, NewType);
 }
 
-/// \brief Checked C specific merging of function declarations.  Returns true
+/// \brief CheckCBox specific merging of function declarations.  Returns true
 /// if there was an error, false otherwise.
 bool Sema::CheckedCMergeFunctionDecls(FunctionDecl *New, FunctionDecl *Old) {
   // Check for mismatches between the new function declaration and the old
@@ -5043,6 +5116,8 @@ static unsigned GetDiagnosticTypeSpecifierID(DeclSpec::TST T) {
     return 3;
   case DeclSpec::TST_enum:
     return 4;
+  case DeclSpec::TST_Tstruct:
+    return 5;
   default:
     llvm_unreachable("unexpected type specifier");
   }
@@ -5060,6 +5135,7 @@ Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
   TagDecl *Tag = nullptr;
   if (DS.getTypeSpecType() == DeclSpec::TST_class ||
       DS.getTypeSpecType() == DeclSpec::TST_struct ||
+      DS.getTypeSpecType() == DeclSpec::TST_Tstruct ||
       DS.getTypeSpecType() == DeclSpec::TST_interface ||
       DS.getTypeSpecType() == DeclSpec::TST_union ||
       DS.getTypeSpecType() == DeclSpec::TST_enum) {
@@ -5298,6 +5374,7 @@ Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
     DeclSpec::TST TypeSpecType = DS.getTypeSpecType();
     if (TypeSpecType == DeclSpec::TST_class ||
         TypeSpecType == DeclSpec::TST_struct ||
+        TypeSpecType == DeclSpec::TST_Tstruct ||
         TypeSpecType == DeclSpec::TST_interface ||
         TypeSpecType == DeclSpec::TST_union ||
         TypeSpecType == DeclSpec::TST_enum) {
@@ -6049,8 +6126,46 @@ static bool RebuildDeclaratorInCurrentInstantiation(Sema &S, Declarator &D,
 }
 
 Decl *Sema::ActOnDeclarator(Scope *S, Declarator &D) {
+
   D.setFunctionDefinitionKind(FunctionDefinitionKind::Declaration);
   Decl *Dcl = HandleDeclarator(S, D, MultiTemplateParamsArg());
+
+  // The Below condition is to prevent tainted functions from having pointer
+  // return types that are not tainted
+
+//  if ((D.getDeclSpec().isTaintedSpecified() || IsTaintedScope()) &&
+//      (D.getDeclSpec().getPointerTypeGeneric().isValid() ||
+//       D.getDeclSpec().getPointerTypeChecked().isValid()))
+//  {
+//      Diag(D.getDeclSpec().getBeginLoc(),
+//         diag::err_tainted_specified_functions_should_have_tainted_pointers);
+//  }
+  // The below condition is to prevent tainted functions from have struct
+  //return types that are not tainted
+//  if ((D.getDeclSpec().isTaintedSpecified()
+//       || IsTaintedScope())  && (D.getDeclSpec().getTypeSpecType() == clang::TST_struct))
+//  {
+//    Diag(D.getDeclSpec().getBeginLoc(),
+//         diag::err_tainted_specified_functions_should_have_tainted_structs);
+//  }
+
+  // The Below condition is to prevent _Callback functions from having pointer
+  // return types that are not _Callback
+
+  if ((D.getDeclSpec().isCallbackSpecified()) &&
+      (D.getDeclSpec().getPointerTypeGeneric().isValid() ||
+       D.getDeclSpec().getPointerTypeChecked().isValid()))
+  {
+    Diag(D.getDeclSpec().getBeginLoc(),
+         diag::err_callback_specified_functions_should_have_tainted_pointers);
+  }
+  // The below condition is to prevent Callback functions from have struct
+  //return types that are not tainted
+  if (D.getDeclSpec().isCallbackSpecified() && (D.getDeclSpec().getTypeSpecType() == clang::TST_struct))
+  {
+    Diag(D.getDeclSpec().getBeginLoc(),
+         diag::err_callback_specified_functions_should_have_tainted_structs);
+  }
 
   if (OriginalLexicalContext && OriginalLexicalContext->isObjCContainer() &&
       Dcl && Dcl->getDeclContext()->isFileContext())
@@ -6058,6 +6173,38 @@ Decl *Sema::ActOnDeclarator(Scope *S, Declarator &D) {
 
   if (getLangOpts().OpenCL)
     setCurrentOpenCLExtensionForDecl(Dcl);
+
+  if (D.getDeclSpec().isTaintedSpecified()
+      /*
+       * Or if the decl is declared in a tainted function
+       */
+      || IsTaintedScope())
+  {
+    Dcl->setTaintedDecl(true);
+  }
+  else if (D.getDeclSpec().isCallbackSpecified())
+  {
+    Dcl->setCallbackDecl(true);
+  }
+  else if ((D.getDeclSpec().isTaintedMirrorSpecified()) || IsMirrorScope())
+  {
+    Dcl->setMirrorDecl(true);
+  }
+  else if(D.getDeclSpec().isTLIBSpecified() || IsTLIBScope())
+  {
+    Dcl->setLibDecl(true);
+  }
+  else if(D.getDeclSpec().isTaintedStruct ||
+           (D.getDeclSpec().isGenericFunctionOrStruct()
+            && (IsTLIBScope()||IsMirrorScope())))
+  {
+    Dcl->setTaintedDecl(true);
+  }
+
+  if (D.getDeclSpec().isDecoyDeclSpecified())
+  {
+    Dcl->setDecoyDecl(true);
+  }
 
   return Dcl;
 }
@@ -6592,6 +6739,10 @@ void Sema::DiagnoseFunctionSpecifiers(const DeclSpec &DS) {
   if (DS.isNoreturnSpecified())
     Diag(DS.getNoreturnSpecLoc(),
          diag::err_noreturn_non_function);
+
+//  if(DS.isTaintedSpecified())
+//    Diag(DS.getNoreturnSpecLoc(),
+//         diag::err_tainted_non_function);
 
   if (DS.getCheckedScopeSpecifier() != CheckedScopeSpecifier::CSS_None)
     Diag(DS.getCheckedSpecLoc(), 
@@ -7336,6 +7487,15 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     LookupResult &Previous, MultiTemplateParamsArg TemplateParamLists,
     bool &AddToScope, ArrayRef<BindingDecl *> Bindings) {
   QualType R = TInfo->getType();
+  // The starting location of the last token in the type
+  auto typedef_resolved_type = R;
+  if (R->isTaintedPointerType() &&
+      !R->getCoreTypeInternal()->isTaintedStructureType() && R->getCoreTypeInternal()->isStructureType())
+  {
+    Diag(D.getIdentifierLoc(), diag::err_invalid_tainted_ptr_struct);
+    return nullptr;
+  }
+
   DeclarationName Name = GetNameForDeclarator(D).getName();
 
   IdentifierInfo *II = Name.getAsIdentifierInfo();
@@ -9393,6 +9553,88 @@ static bool isKNRDeclarationOnly(FunctionDecl *Decl) {
   return false;
 }
 
+bool Sema::CheckTaintedFunctionIntegrity(ParmVarDecl *Param)
+{
+  /*
+   * A _Tainted attributed function can NOT accept the following types
+   * as parameter values
+   * 1.) struct --> Alternative Tstruct
+   * 2.) _Ptr (checked Ptr) --> Alternative _TPtr
+   * 3.) _Array_ptr (checked array pointer) --> Alternative _TArray_ptr
+   * 4.) _Nt_array_ptr (checked null-terminated array pointer) --> Alternative _TNt_array_ptr
+   * 5.) Generic C pointer that is not a function pointer (example int* , char* , Tstruct*)
+   * 6.) A function pointer whose function declaration is not marked as Callback
+   * NOTE: func_ptr* are allowed as arguments, but not return value
+   */
+
+
+  if(Param->getType()->isCheckedPointerType())
+  {
+    Diag(Param->getLocation(), diag::err_tainted_specified_functions_should_have_tainted_pointers)
+        << FixItHint::CreateInsertion(
+               Param->getLocation(),
+               "Create a Tainted Pointer instead and Marshall the data into it");
+    return false;
+  }
+  else if(Param->getType()->isUncheckedPointerType() &&
+           !Param->getType()->getPointeeType()->isFunctionType())
+  {
+    /*
+     * The only allowed unchecked pointer (generic-C) pointer type is
+     * a function pointer type
+     */
+    Diag(Param->getLocation(), diag::err_tainted_specified_functions_should_have_tainted_pointers)
+        << FixItHint::CreateInsertion(
+               Param->getLocation(),
+               "Create a Tainted Pointer instead and Marshall the data into it");
+    return false;
+  }
+  else if((Param->getType()->isStructureType())
+           && (!Param->getType()->isTaintedStructureType()))
+  {
+    Diag(Param->getLocation(), diag::err_tainted_specified_functions_should_have_tainted_structs)
+        << FixItHint::CreateInsertion(Param->getLocation(),
+          "Create a Tstruct instead and reflect this data into it ");
+    return false;
+  }
+  return true;
+}
+
+bool Sema::CheckCallbackFunctionIntegrity(ParmVarDecl *Param)
+{
+  if(Param->getType()->isCheckedPointerType())
+  {
+    Diag(Param->getLocation(), diag::err_callback_specified_functions_should_have_tainted_pointers)
+        << FixItHint::CreateInsertion(
+               Param->getLocation(),
+               "Create a Tainted Pointer(allocated with t_malloc) instead and Marshall the data into it");
+    return false;
+  }
+
+  if(Param->getType()->isUncheckedPointerType() &&
+           !Param->getType()->getPointeeType()->isFunctionType())
+  {
+    /*
+     * The only allowed unchecked pointer (generic-C) pointer type is
+     * a function pointer type
+     */
+    Diag(Param->getLocation(), diag::err_callback_specified_functions_should_have_tainted_pointers)
+        << FixItHint::CreateInsertion(
+               Param->getLocation(),
+               "Create a Tainted Pointer(allocated with t_malloc) instead and Marshall the data into it");
+    return false;
+  }
+  else if(Param->getType()->isStructureType())
+  {
+    Diag(Param->getLocation(), diag::err_callback_specified_functions_should_have_tainted_structs)
+        << FixItHint::CreateInsertion(Param->getLocation(),
+                                      "Create a Tstruct instead and reflect this data into it ");
+    return false;
+  }
+
+  return true;
+}
+
 NamedDecl*
 Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
                               TypeSourceInfo *TInfo, LookupResult &Previous,
@@ -9446,6 +9688,33 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   FunctionDecl *NewFD = CreateNewFunctionDecl(*this, D, DC, R, TInfo, SC,
                                               isVirtualOkay);
   if (!NewFD) return nullptr;
+
+
+
+  if((D.getDeclSpec().isTaintedSpecified()) || IsTaintedScope())
+  {
+    //we need to set the Function's exttype class with this attribute
+    NewFD->setTaintedFunctionFlag(true);
+  }
+
+  if(D.getDeclSpec().isCallbackSpecified() )
+  {
+    //we need to set the Function's exttype class with this attribute
+    NewFD->setCallbackFunctionFlag(true);
+  }
+
+  if(D.getDeclSpec().isTaintedMirrorSpecified() || IsMirrorScope())
+  {
+    //we need to set the Function's exttype class with this attribute
+    NewFD->setMirrorFunctionFlag(true);
+  }
+
+  if((D.getDeclSpec().isTLIBSpecified()) || IsTLIBScope())
+
+  {
+    //we need to set the Function's exttype class with this attribute
+    NewFD->setTLIBFunctionFlag(true);
+  }
 
   if (D.getDeclSpec().isForanySpecified() || D.getDeclSpec().isItypeforanySpecified()) {
     if (NewFD->hasPrototype()) {
@@ -9847,6 +10116,23 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       for (unsigned i = 0, e = FTI.NumParams; i != e; ++i) {
         ParmVarDecl *Param = cast<ParmVarDecl>(FTI.Params[i].Param);
         assert(Param->getDeclContext() != NewFD && "Was set before ?");
+        /*
+         * If the FunctionDecl is Tainted,
+         * Make sure the argument type signature is legal
+         */
+        if(D.getDeclSpec().isTaintedSpecified() || IsTaintedScope()){
+          NewFD->setTaintedDecl(true);
+          if(!CheckTaintedFunctionIntegrity(Param)){
+            NewFD->setInvalidDecl();
+          }
+        }
+
+        if(D.getDeclSpec().isCallbackSpecified()){
+          if(!CheckCallbackFunctionIntegrity(Param)){
+            NewFD->setInvalidDecl();
+          }
+        }
+
         Param->setDeclContext(NewFD);
         Params.push_back(Param);
 
@@ -9870,6 +10156,9 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
         if (!TD) {
           if (auto *ECD = dyn_cast<EnumConstantDecl>(NonParmDecl))
             TD = cast<EnumDecl>(ECD->getDeclContext());
+
+          if(D.getDeclSpec().isTaintedSpecified() || IsTaintedScope())
+            TD->setTaintedDecl(true);
         }
         if (!TD)
           continue;
@@ -9878,6 +10167,8 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
           continue;
         TagDC->removeDecl(TD);
         TD->setDeclContext(NewFD);
+        if(D.getDeclSpec().isTaintedSpecified() || IsTaintedScope())
+          TD->setTaintedDecl(true);
         NewFD->addDecl(TD);
 
         // Preserve the lexical DeclContext if it is not the surrounding tag
@@ -9907,6 +10198,18 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
           BuildParmVarDeclForTypedef(NewFD, D.getIdentifierLoc(), AI);
       Param->setScopeInfo(0, Params.size());
       Params.push_back(Param);
+      if(D.getDeclSpec().isTaintedSpecified() || IsTaintedScope()){
+        NewFD->setTaintedDecl(true);
+        if(!CheckTaintedFunctionIntegrity(Param)){
+          NewFD->setInvalidDecl();
+        }
+      }
+
+      if(D.getDeclSpec().isCallbackSpecified()){
+        if(!CheckCallbackFunctionIntegrity(Param)){
+          NewFD->setInvalidDecl();
+        }
+      }
     }
 
     // Copy the bounds annotations to the parameter.  Make the bounds
@@ -10439,7 +10742,75 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
 
   MarkUnusedFileScopedDecl(NewFD);
 
+  SourceRange RTRange = NewFD->getReturnTypeSourceRange();
+  if ((NewFD->isTainted() || NewFD->isCallback()) && (NewFD->getReturnType()->isPointerType()) &&
+      (!NewFD->getReturnType()->isTaintedPointerType())){
 
+    if(NewFD->isTainted()) {
+      Diag(D.getIdentifierLoc(),
+           diag::err_tainted_specified_functions_should_have_tainted_pointers)
+          << (RTRange.isValid()
+                  ? FixItHint::CreateReplacement(RTRange, "Tainted Pointer")
+                  : FixItHint());
+    }
+    else if( NewFD->isCallback()){
+      Diag(D.getIdentifierLoc(),
+           diag::err_callback_specified_functions_should_have_tainted_pointers)
+          << (RTRange.isValid()
+                  ? FixItHint::CreateReplacement(RTRange, "Tainted Pointer")
+                  : FixItHint());
+    }
+    D.setInvalidType();
+  }
+
+  if(NewFD->isTainted() && NewFD->isStatic())
+  {
+    Diag(D.getIdentifierLoc(),
+         diag::err_tainted_specified_functions_static)
+        << (RTRange.isValid()
+                ? FixItHint::CreateReplacement(RTRange, "Remove static")
+                : FixItHint());
+    D.setInvalidType();
+  }
+
+  if ((NewFD->isTainted() || NewFD->isCallback()) && (NewFD->getReturnType()->isStructureType())){
+    if(NewFD->isTainted()) {
+      Diag(D.getIdentifierLoc(),
+           diag::err_tainted_specified_functions_should_have_tainted_structs)
+          << (RTRange.isValid()
+                  ? FixItHint::CreateReplacement(RTRange, "Tstruct")
+                  : FixItHint());
+    }
+    else if( NewFD->isCallback()){
+      Diag(D.getIdentifierLoc(),
+           diag::err_callback_specified_functions_should_have_tainted_structs)
+          << (RTRange.isValid()
+                  ? FixItHint::CreateReplacement(RTRange, "Tstruct")
+                  : FixItHint());
+    }
+    D.setInvalidType();
+  }
+
+  if ((NewFD->isTainted() || NewFD->isCallback()) && (NewFD->getReturnType()->isPointerType()) &&
+      (NewFD->getReturnType()->isFunctionType())){
+    if(NewFD->isTainted()) {
+      Diag(D.getIdentifierLoc(),
+           diag::err_tainted_function_can_only_have_callback_func_ptrs_ret)
+          << (RTRange.isValid()
+                  ? FixItHint::CreateReplacement(RTRange, "Call the tainted function directly "
+                                                          "instead of returning its function pointer")
+                  : FixItHint());
+    }
+    else if( NewFD->isCallback()){
+      Diag(D.getIdentifierLoc(),
+           diag::err_callback_specified_functions_cannot_return_func_ptrs)
+          << (RTRange.isValid()
+                  ? FixItHint::CreateReplacement(RTRange, "Register the function as a callback "
+                                                          "and then pass it as a function pointer argument to the tainted function")
+                  : FixItHint());
+    }
+    D.setInvalidType();
+  }
 
   if (getLangOpts().OpenCL && NewFD->hasAttr<OpenCLKernelAttr>()) {
     // OpenCL v1.2 s6.8 static is invalid for kernel functions.
@@ -10451,7 +10822,6 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
 
     // OpenCL v1.2, s6.9 -- Kernels can only have return type void.
     if (!NewFD->getReturnType()->isVoidType()) {
-      SourceRange RTRange = NewFD->getReturnTypeSourceRange();
       Diag(D.getIdentifierLoc(), diag::err_expected_kernel_void_return_type)
           << (RTRange.isValid() ? FixItHint::CreateReplacement(RTRange, "void")
                                 : FixItHint());
@@ -10486,7 +10856,15 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   }
 
   for (const ParmVarDecl *Param : NewFD->parameters()) {
+
     QualType PT = Param->getType();
+
+    if(D.getDeclSpec().isTaintedSpecified() || IsTaintedScope())
+      (const_cast<ParmVarDecl*>(Param))->setTaintedDecl(true);
+    else if(D.getDeclSpec().isTaintedMirrorSpecified() || IsMirrorScope())
+      (const_cast<ParmVarDecl*>(Param))->setMirrorDecl(true);
+    else if(D.getDeclSpec().isTLIBSpecified() || IsTLIBScope())
+      (const_cast<ParmVarDecl*>(Param))->setLibDecl(true);
 
     // OpenCL 2.0 pipe restrictions forbids pipe packet types to be non-value
     // types.
@@ -10502,10 +10880,17 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   }
 
   // Checked C - type restrictions on declarations in checked blocks.
+  // Tainted Pointers are allowed in checked blocks
   // Check the function return value type.   Parameters are handled
   // separately by checking on variable declarations.
   for (unsigned I = 0, E = NewFD->getNumParams(); I != E; ++I) {
     ParmVarDecl *PVD = NewFD->getParamDecl(I);
+
+    if(D.getDeclSpec().isTaintedSpecified() || IsTaintedScope())
+      PVD->setTaintedDecl(true);
+    else if(D.getDeclSpec().isTaintedMirrorSpecified() || IsMirrorScope())
+      PVD->setMirrorDecl(true);
+
     if (!DiagnoseCheckedDecl(PVD))
       PVD->setInvalidDecl();
   }
@@ -11664,6 +12049,13 @@ void Sema::CheckMain(FunctionDecl* FD, const DeclSpec& DS) {
     Diag(NoreturnLoc, diag::note_main_remove_noreturn)
       << FixItHint::CreateRemoval(NoreturnRange);
   }
+  if(DS.isTaintedSpecified() || IsTaintedScope()){
+    SourceLocation TaintedLoc = DS.getTaintedSpecLoc();
+    SourceRange TaintedRange(TaintedLoc, getLocForEndOfToken(TaintedLoc));
+    Diag(TaintedLoc, diag::ext_tainted_main);
+    Diag(TaintedLoc, diag::note_main_remove_tainted)
+        << FixItHint::CreateRemoval(TaintedRange);
+  }
   if (FD->isConstexpr()) {
     Diag(DS.getConstexprSpecLoc(), diag::err_constexpr_main)
         << FD->isConsteval()
@@ -12636,6 +13028,10 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init, bool DirectInit,
     return;
   }
 
+  /*
+   *
+   */
+
   if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(RealDecl)) {
     // Pure-specifiers are handled in ActOnPureSpecifier.
     Diag(Method->getLocation(), diag::err_member_function_initialization)
@@ -12719,6 +13115,23 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init, bool DirectInit,
       !VDecl->isThisDeclarationADemotedDefinition() &&
       checkVarDeclRedefinition(Def, VDecl))
     return;
+  /*
+   * CheckCBox:
+   * If you are in a tainted scope or, make sure that the decl
+   * is being initialized with either a local variable or a global variable that
+   * has been marked as Mirror
+   */
+
+  if((IsTaintedScope()) || (IsMirrorScope()))
+  {
+    ExprResult InitExpr = Init;
+    auto isLegalInit = CheckUnExprIntegrityInTaintedScope(&InitExpr, EqualLoc);
+    if(!isLegalInit)
+    {
+      VDecl->setInvalidDecl();
+      return;
+    }
+  }
 
   if (getLangOpts().CPlusPlus) {
     // C++ [class.static.data]p4
@@ -13268,6 +13681,20 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
   if (VarDecl *Var = dyn_cast<VarDecl>(RealDecl)) {
     QualType Type = Var->getType();
 
+    if(IsTaintedScope())
+    {
+      Var->setTaintedDecl(true);
+    }
+
+    if(IsMirrorScope())
+    {
+      Var->setMirrorDecl(true);
+    }
+
+    if(IsTLIBScope())
+    {
+      Var->setLibDecl(true);
+    }
     // C++1z [dcl.dcl]p1 grammar implies that an initializer is mandatory.
     if (isa<DecompositionDecl>(RealDecl)) {
       Diag(Var->getLocation(), diag::err_decomp_decl_requires_init) << Var;
@@ -13336,7 +13763,8 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       }
     }
 
-    // Checked C: automatic variables with (1) type _Ptr or (2) a bounds
+    // CheckCBox: automatic variables with (1) type _Ptr or (2) type _TPtr
+    // or (3) a bounds
     // declaration and not having an array type must be initialized.
     //
     // Static variables are initialized to 0 if there is no initializer.
@@ -13352,7 +13780,8 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       if (InCheckedScope && Var->hasInteropTypeExpr())
         Ty = Var->getInteropType();
 
-      if (Ty->isCheckedPointerPtrType() && !getLangOpts()._3C)
+      if ((Ty->isCheckedPointerPtrType() || Ty->isTaintedPointerPtrType() )
+          && !getLangOpts()._3C)
         Diag(Var->getLocation(), diag::err_initializer_expected_for_ptr)
           << Var;
       else if (B && !B->isInvalid() && !B->isUnknown() &&
@@ -14762,8 +15191,8 @@ static bool checkBoundsDeclWithTypeAnnotation(Sema &S, QualType DeclaredTy,
     Errors |= Annot_Illegal_Type;
   }
 
-  // Make sure that the annotation type is a checked type.
-  if (!(Errors & Annot_Illegal_Type) && !AnnotTy->isOrContainsCheckedType()) {
+  // Make sure that the annotation type is a checked or tainted type.
+  if (!(Errors & Annot_Illegal_Type) && !AnnotTy->isOrContainsCheckedOrTaintedType()) {
     S.Diag(AnnotTyLoc,
            diag::err_typecheck_bounds_type_annotation_must_be_checked_type);
     Errors |= Annot_Unchecked;
@@ -14818,7 +15247,7 @@ static bool checkBoundsDeclWithBoundsExpr(Sema &S, QualType Ty,
   // problems to more specific problems.   We don't want to suggest
   // fixes that will not work because there's a more general problem.
 
-  if (Ty->isCheckedPointerPtrType())
+  if ((Ty->isCheckedPointerPtrType()) || (Ty->isTaintedPointerPtrType()))
     // _Ptr types cannot have bounds expressions
     DiagId = IsReturnAnnots ? diag::err_typecheck_ptr_return_with_bounds
                             : diag::err_typecheck_ptr_decl_with_bounds;
@@ -14916,7 +15345,8 @@ bool Sema::DiagnoseBoundsDeclType(QualType Ty, DeclaratorDecl *D,
 
   if (IType && BE && !BE->isInvalid() && (!D || !D->isInvalidDecl())) {
      QualType QT = IType->getType();
-     if (!QT.isNull() && QT->isCheckedPointerPtrType()) {
+     if (!QT.isNull() && ((QT->isCheckedPointerPtrType())
+                          || (QT->isTaintedPointerPtrType()))) {
        isError = true;
        if (D) {
          Diag(BE->getBeginLoc(),
@@ -14930,7 +15360,7 @@ bool Sema::DiagnoseBoundsDeclType(QualType Ty, DeclaratorDecl *D,
   return isError;
 }
 
-// Attach a Checked C bounds annotations to a declaration.  If there are no
+// Attach a CheckCBox bounds annotations to a declaration.  If there are no
 // bounds annotation, Annots is null.  (This method needs to be called even when
 // bounds annotations are omitted for a declaration because there may be a
 // default bounds expression for a type).
@@ -14991,9 +15421,11 @@ void Sema::ActOnBoundsDecl(DeclaratorDecl *D, BoundsAnnotations Annots,
     }
 
     if (BoundsExpr) {
-      if (Ty->isPointerType() && !Ty->isCheckedPointerType())
+      if (Ty->isPointerType() && !Ty->isCheckedPointerType()
+          && !Ty->isTaintedPointerType())
         DiagId = diag::err_bounds_declaration_unchecked_local_pointer;
-      else if (Ty->isArrayType() && !Ty->isCheckedArrayType())
+      else if (Ty->isArrayType() && !Ty->isCheckedArrayType()
+               && !Ty->isTaintedPointerArrayType())
         DiagId = diag::err_bounds_declaration_unchecked_local_array;
 
       if (DiagId) {
@@ -15050,7 +15482,7 @@ void Sema::ActOnBoundsDecl(DeclaratorDecl *D, BoundsAnnotations Annots,
   D->setBoundsExpr(getASTContext(), BoundsExpr);
   D->setInteropTypeExpr(getASTContext(), IType);
 
-  // if this is a member bounds dedclaration, update information mapping
+  // if this is a member bounds declaration, update information mapping
   // members to what bounds declarations depend upon them.
   if (FieldDecl *FD = dyn_cast<FieldDecl>(D))
     TrackMemberBoundsDependences(FD, BoundsExpr);
@@ -15081,6 +15513,9 @@ void Sema::InferBoundsAnnots(QualType Ty, BoundsAnnotations &Annots, bool IsPara
     if (!BoundsExpr)
       if (Ty->isCheckedPointerNtArrayType() || (IType &&
                    IType->getType()->isCheckedPointerNtArrayType()))
+        BoundsExpr = Context.getPrebuiltCountZero();
+      else if (Ty->isTaintedPointerNtArrayType()
+               || (IType && IType->getType()->isTaintedPointerNtArrayType()))
         BoundsExpr = Context.getPrebuiltCountZero();
   }
 
@@ -15454,8 +15889,15 @@ Decl *Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Decl *D,
   }
 
   // Introduce our parameters into the function scope
+  // All the parameter Decls must be marked _Tainted to make the global
+  // tainted typechecked happy
   for (auto Param : FD->parameters()) {
     Param->setOwningFunction(FD);
+    if (FD->isTainted())
+      Param->setTaintedDecl(true);
+
+    if(FD->isMirror())
+      Param->setMirrorDecl(true);
 
     // If this has an identifier, add it to the scope stack.
     if (Param->getIdentifier() && FnBodyScope) {
@@ -16471,6 +16913,7 @@ Sema::NonTagKind Sema::getNonTagTypeDeclKind(const Decl *PrevDecl,
     return NTK_TemplateTemplateArgument;
   switch (TTK) {
   case TTK_Struct:
+  case TTK_Tstruct:
   case TTK_Interface:
   case TTK_Class:
     return getLangOpts().CPlusPlus ? NTK_NonClass : NTK_NonStruct;
@@ -18387,7 +18830,8 @@ void Sema::ActOnLastBitfield(SourceLocation DeclLoc,
 void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
                        ArrayRef<Decl *> Fields, SourceLocation LBrac,
                        SourceLocation RBrac,
-                       const ParsedAttributesView &Attrs) {
+                       const ParsedAttributesView &Attrs,
+                       bool IsTaintedStruct) {
   assert(EnclosingDecl && "missing record or interface decl");
 
   // If this is an Objective-C @implementation or category and we have
@@ -18430,6 +18874,22 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
 
     // Get the type for the field.
     const Type *FDTy = FD->getType().getTypePtr();
+
+    if(IsTaintedScope() || EnclosingDecl->isTaintedDecl())
+    {
+      FD->setTaintedDecl(true);
+    }
+
+    if(IsMirrorScope() || EnclosingDecl->isMirrorDecl())
+    {
+      FD->setMirrorDecl(true);
+    }
+
+    if (EnclosingDecl->isDecoyDecl())
+    {
+      FD->setDecoyDecl(true);
+      getFunctionExtInfo(FD->getTypeRef()).setDecoyed(true);
+    }
 
     if (!FD->isAnonymousStructOrUnion()) {
       // Remember all fields written by the user.
@@ -19347,6 +19807,21 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
 
   if (Enum->isDependentType()) {
     for (unsigned i = 0, e = Elements.size(); i != e; ++i) {
+      if(IsTaintedScope() || EnumDeclX->isTaintedDecl() )
+      {
+        Elements[i]->setTaintedDecl(true);
+      }
+
+      if(IsMirrorScope() || EnumDeclX->isMirrorDecl())
+      {
+        Elements[i]->setMirrorDecl(true);
+      }
+
+      if (EnumDeclX->isDecoyDecl())
+      {
+        Elements[i]->setDecoyDecl(true);
+      }
+
       EnumConstantDecl *ECD =
         cast_or_null<EnumConstantDecl>(Elements[i]);
       if (!ECD) continue;
@@ -19374,6 +19849,21 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
   bool AllElementsInt = true;
 
   for (unsigned i = 0, e = Elements.size(); i != e; ++i) {
+    if(IsTaintedScope() || EnumDeclX->isTaintedDecl())
+    {
+      Elements[i]->setTaintedDecl(true);
+    }
+
+    if(IsMirrorScope() || EnumDeclX->isMirrorDecl())
+    {
+      Elements[i]->setMirrorDecl(true);
+    }
+
+    if(EnumDeclX->isDecoyDecl())
+    {
+      Elements[i]->setDecoyDecl(true);
+    }
+
     EnumConstantDecl *ECD =
       cast_or_null<EnumConstantDecl>(Elements[i]);
     if (!ECD) continue;  // Already issued a diagnostic.
@@ -19491,6 +19981,21 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
   // Loop over all of the enumerator constants, changing their types to match
   // the type of the enum if needed.
   for (auto *D : Elements) {
+    if(IsTaintedScope() || EnumDeclX->isTaintedDecl())
+    {
+     D->setTaintedDecl(true);
+    }
+
+    if(IsMirrorScope() || EnumDeclX->isMirrorDecl())
+    {
+      D->setMirrorDecl(true);
+    }
+
+    if (EnumDeclX->isDecoyDecl())
+    {
+      D->setDecoyDecl(true);
+    }
+
     auto *ECD = cast_or_null<EnumConstantDecl>(D);
     if (!ECD) continue;  // Already issued a diagnostic.
 
@@ -19555,6 +20060,21 @@ void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceRange BraceRange,
 
   if (Enum->isClosedFlag()) {
     for (Decl *D : Elements) {
+      if(IsTaintedScope() || EnumDeclX->isTaintedDecl())
+      {
+        D->setTaintedDecl(true);
+      }
+
+      if(IsMirrorScope()  || EnumDeclX->isMirrorDecl())
+      {
+        D->setMirrorDecl(true);
+      }
+
+      if (EnumDeclX->isDecoyDecl())
+      {
+        D->setDecoyDecl(true);
+      }
+
       EnumConstantDecl *ECD = cast_or_null<EnumConstantDecl>(D);
       if (!ECD) continue;  // Already issued a diagnostic.
 

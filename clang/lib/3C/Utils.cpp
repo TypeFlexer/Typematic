@@ -91,19 +91,19 @@ SourceLocation locationPrecedingChar(SourceLocation SL, SourceManager &S,
   return SL.getLocWithOffset(Offset);
 }
 
-clang::CheckedPointerKind getCheckedPointerKind(InteropTypeExpr *ItypeExpr) {
+clang::CheckCBox_PointerKind getCheckCBox_PointerKind(InteropTypeExpr *ItypeExpr) {
   TypeSourceInfo *InteropTypeInfo = ItypeExpr->getTypeInfoAsWritten();
   const clang::Type *InnerType = InteropTypeInfo->getType().getTypePtr();
   if (InnerType->isCheckedPointerNtArrayType()) {
-    return CheckedPointerKind::NtArray;
+    return CheckCBox_PointerKind::NtArray;
   }
   if (InnerType->isCheckedPointerArrayType()) {
-    return CheckedPointerKind::Array;
+    return CheckCBox_PointerKind::Array;
   }
   if (InnerType->isCheckedPointerType()) {
-    return CheckedPointerKind::Ptr;
+    return CheckCBox_PointerKind::Ptr;
   }
-  return CheckedPointerKind::Unchecked;
+  return CheckCBox_PointerKind::Unchecked;
 }
 
 static std::string storageClassToString(StorageClass SC) {

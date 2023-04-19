@@ -28,6 +28,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
+#include <unordered_set>
 
 using namespace clang;
 
@@ -57,6 +58,9 @@ TypeResult Parser::ParseTypeName(SourceRange *Range,
 
   // Checked C - mark the current scope as checked or unchecked if necessary.
   Sema::CheckedScopeRAII CheckedScopeTracker(Actions, DS);
+  Sema::TaintedScopeRAII TaintedScopeTracker(Actions, DS);
+  Sema::MirrorScopeRAII MirrorScopeTracker(Actions, DS);
+  Sema::TLIBScopeRAII TLIBScopeTracker(Actions, DS);
 
   if (OwnedType)
     *OwnedType = DS.isTypeSpecOwned() ? DS.getRepAsDecl() : nullptr;
@@ -1732,7 +1736,9 @@ Parser::DeclGroupPtrTy Parser::ParseSimpleDeclaration(
 
   // Checked C - mark the current scope as checked or unchecked if necessary.
   Sema::CheckedScopeRAII CheckedScopeTracker(Actions, DS);
-
+  Sema::TaintedScopeRAII TaintedScopeTracker(Actions, DS);
+  Sema::MirrorScopeRAII MirrorScopeTracker(Actions, DS);
+  Sema::TLIBScopeRAII TLIBScopeTracker(Actions, DS);
   // If we had a free-standing type definition with a missing semicolon, we
   // may get this far before the problem becomes obvious.
   if (DS.hasTagDefinition() &&
@@ -2004,7 +2010,87 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
           << (Fixit ? FixItHint::CreateInsertion(D.getBeginLoc(), "_Noreturn ")
                     : FixItHint());
     }
+
+    //The _Mirror  keyword can't appear here
+    // If we find the keyword here, tell the user to put it
+    // at the start instead.
+    if (Tok.is(tok::kw__Mirror)) {
+      SourceLocation Loc = ConsumeToken();
+      const char *PrevSpec;
+      unsigned DiagID;
+
+      // We can offer a fixit if it's valid to mark this function as _Mirror
+      // and we don't have any other declarators in this declaration.
+      bool Fixit = !DS.setFunctionSpecMirror(Loc, Mirror_Memory, PrevSpec, DiagID);
+      MaybeParseGNUAttributes(D, &LateParsedAttrs);
+      Fixit &= Tok.isOneOf(tok::semi, tok::l_brace, tok::kw_try);
+
+      Diag(Loc, diag::err_c11_tainted_mirror_misplaced)
+          << (Fixit ? FixItHint::CreateRemoval(Loc) : FixItHint())
+          << (Fixit ? FixItHint::CreateInsertion(D.getBeginLoc(), "_Mirror")
+                    : FixItHint());
+    }
+
+    //The _Callback  keyword can't appear here
+    // If we find the keyword here, tell the user to put it
+    // at the start instead.
+    if (Tok.is(tok::kw__Callback)) {
+      SourceLocation Loc = ConsumeToken();
+      const char *PrevSpec;
+      unsigned DiagID;
+
+      // We can offer a fixit if it's valid to mark this function as _Callback
+      // and we don't have any other declarators in this declaration.
+      bool Fixit = !DS.setFunctionSpecCallback(Loc, PrevSpec, DiagID);
+      MaybeParseGNUAttributes(D, &LateParsedAttrs);
+      Fixit &= Tok.isOneOf(tok::semi, tok::l_brace, tok::kw_try);
+
+      Diag(Loc, diag::err_c11_tainted_callback_misplaced)
+          << (Fixit ? FixItHint::CreateRemoval(Loc) : FixItHint())
+          << (Fixit ? FixItHint::CreateInsertion(D.getBeginLoc(), "_Callback")
+                    : FixItHint());
+    }
+
+  //The _Tainted keyword can't appear here
+  // If we find the keyword here, tell the user to put it
+  // at the start instead.
+  if (Tok.is(tok::kw__Tainted)) {
+    SourceLocation Loc = ConsumeToken();
+    const char *PrevSpec;
+    unsigned DiagID;
+
+    // We can offer a fixit if it's valid to mark this function as _Tainted
+    // and we don't have any other declarators in this declaration.
+    bool Fixit = !DS.setFunctionSpecTainted(Loc, Tainted_Memory, PrevSpec, DiagID);
+    MaybeParseGNUAttributes(D, &LateParsedAttrs);
+    Fixit &= Tok.isOneOf(tok::semi, tok::l_brace, tok::kw_try);
+
+    Diag(Loc, diag::err_c11_tainted_misplaced)
+        << (Fixit ? FixItHint::CreateRemoval(Loc) : FixItHint())
+        << (Fixit ? FixItHint::CreateInsertion(D.getBeginLoc(), "_Tainted")
+                  : FixItHint());
   }
+
+  //The _TLIB keyword can't appear here
+  // If we find the keyword here, tell the user to put it
+  // at the start instead.
+  if (Tok.is(tok::kw__TLIB)) {
+    SourceLocation Loc = ConsumeToken();
+    const char *PrevSpec;
+    unsigned DiagID;
+
+    // We can offer a fixit if it's valid to mark this function as _TLIB
+    // and we don't have any other declarators in this declaration.
+    bool Fixit = !DS.setFunctionSpecTLIB(Loc, TLIB_Memory, PrevSpec, DiagID);
+    MaybeParseGNUAttributes(D, &LateParsedAttrs);
+    Fixit &= Tok.isOneOf(tok::semi, tok::l_brace, tok::kw_try);
+
+    Diag(Loc, diag::err_c11_tainted_misplaced)
+        << (Fixit ? FixItHint::CreateRemoval(Loc) : FixItHint())
+        << (Fixit ? FixItHint::CreateInsertion(D.getBeginLoc(), "_TLIB")
+                  : FixItHint());
+  }
+}
 
   // Check to see if we have a function *definition* which must have a body.
   if (D.isFunctionDeclarator()) {
@@ -2061,9 +2147,19 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
           // Checked C - mark the current scope as checked or unchecked if
           // necessary.
           Sema::CheckedScopeRAII CheckedScopeTracker(Actions, DS);
-
+          Sema::TaintedScopeRAII TaintedScopeTracker(Actions, DS);
+          Sema::MirrorScopeRAII MirrorScopeTracker(Actions, DS);
+          Sema::TLIBScopeRAII TLIBScopeTracker(Actions, DS);
+          /*
+           * ParseFunctionDefinition looks for tainted and other tokens only
+           * after the r-paren. By then we are too late and we cannot find the above tokens
+           * Hence we pass what we know about this scope deep into the funtion
+           * definition, just so that the same is reflected across all of its statements
+           */
           Decl *TheDecl =
-            ParseFunctionDefinition(D, ParsedTemplateInfo(), &LateParsedAttrs);
+            ParseFunctionDefinition(D, ParsedTemplateInfo(), &LateParsedAttrs,
+                                      DS.getTaintedScopeSpecifier(), DS.getMirrorScopeSpecifier(),
+                                      DS.getTLIBScopeSpecifier());
           // If we encountered _For_any make sure we're in Forany scope and exit.
           ExitQuantifiedTypeScope(DS);
           return Actions.ConvertDeclToDeclGroup(TheDecl);
@@ -2626,6 +2722,8 @@ void Parser::ParseSpecifierQualifierList(DeclSpec &DS, AccessSpecifier AS, DeclS
     DS.ClearStorageClassSpecs();
   }
 
+
+
   // Issue diagnostic and remove function specifier if present.
   if (Specs & DeclSpec::PQ_FunctionSpecifier) {
     if (DS.isInlineSpecified())
@@ -2763,6 +2861,8 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
         TagName="union" ; FixitTagName = "union " ;TagKind=tok::kw_union ;break;
       case DeclSpec::TST_struct:
         TagName="struct"; FixitTagName = "struct ";TagKind=tok::kw_struct;break;
+      case DeclSpec::TST_Tstruct:
+        TagName="Tstruct"; FixitTagName = "Tstruct "; TagKind=tok::kw_Tstruct;break;
       case DeclSpec::TST_interface:
         TagName="__interface"; FixitTagName = "__interface ";
         TagKind=tok::kw___interface;break;
@@ -3178,7 +3278,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                         DeclSpecContext DSContext,
                                         LateParsedAttrList *LateAttrs) {
   if (DS.getSourceRange().isInvalid()) {
-    // Start the range at the current token but make the end of the range
+// Start the range at the current token but make the end of the range
     // invalid.  This will make the entire range invalid unless we successfully
     // consume a token.
     DS.SetRangeStart(Tok.getLocation());
@@ -3233,7 +3333,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // specifiers.  First verify that DeclSpec's are consistent.
       DS.Finish(Actions, Policy);
       return;
-
     case tok::l_square:
     case tok::kw_alignas:
       if (!standardAttributesAllowed() || !isCXX11AttributeSpecifier())
@@ -3914,6 +4013,119 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
         Diag(Tok, diag::ext_c11_feature) << Tok.getName();
       isInvalid = DS.setFunctionSpecNoreturn(Loc, PrevSpec, DiagID);
       break;
+    case tok::kw__Decoy:
+      isInvalid = DS.SetTypeQual(DeclSpec::TQ_Decoy, Loc, PrevSpec, DiagID,
+                                 getLangOpts());
+      if (!getLangOpts().C11)
+          Diag(Tok, diag::ext_c11_feature) << Tok.getName();
+        isInvalid = DS.setFunctionSpecDecoy(Loc, PrevSpec, DiagID);
+        break;
+   case tok::kw__Tainted:
+    {
+      // Checked C - handle _Tainted declaration specifiers.
+      //
+      // First make sure it is a declaration specifier. _Tainted,
+      // _Tainted _Bounds_only, and _Unchecked are only declaration
+      // specifiers if they aren't followed by a '{' or '['.
+
+      // Look past any optional _Bounds_only modifier.
+      int nextLoc = 1;
+      if (Tok.is(tok::kw__Tainted) && NextToken().is(tok::kw__Bounds_only))
+        nextLoc = 2;
+      if (GetLookAheadToken(nextLoc).is(tok::l_square)) {
+        goto DoneWithDeclSpec;
+      } else if (GetLookAheadToken(nextLoc).is(tok::l_brace)) {
+        // This indicates the beginning of a checked scope or the
+        // body of structure/union in a checked scope.
+        break;
+      } else {
+        TaintedScopeSpecifier TaintedSS = Tainted_None;
+        // Tainted function, it acts as function specifier
+        if (Tok.is(tok::kw__Tainted)) {
+          if (NextToken().is(tok::kw__Bounds_only)) {
+            TaintedSS = Tainted_Bounds;
+            ConsumeToken();
+          } else
+            TaintedSS = Tainted_Memory;
+        }
+        isInvalid = DS.setFunctionSpecTainted(Loc, TaintedSS, PrevSpec, DiagID);
+        break;
+      }
+    }
+    break;
+   case tok::kw__Callback:
+     if(!getLangOpts().C11)
+       Diag(Tok, diag::ext_c11_feature) << Tok.getName();
+     isInvalid = DS.setFunctionSpecCallback(Loc, PrevSpec, DiagID);
+     break;
+
+   case tok::kw__Mirror:
+   {
+     // Checked C - handle _Mirror declaration specifiers.
+     //
+     // First make sure it is a declaration specifier. _Tainted,
+     // _Mirror _Bounds_only are only declaration
+     // specifiers if they aren't followed by a '{' or '['.
+
+     // Look past any optional _Bounds_only modifier.
+     int nextLoc = 1;
+     if (Tok.is(tok::kw__Mirror) && NextToken().is(tok::kw__Bounds_only))
+       nextLoc = 2;
+     if (GetLookAheadToken(nextLoc).is(tok::l_square)) {
+       goto DoneWithDeclSpec;
+     } else if (GetLookAheadToken(nextLoc).is(tok::l_brace)) {
+       // This indicates the beginning of a checked scope or the
+       // body of structure/union in a checked scope.
+       break;
+     } else {
+       MirrorScopeSpecifier MirrorSS = Mirror_None;
+       // Tainted function, it acts as function specifier
+       if (Tok.is(tok::kw__Mirror)) {
+         if (NextToken().is(tok::kw__Bounds_only)) {
+           MirrorSS = Mirror_Bounds;
+           ConsumeToken();
+         } else
+           MirrorSS = Mirror_Memory;
+       }
+       isInvalid = DS.setFunctionSpecMirror(Loc, MirrorSS, PrevSpec, DiagID);
+       break;
+     }
+   }
+   break;
+
+   case tok::kw__TLIB:
+   {
+     // CheckCBox - handle _TLIB declaration specifiers.
+     //
+     // First make sure it is a declaration specifier. _Tainted,
+     // _TLIB _Bounds_only are only declaration
+     // specifiers if they aren't followed by a '{' or '['.
+
+     // Look past any optional _Bounds_only modifier.
+     int nextLoc = 1;
+     if (Tok.is(tok::kw__TLIB) && NextToken().is(tok::kw__Bounds_only))
+       nextLoc = 2;
+     if (GetLookAheadToken(nextLoc).is(tok::l_square)) {
+       goto DoneWithDeclSpec;
+     } else if (GetLookAheadToken(nextLoc).is(tok::l_brace)) {
+       // This indicates the beginning of a checked scope or the
+       // body of structure/union in a checked scope.
+       break;
+     } else {
+       TLIBScopeSpecifier TLIBSS = TLIB_None;
+       // Tainted function, it acts as function specifier
+       if (Tok.is(tok::kw__TLIB)) {
+         if (NextToken().is(tok::kw__Bounds_only)) {
+           TLIBSS = TLIB_Bounds;
+           ConsumeToken();
+         } else
+           TLIBSS = TLIB_Memory;
+       }
+       isInvalid = DS.setFunctionSpecTLIB(Loc, TLIBSS, PrevSpec, DiagID);
+       break;
+     }
+   }
+   break;
 
     // alignment-specifier
     case tok::kw__Alignas:
@@ -4139,9 +4351,30 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw__Ptr:
     case tok::kw__Array_ptr:
     case tok::kw__Nt_array_ptr: {
+      if(DS.isTaintedSpecified())
+      {
+        Diag(Tok, diag::err_tainted_specified_functions_should_have_tainted_pointers) << Tok.getName();
+      }
+      else if(DS.isCallbackSpecified())
+      {
+        Diag(Tok, diag::err_callback_specified_functions_should_have_tainted_pointers) << Tok.getName();
+      }
+      isInvalid = DS.SetPointerTypeQual(DeclSpec::PT_Checked_C, Loc, PrevSpec, DiagID,
+                                        getLangOpts());
       ParseCheckedPointerSpecifiers(DS);
       // continue to keep the current token from being consumed.
       continue; 
+    }
+
+    case tok::kw__TArray_ptr:
+    case tok::kw__TNt_array_ptr:
+    case tok::kw__TPtr:
+    {
+      isInvalid = DS.SetPointerTypeQual(DeclSpec::PT_Tainted_C, Loc, PrevSpec, DiagID,
+                                 getLangOpts());
+      ParseTaintedPointerSpecifiers(DS);
+      // Continue to keep the current token from being consumed.
+      continue;
     }
     case tok::kw__Exists: {
       ParseExistentialTypeSpecifier(DS);
@@ -4155,8 +4388,22 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     // class-specifier:
     case tok::kw_class:
     case tok::kw_struct:
+    case tok::kw_Tstruct:
     case tok::kw___interface:
     case tok::kw_union: {
+      if((Tok.is(tok::kw_struct)) && (DS.isTaintedSpecified()))
+      {
+        Diag(Tok, diag::err_tainted_specified_functions_should_have_tainted_structs) << Tok.getName();
+      }
+      else if((Tok.is(tok::kw_struct)) && (DS.isCallbackSpecified()))
+      {
+        Diag(Tok, diag::err_callback_specified_functions_should_have_tainted_structs) << Tok.getName();
+      }
+      else if((Tok.is(tok::kw_struct)) && (DS.isTaintedStruct))
+      {
+        Diag(Tok, diag::err_tainted_struct_member_struct) << Tok.getName();
+      }
+
       tok::TokenKind Kind = Tok.getKind();
       ConsumeToken();
 
@@ -4377,7 +4624,9 @@ void Parser::ParseStructDeclaration(
 
   // Checked C - mark the current scope as checked or unchecked if necessary.
   Sema::CheckedScopeRAII CheckedScopeTracker(Actions, DS);
-
+  Sema::TaintedScopeRAII TaintedScopeTracker(Actions, DS);
+  Sema::MirrorScopeRAII MirrorScopeTracker(Actions, DS);
+  Sema::TLIBScopeRAII TLIBScopeTracker(Actions, DS);
   // If there are no declarators, this is a free-standing declaration
   // specifier. Let the actions module cope with it.
   if (Tok.is(tok::semi)) {
@@ -4451,6 +4700,22 @@ void Parser::ParseStructDeclaration(
 
     // If attributes exist after the declarator, parse them.
     MaybeParseGNUAttributes(DeclaratorInfo.D);
+
+    // Now since all the member attributes of the struct has been parsed
+    // Check if the tainted Struct (if) is valid or not -->
+    if(DS.isTaintedStruct)
+    {
+
+      if(DS.getPointerTypeChecked().isValid()) {
+        Diag((DS.getPointerTypeChecked()), diag::err_tainted_struct_member_ptr);
+        DS.SetTypeSpecError();
+      }
+
+      if(DS.getPointerTypeGeneric().isValid()) {
+        Diag((DS.getPointerTypeGeneric()), diag::err_tainted_struct_member_ptr);
+        DS.SetTypeSpecError();
+      }
+    }
 
     // We're done with this declarator;  invoke the callback.
 
@@ -4550,6 +4815,21 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
       continue;
     }
 
+    if (Tok.is(tok::annot_pragma_tainted_scope)) {
+      HandlePragmaTaintedScope();
+      continue;
+    }
+
+    if (Tok.is(tok::annot_pragma_mirror_scope)) {
+      HandlePragmaMirrorScope();
+      continue;
+    }
+
+    if (Tok.is(tok::annot_pragma_tlib_scope)) {
+      HandlePragmaTlibScope();
+      continue;
+    }
+
     if (!Tok.is(tok::at)) {
       auto CFieldCallback = [&](ParsingFieldDeclarator &FD) {
         // Install the declarator into the current TagDecl.
@@ -4584,6 +4864,9 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
 
       // Parse all the comma separated declarators.
       ParsingDeclSpec DS(*this);
+      if(TagType == TST_Tstruct)
+        DS.setTaintedStruct(true);
+
       ParseStructDeclaration(DS, CFieldCallback);
     } else { // Handle @defs
       ConsumeToken();
@@ -4631,7 +4914,8 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
                                      TagDecl->field_end());
 
   Actions.ActOnFields(getCurScope(), RecordLoc, TagDecl, FieldDecls,
-                      T.getOpenLocation(), T.getCloseLocation(), attrs);
+                      T.getOpenLocation(), T.getCloseLocation(),
+                      attrs, TagDecl->isTaintedStruct());
   // Parse the deferred bounds expressions
   ParsingDeclSpec DS(*this);
   ParsingFieldDeclarator DeclaratorsInfo(*this,DS);
@@ -5092,6 +5376,14 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
 
   if (Tok.is(tok::l_brace) && TUK == Sema::TUK_Definition) {
     Decl *D = SkipBody.CheckSameAsPrevious ? SkipBody.New : TagDecl;
+    if(DS.isTaintedSpecified())
+      D->setTaintedDecl(true);
+
+    if(DS.isDecoyDeclSpecified())
+      D->setDecoyDecl(true);
+    if(DS.isTaintedMirrorSpecified())
+      D->setMirrorDecl(true);
+
     ParseEnumBody(StartLoc, D);
     if (SkipBody.CheckSameAsPrevious &&
         !Actions.ActOnDuplicateDefinition(DS, TagDecl, SkipBody)) {
@@ -5298,6 +5590,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
     // struct-or-union-specifier (C99) or class-specifier (C++)
   case tok::kw_class:
   case tok::kw_struct:
+  case tok::kw_Tstruct:
   case tok::kw___interface:
   case tok::kw_union:
     // enum-specifier
@@ -5314,6 +5607,10 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   // Checked C existential types
   case tok::kw__Exists:
   case tok::kw__Unpack:
+
+  case tok::kw__TArray_ptr:
+  case tok::kw__TNt_array_ptr:
+  case tok::kw__TPtr:
 
     return true;
   }
@@ -5389,6 +5686,7 @@ bool Parser::isTypeSpecifierQualifier() {
     // struct-or-union-specifier (C99) or class-specifier (C++)
   case tok::kw_class:
   case tok::kw_struct:
+  case tok::kw_Tstruct:
   case tok::kw___interface:
   case tok::kw_union:
     // enum-specifier
@@ -5443,6 +5741,9 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw__Ptr:
   case tok::kw__Array_ptr:
   case tok::kw__Nt_array_ptr:
+  case tok::kw__TArray_ptr:
+  case tok::kw__TNt_array_ptr:
+  case tok::kw__TPtr:
 
     return true;
 
@@ -5519,7 +5820,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw___thread:
   case tok::kw_thread_local:
   case tok::kw__Thread_local:
-
+  case tok::kw__Decoy:
     // Modules
   case tok::kw___module_private__:
 
@@ -5562,6 +5863,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
     // struct-or-union-specifier (C99) or class-specifier (C++)
   case tok::kw_class:
   case tok::kw_struct:
+  case tok::kw_Tstruct:
   case tok::kw_union:
   case tok::kw___interface:
     // enum-specifier
@@ -5578,6 +5880,8 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_virtual:
   case tok::kw_explicit:
   case tok::kw__Noreturn:
+  case tok::kw__Tainted:
+  case tok::kw__Callback:
   case tok::kw__For_any:
   case tok::kw__Itype_for_any:
 
@@ -5617,6 +5921,11 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   // Checked C existential types
   case tok::kw__Exists:
   case tok::kw__Unpack:
+
+  case tok::kw__TArray_ptr:
+  case tok::kw__TNt_array_ptr:
+  case tok::kw__TPtr:
+
     return true;
 
     // GNU ObjC bizarre protocol extension: <proto1,proto2> with implicit 'id'.
@@ -6138,6 +6447,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
     return;
   }
 
+
   // Otherwise, '*' -> pointer, '^' -> block, '&' -> lvalue reference,
   // '&&' -> rvalue reference
   SourceLocation Loc = ConsumeToken();  // Eat the *, ^, & or &&.
@@ -6146,6 +6456,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
   if (Kind == tok::star || Kind == tok::caret) {
     // Is a pointer.
     DeclSpec DS(AttrFactory);
+    const_cast<DeclSpec*>(&D.getDeclSpec())->SetPointerTypeQual(DeclSpec::PT_Generic_C, Loc);
 
     // GNU attributes are not allowed here in a new-type-id, but Declspec and
     // C++11 attributes are allowed.
@@ -6914,7 +7225,10 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   } else {
     if (Tok.isNot(tok::r_paren))
       ParseParameterDeclarationClause(D.getContext(), FirstArgAttrs, ParamInfo,
-                                      EllipsisLoc);
+                                      EllipsisLoc,
+                                      D.getDeclSpec().isTaintedSpecified(),
+                                      D.getDeclSpec().isTaintedMirrorSpecified(),
+                                      D.getDeclSpec().isTLIBSpecified());
     else if (RequiresArg)
       Diag(Tok, diag::err_argument_required_after_attribute);
 
@@ -7206,7 +7520,8 @@ void Parser::ParseParameterDeclarationClause(
        DeclaratorContext DeclaratorCtx,
        ParsedAttributes &FirstArgAttrs,
        SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo,
-       SourceLocation &EllipsisLoc) {
+       SourceLocation &EllipsisLoc, bool isTaintedDeclaration,
+    bool IsMirrorDeclaration, bool isTLIBDeclaration) {
 
   // Avoid exceeding the maximum function scope depth.
   // See https://bugs.llvm.org/show_bug.cgi?id=19607
@@ -7249,7 +7564,7 @@ void Parser::ParseParameterDeclarationClause(
 
     SourceLocation DSStart = Tok.getLocation();
 
-    // If the caller parsed attributes for the first argument, add them now.
+    // If the caller parsed attributes for the first argument, add then now.
     // Take them so that we only apply the attributes to the first parameter.
     // FIXME: If we can leave the attributes in the token stream somehow, we can
     // get rid of a parameter (FirstArgAttrs) and this statement. It might be
@@ -7260,21 +7575,21 @@ void Parser::ParseParameterDeclarationClause(
 
     // Checked C - mark the current scope as checked or unchecked if necessary.
     Sema::CheckedScopeRAII CheckedScopeTracker(Actions, DS);
-
+    Sema::TaintedScopeRAII TaintedScopeTracker(Actions, DS);
+    Sema::MirrorScopeRAII MirrorScopeTracker(Actions, DS);
+    Sema::TLIBScopeRAII TLIBScopeTracker(Actions, DS);
     // Parse the declarator.  This is "PrototypeContext" or
     // "LambdaExprParameterContext", because we must accept either
     // 'declarator' or 'abstract-declarator' here.
-    Declarator ParmDeclarator(
-        DS, DeclaratorCtx == DeclaratorContext::RequiresExpr
-                ? DeclaratorContext::RequiresExpr
-                : DeclaratorCtx == DeclaratorContext::LambdaExpr
-                      ? DeclaratorContext::LambdaExprParameter
-                      : DeclaratorContext::Prototype);
+    Declarator ParmDeclarator(DS,
+                              DeclaratorCtx == DeclaratorContext::RequiresExpr
+                                  ? DeclaratorContext::RequiresExpr
+                              : DeclaratorCtx == DeclaratorContext::LambdaExpr
+                                  ? DeclaratorContext::LambdaExprParameter
+                                  : DeclaratorContext::Prototype);
     ParseDeclarator(ParmDeclarator);
 
-    // Checked C: exit _Forany or _Itype_forany scope.  This is intentionally done here
-    // because the bounds / interface type for the parameter shouldn't reference
-    // any bound type variable.
+    // Checked C: exit _Forany or _Itype_forany scope.  This is intentionally done here because the bounds / interface type for the parameter shouldn't reference any bound type variable.
     ExitQuantifiedTypeScope(DS);
 
     // Parse GNU attributes, if present.
@@ -7297,6 +7612,9 @@ void Parser::ParseParameterDeclarationClause(
     // DefArgToks is used when the parsing of default arguments needs
     // to be delayed.
     std::unique_ptr<CachedTokens> DefArgToks;
+
+    //start from get begin loc
+    //and iterate through till the endloc and look for checked or * operators
 
     // If no parameter was specified, verify that *something* was specified,
     // otherwise we have a missing type and identifier.
@@ -7345,6 +7663,25 @@ void Parser::ParseParameterDeclarationClause(
       // Inform the actions module about the parameter declarator, so it gets
       // added to the current scope.
       ParmVarDecl *Param = Actions.ActOnParamDeclarator(getCurScope(), ParmDeclarator);
+      /*
+       * If the function is a tainted declaration, all the parameters it accepts
+       * are automatically tainted
+       */
+      if (isTaintedDeclaration)
+      {
+        Param->setTaintedDecl(true);
+      }
+
+      if (IsMirrorDeclaration)
+      {
+        Param->setMirrorDecl(true);
+      }
+
+      if (isTLIBDeclaration)
+      {
+        Param->setLibDecl(true);
+      }
+
       // Handle Checked C where clause, bounds expression or bounds-safe
       // interface type annotation.
       if (getLangOpts().CheckedC) {
@@ -7504,9 +7841,9 @@ void Parser::ParseParameterDeclarationClause(
 /// checked to indicate a checked array.
 void Parser::ParseBracketDeclarator(Declarator &D) {
   SourceLocation startLocation = Tok.getLocation();
-  CheckedArrayKind kind = CheckedArrayKind::Unchecked;
+  CheckCBox_ArrayKind kind = CheckCBox_ArrayKind::Unchecked;
   if (Tok.is(tok::kw__Checked)) {
-    kind = CheckedArrayKind::Checked;
+    kind = CheckCBox_ArrayKind::Checked;
     ConsumeToken();
     if (!Tok.is(tok::l_square)) {
       Diag(Tok.getLocation(), diag::err_expected_lbracket_after) << "_Checked";
@@ -7515,7 +7852,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
   }
 
   if (Tok.is(tok::kw__Nt_checked)) {
-    kind = CheckedArrayKind::NtChecked;
+    kind = CheckCBox_ArrayKind::NtChecked;
     ConsumeToken();
     if (!Tok.is(tok::l_square)) {
       Diag(Tok.getLocation(), diag::err_expected_lbracket_after) << "_Nt_checked";
@@ -7886,6 +8223,222 @@ void Parser::ParseCheckedPointerSpecifiers(DeclSpec &DS) {
         Diag(StartLoc, DiagID) << PrevSpec;
 }
 
+/*
+ * Description: Function to check the sanity of the declared tainted pointer.
+ *              A Tainted pointer cannot have a nested Checked or a
+ *              Generic C-pointer type anywhere within its braces.
+ */
+bool Parser::CheckCurrentTaintedPointerSanity()
+{
+  std::stack<tok::TokenKind> Stack_of_Braces;
+  //Currently you should be pointing to <
+  //load this and continue until your stack is empty
+  Stack_of_Braces.push(Tok.getKind());
+  int curr_tok = 1;
+  while(!Stack_of_Braces.empty())
+  {
+    if(Stack_of_Braces.size()==1)
+    {
+      /// This means we are in the relevant context
+      if((GetLookAheadToken(curr_tok).is(tok::kw__Array_ptr)) ||
+          (GetLookAheadToken(curr_tok).is(tok::kw__Nt_array_ptr)) ||
+          (GetLookAheadToken(curr_tok).is(tok::kw__Ptr)))
+      {
+        Diag(Tok, diag::err_invalid_tainted_ptr_checked)
+            << FixItHint::CreateInsertion(
+            Tok.getLocation(),
+            "One of _TPtr/_TArray_ptr/_TNt_array_ptr");
+        SkipUntil(tok::r_paren, StopAtSemi);
+        return false;
+      }
+
+      //any available '[' or ']' means there is an C style array (stack array) currently
+      if((GetLookAheadToken(curr_tok).is(tok::l_square)) ||
+          (GetLookAheadToken(curr_tok).is(tok::r_square)))
+      {
+        Diag(Tok, diag::err_invalid_tainted_ptr_unchecked);
+        SkipUntil(tok::r_paren, StopAtSemi);
+        return false;
+      }
+      if(GetLookAheadToken(curr_tok).is(tok::star))
+      {
+        Diag(Tok, diag::err_invalid_tainted_ptr_unchecked);
+        SkipUntil(tok::r_paren, StopAtSemi);
+        return false;
+      }
+      //Removing this and moving this check to ActOnDeclarator in SemaDecl
+      // because I can know if my decl is TLIB enclosed
+//      if(GetLookAheadToken(curr_tok).is(tok::kw_struct))
+//      {
+//        Diag(Tok, diag::err_invalid_tainted_ptr_struct)<< FixItHint::CreateInsertion(
+//            Tok.getLocation(),
+//            "Tstruct");
+//        SkipUntil(tok::r_paren, StopAtSemi);
+//        return false;
+//      }
+      if(GetLookAheadToken(curr_tok).is(tok::kw__Checked)
+          || (GetLookAheadToken(curr_tok).is(tok::kw__Nt_checked))) {
+        Diag(Tok, diag::err_invalid_tainted_ptr_checked);
+        SkipUntil(tok::r_paren, StopAtSemi);
+        return false;
+      }
+    }
+
+    if(GetLookAheadToken(curr_tok).is(tok::less)) {
+      Stack_of_Braces.push(GetLookAheadToken(curr_tok).getKind());
+    }
+
+    if(GetLookAheadToken(curr_tok).is(tok::lessless)) {
+      int no_of_tokens = 2;
+      while((!Stack_of_Braces.empty()) && (no_of_tokens--))
+      {
+        Stack_of_Braces.push(tok::less);
+      }
+    }
+
+    if(GetLookAheadToken(curr_tok).is(tok::lesslessless)) {
+      int no_of_tokens = 3;
+      while((!Stack_of_Braces.empty()) && (no_of_tokens--))
+      {
+        Stack_of_Braces.push(tok::less);
+      }
+    }
+
+    if(GetLookAheadToken(curr_tok).is(tok::greater)) {
+      Stack_of_Braces.pop();
+    }
+
+    if(GetLookAheadToken(curr_tok).is(tok::greatergreater)) {
+      int no_of_tokens = 2;
+      while((!Stack_of_Braces.empty()) && (no_of_tokens--))
+      {
+        Stack_of_Braces.pop();
+      }
+    }
+
+    if(GetLookAheadToken(curr_tok).is(tok::greatergreatergreater)) {
+      int no_of_tokens = 3;
+      while((!Stack_of_Braces.empty()) && (no_of_tokens--))
+      {
+        Stack_of_Braces.pop();
+      }
+    }
+
+    curr_tok = curr_tok + 1;
+  }
+  return true;
+}
+/*   Description: Handle Tainted Pointer declarations.
+*/
+ void Parser::ParseTaintedPointerSpecifiers(DeclSpec &DS) {
+  assert((Tok.is(tok::kw__TPtr) || Tok.is(tok::kw__TArray_ptr) ||
+          Tok.is(tok::kw__TNt_array_ptr)) &&
+         "Not a tainted pointer specifier");
+  tok::TokenKind Kind = Tok.getKind();
+  SourceLocation StartLoc = ConsumeToken();
+  /// Call a subroutine that performs lexical sanity check for
+  /// the undesired presence of Checked or Unchecked pointers within this tainted pointer scope
+  /// Returns False: Is Sanity Fails
+  /// ERROR DIAG Message printed within this function
+
+  if(!CheckCurrentTaintedPointerSanity())
+      return;
+
+  if (ExpectAndConsume(tok::less)) {
+    return;
+  }
+
+  TypeResult Result = ParseTypeName();
+  if (Result.isInvalid()) {
+    SkipUntil(tok::greater, StopAtSemi);
+    return;
+  }
+
+  /*
+   * This a corner case for when the canonical type value of a tainted pointer
+   * is a Typedef.
+   *
+   * The type-checking done above is solely done on the basis of tokens
+   * and is not Smart enough to resolve Type-defs
+   *
+   * Hence, the below will look for typedef and then resolve the
+   * typedef
+   *
+   * Note: C Does not Support Nested Typedef
+   */
+
+  // The starting location of the last token in the type
+  auto typedef_resolved_type = Result.get().get()->getCanonicalTypeInternal();
+  if (typedef_resolved_type->isTypedefNameType())
+  {
+    /*
+     * 1.) canonical types must NOT be checked/or unchecked type pointers
+     * 2.) canonical types must NOT be NON-Tainted structs (struct)
+     */
+    if(typedef_resolved_type->getAsRecordDecl() != NULL)
+    {
+      auto typedef_record_decl = typedef_resolved_type->getAsRecordDecl();
+      if(typedef_record_decl->getTypeForDecl()->isCheckedPointerType()){
+        Diag(Tok, diag::err_invalid_tainted_ptr_checked)
+            << FixItHint::CreateInsertion(
+            Tok.getLocation(),
+            "One of _TPtr/_TArray_ptr/_TNt_array_ptr");
+        SkipUntil(tok::greater, StopAtSemi);
+        return;
+      }
+      else if(typedef_record_decl->getTypeForDecl()->isPointerType()
+               && !typedef_record_decl->getTypeForDecl()->isTaintedPointerType())
+      {
+        Diag(Tok, diag::err_invalid_tainted_ptr_unchecked);
+        SkipUntil(tok::greater, StopAtSemi);
+        return;
+      }
+      else if(typedef_record_decl->getTypeForDecl()->isCheckedArrayType())
+      {
+        Diag(Tok, diag::err_invalid_tainted_ptr_checked);
+        SkipUntil(tok::greater, StopAtSemi);
+        return;
+      }
+    }
+  }
+  SourceLocation EndLoc = Tok.getLocation();
+
+  // Match the '>'
+  if (Tok.getKind() == tok::greater) {
+    ConsumeToken();
+  }
+  else if (Tok.getKind() == tok::greatergreater) {
+    Tok.setKind(tok::greater);
+    Tok.setLocation(Tok.getLocation().getLocWithOffset(1));
+  }
+  else if (Tok.getKind() == tok::greatergreaterequal) {
+    Tok.setKind(tok::greaterequal);
+    Tok.setLocation(Tok.getLocation().getLocWithOffset(1));
+  }
+  else {
+    // we know this will fail and generate a diagnostic
+    ExpectAndConsume(tok::greater);
+    return;
+  }
+
+  DS.SetRangeEnd(EndLoc);
+
+  const char *PrevSpec = nullptr;
+  unsigned DiagID;
+  TypeSpecifierType pointerKind = TST_plainPtr;
+  if (Kind == tok::kw__TPtr)
+    pointerKind = TST_t_plainPtr;
+  else if (Kind == tok::kw__TArray_ptr)
+    pointerKind = TST_t_arrayPtr;
+  else if (Kind == tok::kw__TNt_array_ptr)
+    pointerKind = TST_t_ntarray_Ptr;
+
+  if (DS.SetTypeSpecType(pointerKind, StartLoc, PrevSpec,
+                         DiagID, Result.get(),
+                         Actions.getASTContext().getPrintingPolicy()))
+    Diag(StartLoc, DiagID) << PrevSpec;
+}
+
 /// [Checked C] Parse a specifier for an existential type.
 /// exist-spec:
 ///   _Exists '(' type-var , type ')'
@@ -7927,7 +8480,7 @@ void Parser::ParseUnpackSpecifier(DeclSpec &DS) {
   // iterating over the current scope and counting how many previous
   // _Unpacks have been desugared.
   // TODO: is this robust enough?
-  auto Pos = 0;
+  unsigned int Pos = 0;
   for (auto *Decl : getCurScope()->decls()) {
     auto *TdefDecl = dyn_cast<TypedefDecl>(Decl);
     if (!TdefDecl) continue;

@@ -243,10 +243,13 @@
 
 #ifdef __GNUC__
 #define LLVM_ATTRIBUTE_NORETURN __attribute__((noreturn))
+#define LLVM_ATTRIBUTE_TAINTED __attribute__((tainted))
 #elif defined(_MSC_VER)
 #define LLVM_ATTRIBUTE_NORETURN __declspec(noreturn)
+#define LLVM_ATTRIBUTE_TAINTED __declspec(tainted)
 #else
 #define LLVM_ATTRIBUTE_NORETURN
+#define LLVM_ATTRIBUTE_TAINTED
 #endif
 
 #if __has_attribute(returns_nonnull) || LLVM_GNUC_PREREQ(4, 9, 0)

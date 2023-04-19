@@ -96,6 +96,7 @@ struct BinOpInfo {
   FPOptions FPFeatures;
   const Expr *E;      // Entire expr, for error unsupported.  May not be binop.
 
+  void setQualType(QualType T) { Ty = T; }
   /// Check if the binop can result in integer overflow.
   bool mayHaveIntegerOverflow() const {
     // Without constant input, we can't rule out overflow.
@@ -396,7 +397,6 @@ public:
         return Result;
       }
     }
-
     return Builder.CreateIsNotNull(V, "tobool");
   }
 
@@ -894,6 +894,9 @@ public:
 Value *ScalarExprEmitter::EmitConversionToBool(Value *Src, QualType SrcType) {
   assert(SrcType.isCanonical() && "EmitScalarConversion strips typedefs");
 
+  if (SrcType->isTaintedPointerType())
+    Src->getType()->setTaintedPtrTy(true);
+
   if (SrcType->isRealFloatingType())
     return EmitFloatToBoolConversion(Src);
 
@@ -1325,7 +1328,10 @@ Value *ScalarExprEmitter::EmitScalarConversion(Value *Src, QualType SrcType,
   if (isa<llvm::PointerType>(SrcTy)) {
     // Must be an ptr to int cast.
     assert(isa<llvm::IntegerType>(DstTy) && "not ptr->int?");
-    return Builder.CreatePtrToInt(Src, DstTy, "conv");
+    if (SrcTy->isTaintedPtrTy())
+      return Builder.CreatePtrToInt(Src, CGF.Int32Ty, "conv");
+    else
+      return Builder.CreatePtrToInt(Src, DstTy, "conv");
   }
 
   // A scalar can be splatted to an extended vector of the same element type
@@ -2154,6 +2160,8 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
 
   case CK_DynamicPtrBounds:
   case CK_AssumePtrBounds:
+  case CK_TaintedDynamicPtrBounds:
+  case CK_TaintedAssumePtrBounds:
     return CGF.EmitBoundsCast(CE);
 
   case CK_ArrayToPointerDecay:
@@ -3460,11 +3468,36 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
     return CGF.Builder.CreateBitCast(result, pointer->getType());
   }
 
+  Value* RetVal = NULL;
   if (CGF.getLangOpts().isSignedOverflowDefined())
-    return CGF.Builder.CreateGEP(pointer, index, "add.ptr");
-
-  return CGF.EmitCheckedInBoundsGEP(pointer, index, isSigned, isSubtraction,
+    RetVal = CGF.Builder.CreateGEP(pointer, index, "add.ptr");
+  else
+    RetVal = CGF.EmitCheckedInBoundsGEP(pointer, index, isSigned, isSubtraction,
                                     op.E->getExprLoc(), "add.ptr");
+
+  if (pointerOperand->getType()->isTaintedPointerType())
+  {
+    //    //Print out the tainted pointer
+    //    llvm::errs() << "Tainted pointer: " << pointer->getName().str() << "\n";
+    auto OriginalTyp = RetVal->getType();
+    auto CharUnitsSz = CharUnits::Four();
+    // check if -m32 flag is set
+    if (CGF.CGM.getDataLayout().getPointerSizeInBits() == 32)
+    {
+      CharUnitsSz = CharUnits::Two();
+    }
+    else
+    {
+      CharUnitsSz = CharUnits::Four();
+    }
+    auto Temp = CGF.CreateMemTemp(pointerOperand->getType(), CharUnitsSz, "tmp");
+    CGF.Builder.CreateStore(RetVal, Temp);
+    RetVal =  CGF.Builder.CreateLoad(Temp);
+    //    //cast the loadVal back to original Value
+    RetVal = CGF.Builder.CreatePointerCast(RetVal, OriginalTyp);
+  }
+  return RetVal;
+
 }
 
 // Construct an fmuladd intrinsic to represent a fused mul-add of MulOp and
@@ -3752,10 +3785,34 @@ Value *ScalarExprEmitter::EmitSub(const BinOpInfo &op) {
   // Otherwise, this is a pointer subtraction.
 
   // Do the raw subtraction part.
-  llvm::Value *LHS
-    = Builder.CreatePtrToInt(op.LHS, CGF.PtrDiffTy, "sub.ptr.lhs.cast");
-  llvm::Value *RHS
-    = Builder.CreatePtrToInt(op.RHS, CGF.PtrDiffTy, "sub.ptr.rhs.cast");
+  llvm::Value *LHS = NULL;
+  llvm::Value *RHS = NULL;
+
+  auto op_LHS = op.LHS;
+  if ((isa<llvm::LoadInst>(op_LHS) && op_LHS->getType()->isPointerTy()) &&
+        (getLoadStoreAlignment(op_LHS).value() * 8 ==
+        CGF.CGM.getDataLayout().getPointerSizeInBits() / 2)) {
+      llvm::Type *Int32Ty = llvm::Type::getInt32Ty(CGF.getLLVMContext());
+      op_LHS = Builder.CreatePtrToInt(op_LHS, Int32Ty);
+      // Zero extend this integer to 64 bits.
+      LHS = Builder.CreateZExt(op_LHS, CGF.PtrDiffTy, "sub.ptr.lhs.cast");
+  }
+  else {
+      LHS = Builder.CreatePtrToInt(op.LHS, CGF.PtrDiffTy, "sub.ptr.lhs.cast");
+  }
+
+  auto op_RHS = op.RHS;
+  if ((isa<llvm::LoadInst>(op_RHS) && op_RHS->getType()->isPointerTy()) &&
+      (getLoadStoreAlignment(op_RHS).value() * 8 ==
+        CGF.CGM.getDataLayout().getPointerSizeInBits() / 2)) {
+      llvm::Type *Int32Ty = llvm::Type::getInt32Ty(CGF.getLLVMContext());
+      op_RHS = Builder.CreatePtrToInt(op_RHS, Int32Ty);
+      // Zero extend this integer to 64 bits.
+      RHS = Builder.CreateZExt(op_RHS, CGF.PtrDiffTy, "sub.ptr.rhs.cast");
+  }
+  else {
+    RHS = Builder.CreatePtrToInt(op.RHS, CGF.PtrDiffTy, "sub.ptr.rhs.cast");
+  }
   Value *diffInChars = Builder.CreateSub(LHS, RHS, "sub.ptr.sub");
 
   // Okay, figure out the element size.
@@ -3993,12 +4050,103 @@ Value *ScalarExprEmitter::EmitCompare(const BinaryOperator *E,
            E->getOpcode() == BO_NE);
     Value *LHS = CGF.EmitScalarExpr(E->getLHS());
     Value *RHS = CGF.EmitScalarExpr(E->getRHS());
+    /*
+     * If you are performing Pointer to Pointer comparison, and if the
+     * any of pointers under compare are tainted pointers.
+     * Always convert the tainted pointer to an offset.
+     */
+    if (LHSTy->isTaintedPointerType())
+    {
+      LHS = CGF.Builder.CreatePtrToInt(LHS, CGF.Int32Ty);
+      //zero extent to i64
+      LHS = CGF.Builder.CreateZExt(LHS, CGF.Int64Ty);
+    }
+    if (RHSTy->isTaintedPointerType())
+    {
+      RHS = CGF.Builder.CreatePtrToInt(RHS, CGF.Int32Ty);
+        //zero extent to i64
+        RHS = CGF.Builder.CreateZExt(RHS, CGF.Int64Ty);
+    }
+
+    auto LHSType = LHS->getType();
+    auto RHSType = RHS->getType();
+    int DecoyedValue = -1;
+    if (LHSType->isPointerTy() && RHSType->isPointerTy())
+    {
+      int DecoyedVal = -1;
+      auto DecoyTypeAmongstTwo = RHS->AreDecoyCopies(LHSType, RHSType
+                                                           ,&DecoyedVal);
+      if (DecoyTypeAmongstTwo)
+      {
+        if (DecoyedVal == 1)
+        {
+          auto DecoyType = DecoyTypeAmongstTwo;
+          LHS = Builder.CreateBitCast(LHS, DecoyType);
+        }
+        else if (DecoyedVal == 2)
+        {
+          auto DecoyType = DecoyTypeAmongstTwo;
+          RHS = Builder.CreateBitCast(RHS, DecoyType);
+        }
+        else
+        {
+          assert(false && "DecoyedVal is not 1 or 2");
+        }
+      }
+    }
+
     Result = CGF.CGM.getCXXABI().EmitMemberPointerComparison(
                    CGF, LHS, RHS, MPT, E->getOpcode() == BO_NE);
   } else if (!LHSTy->isAnyComplexType() && !RHSTy->isAnyComplexType()) {
     BinOpInfo BOInfo = EmitBinOps(E);
     Value *LHS = BOInfo.LHS;
     Value *RHS = BOInfo.RHS;
+    auto LHSType = LHS->getType();
+    auto RHSType = RHS->getType();
+    int DecoyedValue = -1;
+    if (LHSType->isPointerTy() && RHSType->isPointerTy())
+    {
+      int DecoyedVal = -1;
+      auto DecoyTypeAmongstTwo = RHS->AreDecoyCopies(LHSType, RHSType
+                                                     ,&DecoyedVal);
+      if (DecoyTypeAmongstTwo)
+      {
+        if (DecoyedVal == 1)
+        {
+          auto DecoyType = DecoyTypeAmongstTwo;
+          LHS = Builder.CreateBitCast(LHS, DecoyType);
+        }
+        else if (DecoyedVal == 2)
+        {
+          auto DecoyType = DecoyTypeAmongstTwo;
+          RHS = Builder.CreateBitCast(RHS, DecoyType);
+        }
+        else
+        {
+          assert(false && "DecoyedVal is not 1 or 2");
+        }
+      }
+    }
+
+    if (LHSTy->isTaintedPointerType())
+    {
+      //fetch the original type
+      auto OrigType = LHS->getType();
+      LHS = CGF.Builder.CreatePtrToInt(LHS, CGF.Int32Ty);
+      //zero extent to i64
+      LHS = CGF.Builder.CreateZExt(LHS, CGF.Int64Ty);
+      //ptr cast to original type
+      LHS = CGF.Builder.CreateIntToPtr(LHS, OrigType);
+    }
+    if (RHSTy->isTaintedPointerType())
+    {
+      auto OrigType = LHS->getType();
+      RHS = CGF.Builder.CreatePtrToInt(RHS, CGF.Int32Ty);
+        //zero extent to i64
+      RHS = CGF.Builder.CreateZExt(RHS, CGF.Int64Ty);
+        //ptr cast to original type
+      RHS = CGF.Builder.CreateIntToPtr(RHS, OrigType);
+    }
 
     // If AltiVec, the comparison results in a numeric type, so we use
     // intrinsics comparing vectors and giving 0 or 1 as a result
@@ -4624,6 +4772,38 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
     return RHS;
   if (!RHS)
     return LHS;
+
+  /*
+   * LHS and RHS cannot be of different types with the strict Clang enforcement
+   * of interoperability between tainted pointers and generic pointers in place.
+   *
+   */
+  auto LHSType = LHS->getType();
+  auto RHSType = RHS->getType();
+  int DecoyedValue = -1;
+  if (LHSType->isPointerTy() && RHSType->isPointerTy())
+  {
+    int DecoyedVal = -1;
+    auto DecoyTypeAmongstTwo = RHS->AreDecoyCopies(LHSType, RHSType
+                                                   ,&DecoyedVal);
+    if (DecoyTypeAmongstTwo)
+    {
+      if (DecoyedVal == 1)
+      {
+        auto DecoyType = DecoyTypeAmongstTwo;
+        LHS = Builder.CreateBitCast(LHS, DecoyType);
+      }
+      else if (DecoyedVal == 2)
+      {
+        auto DecoyType = DecoyTypeAmongstTwo;
+        RHS = Builder.CreateBitCast(RHS, DecoyType);
+      }
+      else
+      {
+        assert(false && "DecoyedVal is not 1 or 2");
+      }
+    }
+  }
 
   // Create a PHI node for the real part.
   llvm::PHINode *PN = Builder.CreatePHI(LHS->getType(), 2, "cond");

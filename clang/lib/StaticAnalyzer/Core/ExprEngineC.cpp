@@ -422,6 +422,8 @@ void ExprEngine::VisitCast(const CastExpr *CastE, const Expr *Ex,
       case CK_FixedPointToFloating:
       case CK_DynamicPtrBounds:
       case CK_AssumePtrBounds:
+      case CK_TaintedDynamicPtrBounds:
+      case CK_TaintedAssumePtrBounds:
       case CK_FixedPointCast:
       case CK_FixedPointToBoolean:
       case CK_FixedPointToIntegral:

@@ -416,7 +416,7 @@ void StructType::setBody(ArrayRef<Type*> Elements, bool isPacked) {
     return;
   }
 
-  ContainedTys = Elements.copy(getContext().pImpl->Alloc).data();
+  ContainedTys = const_cast<Type**>(Elements.copy(getContext().pImpl->Alloc).data());
 }
 
 void StructType::setName(StringRef Name) {

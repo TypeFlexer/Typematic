@@ -18,6 +18,9 @@ using namespace llvm;
 using namespace clang;
 
 // Class that handles building constraints from various AST artifacts.
+//The only constraint that we care to create now are of Decl* type -->
+// These constraints wont be solved, but would be written to the file -->
+
 class ConstraintResolver {
 
 public:

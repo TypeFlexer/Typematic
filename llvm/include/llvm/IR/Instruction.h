@@ -508,6 +508,8 @@ public:
   /// currently inserted into a function.
   void dropLocation();
 
+  void setParent(BasicBlock *P);
+
 private:
   // These are all implemented in Metadata.cpp.
   MDNode *getMetadataImpl(unsigned KindID) const;
@@ -799,8 +801,6 @@ private:
   unsigned short getSubclassDataFromValue() const {
     return Value::getSubclassDataFromValue();
   }
-
-  void setParent(BasicBlock *P);
 
 protected:
   // Instruction subclasses can stick up to 15 bits of stuff into the

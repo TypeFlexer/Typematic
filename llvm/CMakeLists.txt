@@ -522,6 +522,12 @@ else()
   set(CHECKEDC_IN_TREE FALSE)
 endif()
 
+if(EXISTS ${LLVM_MAIN_SRC_DIR}/projects/checkcbox-wrapper/checkcbox)
+  set(CHECKCBOX_IN_TREE TRUE)
+else()
+  set(CHECKCBOX_IN_TREE FALSE)
+endif()
+
 # Define an option controlling whether we should build for 32-bit on 64-bit
 # platforms, where supported.
 if( CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT (WIN32 OR ${CMAKE_SYSTEM_NAME} MATCHES "AIX"))
@@ -585,7 +591,7 @@ if(LLVM_BUILD_EXAMPLES)
 endif(LLVM_BUILD_EXAMPLES)
 
 option(LLVM_BUILD_TESTS
-  "Build LLVM unit tests. If OFF, just generate build targets." OFF)
+	"Build LLVM unit tests. If OFF, just generate build targets." OFF)
 option(LLVM_INCLUDE_TESTS "Generate build targets for the LLVM unit tests." ON)
 option(LLVM_INCLUDE_GO_TESTS "Include the Go bindings tests in test build targets." ON)
 

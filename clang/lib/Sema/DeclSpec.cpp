@@ -372,6 +372,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_int128:
     case TST_extint:
     case TST_struct:
+    case TST_Tstruct:
     case TST_interface:
     case TST_union:
     case TST_unknown_anytype:
@@ -380,8 +381,11 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_wchar:
     case TST_BFloat16:
     case TST_arrayPtr:
+    case TST_t_arrayPtr:
     case TST_plainPtr:
+    case TST_t_plainPtr:
     case TST_ntarrayPtr:
+    case TST_t_ntarray_Ptr:
     case TST_exists:
 #define GENERIC_IMAGE_TYPE(ImgType, Id) case TST_##ImgType##_t:
 #include "clang/Basic/OpenCLImageTypes.def"
@@ -472,7 +476,7 @@ unsigned DeclSpec::getParsedSpecifiers() const {
 
   if (FS_inline_specified || FS_virtual_specified || hasExplicitSpecifier() ||
       FS_noreturn_specified || FS_forceinline_specified ||
-      FS_checked_specified)
+      FS_checked_specified || FS_tainted_specified)
     Res |= PQ_FunctionSpecifier;
   return Res;
 }
@@ -587,6 +591,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T,
   case DeclSpec::TST_class:       return "class";
   case DeclSpec::TST_union:       return "union";
   case DeclSpec::TST_struct:      return "struct";
+  case DeclSpec::TST_Tstruct:     return "Tstruct";
   case DeclSpec::TST_interface:   return "__interface";
   case DeclSpec::TST_typename:    return "type-name";
   case DeclSpec::TST_typeofType:
@@ -603,6 +608,9 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T,
   case DeclSpec::TST_plainPtr: return "_Ptr";
   case DeclSpec::TST_nt_arrayPtr: return "_Nt_array_ptr";
   case DeclSpec::TST_exists: return "_Exists";
+  case DeclSpec::TST_t_plainPtr: return "_t_ptr";
+  case DeclSpec::TST_t_arrayPtr: return "_t_array_ptr";
+  case DeclSpec::TST_t_nt_arrayPtr: return "_t_nt_array_Ptr";
 #define GENERIC_IMAGE_TYPE(ImgType, Id) \
   case DeclSpec::TST_##ImgType##_t: \
     return #ImgType "_t";
@@ -634,6 +642,7 @@ const char *DeclSpec::getSpecifierName(TQ T) {
   case DeclSpec::TQ_volatile:    return "volatile";
   case DeclSpec::TQ_atomic:      return "_Atomic";
   case DeclSpec::TQ_unaligned:   return "__unaligned";
+  case DeclSpec::TQ_Decoy:       return "_Decoy";
   }
   llvm_unreachable("Unknown typespec!");
 }
@@ -992,6 +1001,12 @@ bool DeclSpec::SetTypeQual(TQ T, SourceLocation Loc, const char *&PrevSpec,
   return SetTypeQual(T, Loc);
 }
 
+bool DeclSpec::SetPointerTypeQual (PointerTypes T, SourceLocation Loc, const char *&PrevSpec,
+                                  unsigned &DiagID, const LangOptions &Lang) {
+  return SetPointerTypeQual(T, Loc);
+}
+
+
 bool DeclSpec::SetTypeQual(TQ T, SourceLocation Loc) {
   TypeQualifiers |= T;
 
@@ -1002,6 +1017,27 @@ bool DeclSpec::SetTypeQual(TQ T, SourceLocation Loc) {
   case TQ_volatile: TQ_volatileLoc = Loc; return false;
   case TQ_unaligned: TQ_unalignedLoc = Loc; return false;
   case TQ_atomic:   TQ_atomicLoc = Loc; return false;
+  case TQ_Decoy:    TQ_DecoyLoc = Loc; return false;
+  }
+
+  llvm_unreachable("Unknown type qualifier!");
+}
+
+bool DeclSpec::SetPointerTypeQual (PointerTypes PT, SourceLocation Loc) {
+  PointerTypeQualifiers |= PT;
+
+  switch(PT) {
+  case PT_None:
+    break;
+  case PT_Checked_C:
+    PT_Checked_C_Loc = Loc;
+    return false;
+  case PT_Generic_C:
+    PT_Generic_C_Loc = Loc;
+    return false;
+  case PT_Tainted_C:
+    PT_Tainted_C_Loc = Loc;
+    return false;
   }
 
   llvm_unreachable("Unknown type qualifier!");
@@ -1079,6 +1115,113 @@ bool DeclSpec::setFunctionSpecNoreturn(SourceLocation Loc,
   }
   FS_noreturn_specified = true;
   FS_noreturnLoc = Loc;
+  return false;
+}
+
+bool DeclSpec::setFunctionSpecCallback(SourceLocation Loc,
+                                      const char *&PrevSpec,
+                                      unsigned &DiagID) {
+  // '_Callback _Callback' is ok, but warn as this is likely not what the user
+  // intended.
+  if (FS_tainted_callback_specified) {
+    DiagID = diag::warn_duplicate_declspec;
+    PrevSpec = "_Callback";
+    return true;
+  }
+  FS_tainted_callback_specified = true;
+  FS_tainted_callbackLoc = Loc;
+  return false;
+}
+
+bool DeclSpec::setFunctionSpecDecoy(SourceLocation Loc,
+                                       const char *&PrevSpec,
+                                       unsigned &DiagID) {
+  // '_Callback _Callback' is ok, but warn as this is likely not what the user
+  // intended.
+  if (FS_Decoy_specified) {
+    DiagID = diag::warn_duplicate_declspec;
+    PrevSpec = "_Decoy";
+    return true;
+  }
+  FS_Decoy_specified = true;
+  FS_Decoy_specifiedLoc = Loc;
+  return false;
+}
+
+bool DeclSpec::setFunctionSpecTLIB(SourceLocation Loc,
+                                   TLIBScopeSpecifier TLIBSS,
+                                   const char *&PrevSpec,
+                                   unsigned &DiagID) {
+  // '_Tainted _Tainted' is ok, but warn as this is likely not what the user
+  // intended.
+  if (FS_tainted_lib_specified != TLIB_None) {
+    if (FS_tainted_mirror_specified == TLIBSS)
+      DiagID = diag::warn_duplicate_declspec;
+    else
+      DiagID = diag::err_invalid_decl_spec_combination;
+    switch(FS_tainted_mirror_specified)
+    {
+      case TLIB_None: PrevSpec = ""; break;
+      case TLIB_Relax: PrevSpec = "_TLIB _Relax"; break;
+      case TLIB_Bounds: PrevSpec = "_TLIB _Bounds_only"; break;
+      case TLIB_Memory: PrevSpec = "_TLIB"; break;
+    }
+    PrevSpec = "_TLIB";
+    return true;
+  }
+  FS_tainted_lib_specified = TLIBSS;
+  FS_tainted_LibLoc = Loc;
+  return false;
+}
+
+bool DeclSpec::setFunctionSpecMirror(SourceLocation Loc,
+                                     MirrorScopeSpecifier MirrorSS,
+                                       const char *&PrevSpec,
+                                       unsigned &DiagID) {
+  // '_Callback _Callback' is ok, but warn as this is likely not what the user
+  // intended.
+  if(FS_tainted_mirror_specified != Mirror_None) {
+    if (FS_tainted_mirror_specified == MirrorSS)
+      DiagID = diag::warn_duplicate_declspec;
+    else
+      DiagID = diag::err_invalid_decl_spec_combination;
+    switch(FS_tainted_mirror_specified)
+    {
+    case Mirror_None: PrevSpec = ""; break;
+    case Mirror_Bounds: PrevSpec = "_Mirror _Bounds_only"; break;
+    case Mirror_Memory: PrevSpec = "_Mirror"; break;
+    }
+    PrevSpec = "_Mirror";
+    return true;
+  }
+  FS_tainted_mirror_specified = MirrorSS;
+  FS_tainted_MirrorLoc = Loc;
+  return false;
+}
+
+bool DeclSpec::setFunctionSpecTainted(SourceLocation Loc,
+                                     TaintedScopeSpecifier TaintedSS,
+                                     const char *&PrevSpec,
+                                     unsigned &DiagID) {
+  // '_Tainted _Tainted' is ok, but warn as this is likely not what the user
+  // intended.
+  if (FS_tainted_lib_specified != Tainted_None) {
+    if (FS_tainted_specified == TaintedSS)
+      DiagID = diag::warn_duplicate_declspec;
+    else
+      DiagID = diag::err_invalid_decl_spec_combination;
+    switch(FS_tainted_specified)
+    {
+      case Tainted_None: PrevSpec = ""; break;
+      case Tainted_UnTainted: PrevSpec = ""; break;
+      case Tainted_Bounds: PrevSpec = "_Tainted _Bounds_only"; break;
+      case Tainted_Memory: PrevSpec = "_Tainted"; break;
+    }
+    PrevSpec = "_Tainted";
+    return true;
+  }
+  FS_tainted_specified = TaintedSS;
+  FS_taintedLoc = Loc;
   return false;
 }
 
@@ -1212,11 +1355,11 @@ void DeclSpec::Finish(Sema &S, const PrintingPolicy &Policy) {
        getTypeSpecSign() != TypeSpecifierSign::Unspecified ||
        TypeAltiVecVector || TypeAltiVecPixel || TypeAltiVecBool ||
        TypeQualifiers)) {
-    const unsigned NumLocs = 9;
+    const unsigned NumLocs = 10;
     SourceLocation ExtraLocs[NumLocs] = {
         TSWRange.getBegin(), TSCLoc,       TSSLoc,
         AltiVecLoc,          TQ_constLoc,  TQ_restrictLoc,
-        TQ_volatileLoc,      TQ_atomicLoc, TQ_unalignedLoc};
+        TQ_volatileLoc,      TQ_atomicLoc, TQ_unalignedLoc, TQ_DecoyLoc};
     FixItHint Hints[NumLocs];
     SourceLocation FirstLoc;
     for (unsigned I = 0; I != NumLocs; ++I) {
