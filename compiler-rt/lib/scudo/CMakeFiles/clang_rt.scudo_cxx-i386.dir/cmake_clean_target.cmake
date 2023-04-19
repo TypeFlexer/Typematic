@@ -1,3 +1,0 @@
-file(REMOVE_RECURSE
-  "../linux/libclang_rt.scudo_cxx-i386.a"
-)

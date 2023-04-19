@@ -1,2 +1,0 @@
-/usr/bin/ar qc ../linux/libclang_rt.scudo_cxx_minimal-i386.a  CMakeFiles/clang_rt.scudo_cxx_minimal-i386.dir/scudo_new_delete.cpp.o
-/usr/bin/ranlib ../linux/libclang_rt.scudo_cxx_minimal-i386.a

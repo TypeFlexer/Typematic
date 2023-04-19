@@ -1,2 +1,0 @@
-/usr/bin/ar qc ../linux/libclang_rt.asan-preinit-i386.a  CMakeFiles/RTAsan_preinit.i386.dir/asan_preinit.cpp.o
-/usr/bin/ranlib ../linux/libclang_rt.asan-preinit-i386.a

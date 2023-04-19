@@ -1,2 +1,0 @@
-/usr/bin/ar qc ../linux/libclang_rt.safestack-i386.a  CMakeFiles/clang_rt.safestack-i386.dir/safestack.cpp.o ../interception/CMakeFiles/RTInterception.i386.dir/interception_linux.cpp.o ../interception/CMakeFiles/RTInterception.i386.dir/interception_mac.cpp.o ../interception/CMakeFiles/RTInterception.i386.dir/interception_win.cpp.o ../interception/CMakeFiles/RTInterception.i386.dir/interception_type_test.cpp.o
-/usr/bin/ranlib ../linux/libclang_rt.safestack-i386.a
