@@ -429,10 +429,8 @@ class LLVMConfig(object):
         self.with_environment('PATH', paths, append_path=True)
 
         lib_dir_props = [self.config.name.lower() + '_libs_dir', 'clang_libs_dir', 'llvm_shlib_dir', 'llvm_libs_dir']
-
         paths = [getattr(self.config, pp) for pp in lib_dir_props
                  if getattr(self.config, pp, None)]
-        print("printing paths",paths)
 
         self.with_environment('LD_LIBRARY_PATH', paths, append_path=True)
 

@@ -160,10 +160,11 @@ static bool addBoundsChecking(Function &F, TargetLibraryInfo &TLI,
     } else if (StoreInst *SI = dyn_cast<StoreInst>(&I)) {
       if (!SI->isVolatile())
         Or = getBoundsCheckCond(SI->getPointerOperand(), SI->getValueOperand(),
-                               DL, TLI, ObjSizeEval, IRB, SE);
+                                DL, TLI, ObjSizeEval, IRB, SE);
     } else if (AtomicCmpXchgInst *AI = dyn_cast<AtomicCmpXchgInst>(&I)) {
       if (!AI->isVolatile())
-        Or = getBoundsCheckCond(AI->getPointerOperand(), AI->getCompareOperand(),
+        Or =
+            getBoundsCheckCond(AI->getPointerOperand(), AI->getCompareOperand(),
                                DL, TLI, ObjSizeEval, IRB, SE);
     } else if (AtomicRMWInst *AI = dyn_cast<AtomicRMWInst>(&I)) {
       if (!AI->isVolatile())
@@ -229,10 +230,9 @@ struct BoundsCheckingLegacyPass : public FunctionPass {
   }
 
   bool runOnFunction(Function &F) override {
-    errs() << "inside runOnFunction;\n";
     auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     auto &SE = getAnalysis<ScalarEvolutionWrapperPass>().getSE();
-    //return addBoundsChecking(F, TLI, SE);
+    return addBoundsChecking(F, TLI, SE);
     return true;
   }
 

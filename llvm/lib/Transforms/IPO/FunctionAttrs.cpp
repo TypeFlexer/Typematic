@@ -1425,22 +1425,6 @@ static bool addNoReturnAttrs(const SCCNodeSet &SCCNodes) {
   return Changed;
 }
 
-// Set the tainted function attribute if possible.
-//static bool addTaintedAttrs(const SCCNodeSet &SCCNodes) {
-//  bool Changed = false;
-//
-//  for (Function *F : SCCNodes) {
-//    // The function is tainted if the function attribute is tainted.
-//
-//    if (none_of(*F, basicBlockCanReturn)) {
-//      F->setDoesNotReturn();
-//      Changed = true;
-//    }
-//  }
-//
-//  return Changed;
-//}
-
 static bool functionWillReturn(const Function &F) {
   // Must-progress function without side-effects must return.
   if (F.mustProgress() && F.onlyReadsMemory())
@@ -1525,7 +1509,6 @@ static bool deriveAttrsInPostOrder(ArrayRef<Function *> Functions,
   Changed |= addArgumentAttrs(Nodes.SCCNodes);
   Changed |= inferConvergent(Nodes.SCCNodes);
   Changed |= addNoReturnAttrs(Nodes.SCCNodes);
-  //Changed |= addTaintedAttrs(Nodes.SCCNodes);
   Changed |= addWillReturn(Nodes.SCCNodes);
 
   // If we have no external nodes participating in the SCC, we can deduce some
