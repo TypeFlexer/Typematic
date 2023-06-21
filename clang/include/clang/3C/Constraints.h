@@ -25,10 +25,12 @@
 #include <set>
 
 class Constraint;
+class TaintedConstraint;
 class ConstraintVariable;
 class Constraints;
 class PersistentSourceLoc;
 class ConstraintsGraph;
+class TaintedConstraintsGraph;
 
 #define INTERNAL_USE_REASON "This reason should never be displayed"
 #define DEFAULT_REASON "UNKNOWN_REASON"
@@ -54,7 +56,7 @@ class VarAtom;
 // Represents atomic values that can occur at positions in constraints.
 class Atom {
 public:
-  enum AtomKind { A_Var, A_Ptr, A_Arr, A_NTArr, A_Wild, A_Const };
+  enum AtomKind { A_Var, A_Ptr, A_Arr, A_NTArr, A_TPtr, A_TArr, A_TNTArr, A_Wild, A_Const };
 
 private:
   const AtomKind Kind;
@@ -159,6 +161,7 @@ private:
   // The constraint expressions where this variable is mentioned on the
   // LHS of an equality.
   std::set<Constraint *, PComp<Constraint *>> Constraints;
+  std::set<TaintedConstraint *, PComp<TaintedConstraint *>> TaintedConstraints;
 };
 
 /* ConstAtom ordering is:
@@ -190,6 +193,30 @@ public:
   bool operator<(const Atom &Other) const override { return !(*this == Other); }
 };
 
+// This refers to the constant NTARR.
+class TNTArrAtom : public ConstAtom {
+public:
+    TNTArrAtom() : ConstAtom(A_TNTArr) {}
+
+    static bool classof(const Atom *S) { return S->getKind() == A_TNTArr; }
+
+    void print(llvm::raw_ostream &O) const override { O << "TNTARR"; }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TNTARR\""; }
+
+    bool operator==(const Atom &Other) const override {
+      return llvm::isa<TNTArrAtom>(&Other);
+    }
+
+    bool operator!=(const Atom &Other) const override {
+      return !(*this == Other);
+    }
+
+    bool operator<(const Atom &Other) const override { return !(*this == Other); }
+};
+
 // This refers to the constant ARR.
 class ArrAtom : public ConstAtom {
 public:
@@ -214,6 +241,32 @@ public:
   bool operator<(const Atom &Other) const override {
     return !(llvm::isa<NTArrAtom>(&Other) || *this == Other);
   }
+};
+
+// This refers to the constant ARR.
+class TaintedArrAtom : public ConstAtom {
+public:
+    TaintedArrAtom() : ConstAtom(A_TArr) {}
+
+    static bool classof(const Atom *S) { return S->getKind() == A_TArr; }
+
+    void print(llvm::raw_ostream &O) const override { O << "TARR"; }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TARR\""; }
+
+    bool operator==(const Atom &Other) const override {
+      return llvm::isa<TaintedArrAtom>(&Other);
+    }
+
+    bool operator!=(const Atom &Other) const override {
+      return !(*this == Other);
+    }
+
+    bool operator<(const Atom &Other) const override {
+      return !(llvm::isa<TNTArrAtom>(&Other) || *this == Other);
+    }
 };
 
 // This refers to the constant PTR.
@@ -241,6 +294,33 @@ public:
     return !(llvm::isa<ArrAtom>(&Other) || llvm::isa<NTArrAtom>(&Other) ||
              *this == Other);
   }
+};
+
+// This refers to the constant Tainted Pointer.
+class TaintedPointerAtom : public ConstAtom {
+public:
+    TaintedPointerAtom() : ConstAtom(A_TPtr) {}
+
+    static bool classof(const Atom *S) { return S->getKind() == A_TPtr; }
+
+    void print(llvm::raw_ostream &O) const override { O << "TPTR"; }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TPTR\""; }
+
+    bool operator==(const Atom &Other) const override {
+      return llvm::isa<TaintedPointerAtom>(&Other);
+    }
+
+    bool operator!=(const Atom &Other) const override {
+      return !(*this == Other);
+    }
+
+    bool operator<(const Atom &Other) const override {
+      return !(llvm::isa<TaintedArrAtom>(&Other) || llvm::isa<TNTArrAtom>(&Other) ||
+               *this == Other);
+    }
 };
 
 // This refers to the constant WILD.
@@ -416,10 +496,145 @@ private:
   bool IsSoft;
 };
 
+class TaintedConstraint {
+public:
+    enum ConstraintKind { C_Geq };
+
+private:
+    const ConstraintKind Kind;
+    ReasonLoc Reason;
+    std::vector<ReasonLoc> ExtraReasons;
+
+public:
+    TaintedConstraint(ConstraintKind K) : Kind(K) {}
+    TaintedConstraint(ConstraintKind K, const ReasonLoc &Rsn) : Kind(K), Reason(Rsn) {}
+
+    virtual ~TaintedConstraint() {}
+
+    ConstraintKind getKind() const { return Kind; }
+
+    virtual void print(llvm::raw_ostream &) const = 0;
+    virtual void dump(void) const = 0;
+    virtual void dumpJson(llvm::raw_ostream &) const = 0;
+    virtual bool operator==(const TaintedConstraint &Other) const = 0;
+    virtual bool operator!=(const TaintedConstraint &Other) const = 0;
+    virtual bool operator<(const TaintedConstraint &Other) const = 0;
+    virtual std::string getReasonText() const { return Reason.Reason; }
+    virtual const ReasonLoc &getReason() const { return Reason; }
+    // Alter the internal reason and remove any additional reasons
+    virtual void setReason(const ReasonLoc &Rsn) {
+        Reason = Rsn;
+        ExtraReasons.clear();
+    }
+    virtual std::vector<ReasonLoc> &additionalReasons() { return ExtraReasons; }
+    // include additional reasons that will appear in output as notes
+    virtual void addReason(const ReasonLoc &Rsn) {
+        ExtraReasons.push_back(Rsn);
+    }
+
+    bool isUnwritable(void) const {
+        return getReasonText() == UNWRITABLE_REASON;
+    }
+
+    const PersistentSourceLoc &getLocation() const { return Reason.Location; }
+};
+
+// a >= b {For tainted pointers}
+class TGeq : public TaintedConstraint {
+    friend class VarAtom;
+
+public:
+    TGeq(Atom *Lhs, Atom *Rhs, const ReasonLoc &Rsn, bool IsT = true,
+        bool Soft = false)
+            : TaintedConstraint(C_Geq, Rsn), Lhs(Lhs), Rhs(Rhs), IsTaintedConstraint(IsT),
+              IsSoft(Soft) {}
+
+    static bool classof(const TaintedConstraint *C) { return C->getKind() == C_Geq; }
+
+    void print(llvm::raw_ostream &O) const override {
+        Lhs->print(O);
+        std::string Kind = IsTaintedConstraint ? " (T)>= " : " (P)>= ";
+        O << Kind;
+        Rhs->print(O);
+        O << ", Reason: " << getReasonText();
+    }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override {
+        O << "{\"Geq\":{\"Atom1\":";
+        Lhs->dumpJson(O);
+        O << ", \"Atom2\":";
+        Rhs->dumpJson(O);
+        O << ", \"isTainted\":";
+        O << (IsTaintedConstraint ? "true" : "false");
+        O << ", \"Reason\":";
+        llvm::json::Value ReasonVal(getReasonText());
+        O << ReasonVal;
+        O << "}}";
+    }
+
+    Atom *getLHS(void) const { return Lhs; }
+    Atom *getRHS(void) const { return Rhs; }
+
+    void setTainted(ConstAtom *C) {
+        assert(!IsTaintedConstraint);
+        IsTaintedConstraint = true;
+        if (llvm::isa<ConstAtom>(Lhs)) {
+            Lhs = Rhs; // reverse direction for checked constraint
+            Rhs = C;
+        } else {
+            assert(llvm::isa<ConstAtom>(Rhs));
+            Rhs = C;
+        }
+    }
+
+    bool constraintIsTainted(void) const { return IsTaintedConstraint; }
+
+    bool operator==(const TaintedConstraint &Other) const override {
+        if (const TGeq *E = llvm::dyn_cast<TGeq>(&Other))
+            return *Lhs == *E->Lhs && *Rhs == *E->Rhs &&
+                    IsTaintedConstraint == E->IsTaintedConstraint;
+        return false;
+    }
+
+    bool operator!=(const TaintedConstraint &Other) const override {
+        return !(*this == Other);
+    }
+
+    bool operator<(const TaintedConstraint &Other) const override {
+        ConstraintKind K = Other.getKind();
+        if (K == C_Geq) {
+            const TGeq *E = llvm::dyn_cast<TGeq>(&Other);
+            assert(E != nullptr);
+            if (*Lhs == *E->Lhs) {
+                if (*Rhs == *E->Rhs) {
+                    if (IsTaintedConstraint == E->IsTaintedConstraint)
+                        return false;
+                    return IsTaintedConstraint < E->IsTaintedConstraint;
+                }
+                return *Rhs < *E->Rhs;
+            }
+            return *Lhs < *E->Lhs;
+        }
+        return C_Geq < K;
+    }
+
+    bool isSoft(void) { return IsSoft; }
+
+private:
+    Atom *Lhs;
+    Atom *Rhs;
+    bool IsTaintedConstraint;
+    bool IsSoft;
+};
+
 // This is the solution, the first item is Checked Solution and the second
-// is Ptr solution.
+// is Ptr solution, and the third is the tainted solution
 typedef std::pair<ConstAtom *, ConstAtom *> VarSolTy;
 typedef std::map<VarAtom *, VarSolTy, PComp<VarAtom *>> EnvironmentMap;
+typedef std::pair<ConstAtom *, ConstAtom *> TaintedVarSolTy;
+typedef std::map<VarAtom *, TaintedVarSolTy, PComp<VarAtom *>> TaintedEnvironmentMap;
 
 typedef uint32_t ConstraintKey;
 
@@ -437,6 +652,10 @@ public:
   VarAtom *getFreshVar(VarSolTy InitC, std::string Name, VarAtom::VarKind VK);
   VarAtom *getOrCreateVar(ConstraintKey V, VarSolTy InitC, std::string Name,
                           VarAtom::VarKind VK);
+
+  VarAtom *getTaintedFreshVar(TaintedVarSolTy InitC, std::string Name, VarAtom::VarKind VK);
+  VarAtom *getOrCreateTaintedVar(ConstraintKey V, TaintedVarSolTy InitC, std::string Name,
+                        VarAtom::VarKind VK);
   VarAtom *getVar(ConstraintKey V) const;
   /* solving */
   ConstAtom *getAssignment(Atom *A);
@@ -444,14 +663,18 @@ public:
   void doCheckedSolve(bool DoC) { UseChecked = DoC; }
   void mergePtrTypes();
   std::set<VarAtom *> resetSolution(VarAtomPred Pred, ConstAtom *CA);
-  void resetFullSolution(VarSolTy InitC);
+  void resetFullSolution(VarSolTy InitC, TaintedVarSolTy InitT);
   bool checkAssignment(VarSolTy C);
+  bool checkTaintedAssignment(TaintedVarSolTy C);
   std::set<VarAtom *> filterAtoms(VarAtomPred Pred);
 
 private:
   EnvironmentMap Environment; // Solution map: Var --> Sol
+  TaintedEnvironmentMap TaintedEnvironment; // Solution map: TaintedVar --> TaintedSol
   uint32_t ConsFreeKey;       // Next available integer to assign to a Var
   bool UseChecked;            // Which solution map to use -- checked (vs. ptyp)
+  bool assignTainted(VarAtom *V, ConstAtom *C);
+  VarAtom *getTaintedVar(ConstraintKey V) const;
 };
 
 class ConstraintVariable;
@@ -464,7 +687,7 @@ public:
   Constraints(const Constraints &O) = delete;
 
   typedef std::set<Constraint *, PComp<Constraint *>> ConstraintSet;
-
+  typedef std::set<TaintedConstraint *, PComp<TaintedConstraint *>> TaintedConstraintSet;
   // Map from a unique key of a function to its constraint variables.
   typedef std::map<std::string, std::set<ConstraintVariable *>>
       FuncKeyToConsMap;
@@ -489,16 +712,24 @@ public:
   Geq *createGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
                  bool IsCheckedConstraint = true, bool Soft = false);
 
+  TGeq *createTaintedGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
+                 bool IsTaintedConstraint = true, bool Soft = false);
+
   VarAtom *createFreshGEQ(std::string Name, VarAtom::VarKind VK, ConstAtom *Con,
                           ReasonLoc Rsn = ReasonLoc());
 
-  VarAtom *getFreshVar(std::string Name, VarAtom::VarKind VK);
+  VarAtom *createFreshTGEQ(std::string Name, VarAtom::VarKind VK, ConstAtom *Con,
+                            ReasonLoc Rsn = ReasonLoc());
+
   VarAtom *getOrCreateVar(ConstraintKey V, std::string Name,
                           VarAtom::VarKind VK);
   VarAtom *getVar(ConstraintKey V) const;
   PtrAtom *getPtr() const;
+  TaintedPointerAtom *getTaintedPtr() const;
   ArrAtom *getArr() const;
+  TaintedArrAtom *getTaintedArr() const;
   NTArrAtom *getNTArr() const;
+  TNTArrAtom *getTaintedNTArr() const;
   WildAtom *getWild() const;
   ConstAtom *getAssignment(Atom *A);
   const ConstraintsGraph &getChkCG() const;
@@ -512,12 +743,19 @@ public:
   bool removeAllConstraintsOnReason(std::string &Reason,
                                     ConstraintSet &RemovedCons);
 
+    VarAtom *getFreshTaintedVar(std::string Name, VarAtom::VarKind VK);
+
+    VarAtom *getFreshVar(std::string Name, VarAtom::VarKind VK);
+
 private:
   ConstraintSet TheConstraints;
+  TaintedConstraintSet TheTaintedConstraints;
   // These are constraint graph representation of constraints.
   ConstraintsGraph *ChkCG;
+  TaintedConstraintsGraph *TaintedCG;
   ConstraintsGraph *PtrTypCG;
   std::map<std::string, ConstraintSet> ConstraintsByReason;
+  std::map<std::string, TaintedConstraintSet> TaintedConstraintsByReason;
   ConstraintsEnv Environment;
 
   // Managing constraints based on the underlying reason.
@@ -527,6 +765,7 @@ private:
   bool removeReasonBasedConstraint(Constraint *C);
 
   VarSolTy getDefaultSolution();
+  TaintedVarSolTy getDefaultTaintedSolution();
 
   // Solve constraint set via graph-based dynamic transitive closure
   bool graphBasedSolve();
@@ -537,6 +776,18 @@ private:
   ArrAtom *PrebuiltArr;
   NTArrAtom *PrebuiltNTArr;
   WildAtom *PrebuiltWild;
+  TaintedPointerAtom *PrebuiltTainted;
+
+  VarAtom *getOrCreateTaintedVar(ConstraintKey V, std::string Name, VarAtom::VarKind VK);
+
+    bool addTaintedConstraint(TaintedConstraint *C);
+
+    void editTaintedConstraintHook(TaintedConstraint *C);
+
+    bool addReasonBasedTaintedConstraint(TaintedConstraint *C);
+
+    bool removeReasonBasedConstraint(TaintedConstraint *C);
+
 };
 
 #endif

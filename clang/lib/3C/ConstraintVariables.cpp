@@ -99,6 +99,8 @@ PointerVariableConstraint *PointerVariableConstraint::addAtomPVConstraint(
   VarAtom *NewA = CS.getFreshVar("&" + Copy->Name, VarAtom::V_Other);
   CS.addConstraint(CS.createGeq(NewA, PtrTyp, Rsn, false));
 
+  //TODO: How do we handle for tainted pointers, cuz you cannot take addresses right?
+
   // Add a constraint between the new atom and any existing atom for this
   // pointer. This is the same constraint that is added between atoms of a
   // pointer in the PointerVariableConstraint constructor. It forces all inner
@@ -201,7 +203,7 @@ PointerVariableConstraint::PointerVariableConstraint(
     const QualType &QT, DeclaratorDecl *D, std::string N, ProgramInfo &I,
     const ASTContext &C, std::string *InFunc, int ForceGenericIndex,
     bool PotentialGeneric,
-    bool VarAtomForChecked, TypeSourceInfo *TSInfo, const QualType &ITypeT)
+    bool VarAtomForChecked, bool VarAtomForTainted, TypeSourceInfo *TSInfo, const QualType &ITypeT)
     : ConstraintVariable(ConstraintVariable::PointerVariable, QT, N),
       FV(nullptr), SrcHasItype(false), PartOfFuncPrototype(InFunc != nullptr),
       Parent(nullptr) {
@@ -386,6 +388,43 @@ PointerVariableConstraint::PointerVariableConstraint(
       Atom *NewAtom;
       if (VarAtomForChecked)
         NewAtom = CS.getFreshVar(Npre + N, VK);
+      else
+        NewAtom = CAtom;
+      Vars.push_back(NewAtom);
+      SrcVars.push_back(CAtom);
+    }
+
+    //we gonna wanna duplicate it for the tainted types as well
+    if (Ty->isTaintedPointerType()) {
+      ConstAtom *CAtom = nullptr;
+      if (Ty->isTaintedPointerNtArrayType()) {
+        // This is an NT array type.
+        CAtom = CS.getNTArr();
+      } else if (Ty->isTaintedArrayType()) {
+        // This is an array type.
+        CAtom = CS.getArr();
+
+        // In CheckedC, a pointer can be freely converted to a size 0 array
+        // pointer, but our constraint system does not allow this. To enable
+        // converting calls to functions with types similar to free, size 0
+        // array pointers are made PTR instead of ARR.
+        if (D && D->hasBoundsExpr())
+          if (BoundsExpr *BE = D->getBoundsExpr())
+            if (isZeroBoundsExpr(BE, C)) {
+              IsZeroWidthArray = true;
+              CAtom = CS.getPtr();
+            }
+
+      } else if (Ty->isTaintedPointerPtrType()) {
+        // This is a regular checked pointer.
+        CAtom = CS.getPtr();
+      }
+      VarCreated = true;
+      assert(CAtom != nullptr && "Unable to find the type "
+                                 "of the checked pointer.");
+      Atom *NewAtom;
+      if (VarAtomForTainted)
+        NewAtom = CS.getFreshTaintedVar(Npre + N, VK);
       else
         NewAtom = CAtom;
       Vars.push_back(NewAtom);
@@ -844,6 +883,13 @@ PointerVariableConstraint::mkString(Constraints &CS,
       Ss << "_Ptr<";
       EndStrs.push_front(">");
       break;
+    case Atom::A_TPtr:
+      getQualString(TypeIdx, Ss);
+
+      EmittedBase = false;
+      Ss << "_TPtr<";
+      EndStrs.push_front(">");
+      break;
     case Atom::A_Arr:
       // If this is an array.
       getQualString(TypeIdx, Ss);
@@ -857,6 +903,19 @@ PointerVariableConstraint::mkString(Constraints &CS,
       Ss << "_Array_ptr<";
       EndStrs.push_front(">");
       break;
+    case Atom::A_TArr:
+      // If this is an array.
+      getQualString(TypeIdx, Ss);
+      // If it's an Arr, then the character we substitute should
+      // be [] instead of *, IF, the original type was an array.
+      // And, if the original type was a sized array of size K.
+      // we should substitute [K].
+      if (emitArraySize(ConstArrs, TypeIdx, K))
+        break;
+      EmittedBase = false;
+      Ss << "_TArray_ptr<";
+      EndStrs.push_front(">");
+      break;
     case Atom::A_NTArr:
       // If this is an NTArray.
       getQualString(TypeIdx, Ss);
@@ -865,6 +924,16 @@ PointerVariableConstraint::mkString(Constraints &CS,
 
       EmittedBase = false;
       Ss << "_Nt_array_ptr<";
+      EndStrs.push_front(">");
+      break;
+    case Atom::A_TNTArr:
+      // If this is an NTArray.
+      getQualString(TypeIdx, Ss);
+      if (emitArraySize(ConstArrs, TypeIdx, K))
+        break;
+
+      EmittedBase = false;
+      Ss << "_TNt_array_ptr<";
       EndStrs.push_front(">");
       break;
     // If there is no array in the original program, then we fall through to
@@ -1029,6 +1098,8 @@ FunctionVariableConstraint::FunctionVariableConstraint(
   }
 
   bool ReturnHasItype = false;
+  bool ReturnIsTaintedType = false;
+
   // ConstraintVariables for the parameters.
   if (Ty->isFunctionPointerType()) {
     // Is this a function pointer definition?
@@ -1042,6 +1113,7 @@ FunctionVariableConstraint::FunctionVariableConstraint(
     // drop itype annotation on function pointer return types.
     RT = FT->getReturnType();
     ReturnHasItype = FT->getReturnAnnots().getInteropTypeExpr();
+    ReturnIsTaintedType = RT->isTaintedPointerType();
     if (ReturnHasItype)
       RTIType = FT->getReturnAnnots().getInteropTypeExpr()->getType();
 
@@ -1060,6 +1132,7 @@ FunctionVariableConstraint::FunctionVariableConstraint(
       QualType QT = FT->getParamType(J);
       QualType ITypeT;
       bool ParamHasItype = FT->getParamAnnots(J).getInteropTypeExpr();
+      bool ParamIsTainted = QT->isTaintedPointerType();
       if (ParamHasItype)
         ITypeT = FT->getParamAnnots(J).getInteropTypeExpr()->getType();
 
@@ -1072,7 +1145,7 @@ FunctionVariableConstraint::FunctionVariableConstraint(
 
       auto ParamVar =
           FVComponentVariable(QT, ITypeT, ParmVD, PName, I, Ctx,
-                              &N, true, ParamHasItype);
+                              &N, true, ParamHasItype, ParamIsTainted);
       ParamVars.push_back(ParamVar);
     }
 
@@ -1087,7 +1160,7 @@ FunctionVariableConstraint::FunctionVariableConstraint(
 
   // ConstraintVariable for the return.
   ReturnVar = FVComponentVariable(RT, RTIType, D, RETVAR, I, Ctx,
-                                  &N, true, ReturnHasItype);
+                                  &N, true, ReturnHasItype, ReturnIsTaintedType);
 
   // Locate the void* params that were not marked wild above
   // to either do so or use as generics
@@ -1348,6 +1421,7 @@ PVConstraint *PointerVariableConstraint::getCopy(ReasonLoc &Rsn,
       FreshVars.push_back(CA);
     } else if (auto *VA = dyn_cast<VarAtom>(*VAIt)) {
       VarAtom *FreshVA = CS.getFreshVar(VA->getName(), VA->getVarKind());
+      //TODO: How do you handle for tainted pointers
       FreshVars.push_back(FreshVA);
       if (!isa<WildAtom>(*CAIt)){
         CS.addConstraint(CS.createGeq(*CAIt, FreshVA, Rsn, false));
@@ -2197,15 +2271,16 @@ FVComponentVariable::FVComponentVariable(const QualType &QT,
                                          const ASTContext &C,
                                          std::string *InFunc,
                                          bool PotentialGeneric,
-                                         bool HasItype) {
+                                         bool HasItype,
+                                         bool IsTaintedFunctionPointer) {
   ExternalConstraint =
-      new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
+      new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype, IsTaintedFunctionPointer,
                        nullptr, ITypeT);
   if (!HasItype && QT->isVoidPointerType()) {
     InternalConstraint = ExternalConstraint;
   } else {
     InternalConstraint =
-        new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
+        new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype, IsTaintedFunctionPointer,
                          nullptr, ITypeT);
     bool EquateChecked = QT->isVoidPointerType();
     linkInternalExternal(I, EquateChecked);

@@ -71,6 +71,38 @@ void Constraints::editConstraintHook(Constraint *C) {
   }
 }
 
+void Constraints::editTaintedConstraintHook(TaintedConstraint *C) {
+  if (!_3COpts.AllTypes) {
+    // Invalidate any pointer-type constraints.
+    if (TGeq *E = dyn_cast<TGeq>(C)) {
+      if (!E->constraintIsTainted()) {
+        VarAtom *LHSA = dyn_cast<VarAtom>(E->getLHS());
+        VarAtom *RHSA = dyn_cast<VarAtom>(E->getRHS());
+        if (LHSA != nullptr && RHSA != nullptr) {
+          return;
+        }
+        // Make this tainted only if the const atom is other than Ptr.
+        if (RHSA) {
+          if (!dyn_cast<PtrAtom>(E->getLHS())) {
+            E->setTainted(getWild());
+            ReasonLoc Rsn = E->getReason();
+            Rsn.Reason = POINTER_IS_ARRAY_REASON;
+            E->setReason(Rsn);
+          }
+        } else {
+          assert(LHSA && "Adding constraint between constants?!");
+          if (!dyn_cast<PtrAtom>(E->getRHS())) {
+            E->setTainted(getWild());
+            ReasonLoc Rsn = E->getReason();
+            Rsn.Reason = POINTER_IS_ARRAY_REASON;
+            E->setReason(Rsn);
+          }
+        }
+      }
+    }
+  }
+}
+
 // Add a constraint to the set of constraints. If the constraint is already
 // present (by syntactic equality) return false.
 bool Constraints::addConstraint(Constraint *C) {
@@ -117,6 +149,48 @@ bool Constraints::addConstraint(Constraint *C) {
   return false;
 }
 
+bool Constraints::addTaintedConstraint(TaintedConstraint *C) {
+  editTaintedConstraintHook(C);
+
+  auto Search = TheTaintedConstraints.find(C);
+
+  // Check if C is already in the set of constraints.
+  if (Search == TheTaintedConstraints.end()) {
+    TheTaintedConstraints.insert(C);
+
+    if (TGeq *G = dyn_cast<TGeq>(C)) {
+      if (G->constraintIsTainted())
+        TaintedCG->addConstraint(G, *this);
+
+      addReasonBasedTaintedConstraint(C);
+
+      // Update the variables that depend on this constraint.
+      if (TGeq *E = dyn_cast<TGeq>(C)) {
+        if (VarAtom *VLhs = dyn_cast<VarAtom>(E->getLHS()))
+          VLhs->TaintedConstraints.insert(C);
+        else if (VarAtom *VRhs = dyn_cast<VarAtom>(E->getRHS())) {
+          VRhs->TaintedConstraints.insert(C);
+        }
+      } else
+        llvm_unreachable("unsupported constraint");
+      return true;
+    }
+
+    // If the constraint being added is due to unwritability,
+    // propagate this reason to the existing constraint.
+    // This way we always prioritize the unwritability as the reason
+    // for wildness.
+    // This is needed as 3C will currently only report one cause of wildness
+    // (See https://github.com/correctcomputation/checkedc-clang/issues/664)
+    if (C->isUnwritable()) {
+      auto *StoredConstraint = *Search;
+      StoredConstraint->setReason(C->getReason());
+    }
+
+    return false;
+  }
+}
+
 bool Constraints::addReasonBasedConstraint(Constraint *C) {
   // Only insert if this is an Eq constraint and has a valid reason.
   if (Geq *E = dyn_cast<Geq>(C)) {
@@ -127,12 +201,32 @@ bool Constraints::addReasonBasedConstraint(Constraint *C) {
   return false;
 }
 
+bool Constraints::addReasonBasedTaintedConstraint(TaintedConstraint *C) {
+  // Only insert if this is an Eq constraint and has a valid reason.
+  if (TGeq *E = dyn_cast<TGeq>(C)) {
+    if (E->getReasonText() != DEFAULT_REASON && !E->getReasonText().empty() &&
+        E->getReason().Location.valid())
+      return this->TaintedConstraintsByReason[E->getReasonText()].insert(E).second;
+  }
+  return false;
+}
+
 bool Constraints::removeReasonBasedConstraint(Constraint *C) {
   if (Geq *E = dyn_cast<Geq>(C)) {
     // Remove if the constraint is present.
     if (this->ConstraintsByReason.find(E->getReasonText()) !=
         this->ConstraintsByReason.end())
       return this->ConstraintsByReason[E->getReasonText()].erase(E) > 0;
+  }
+  return false;
+}
+
+bool Constraints::removeReasonBasedConstraint(TaintedConstraint *C) {
+  if (TGeq *E = dyn_cast<TGeq>(C)) {
+    // Remove if the constraint is present.
+    if (this->TaintedConstraintsByReason.find(E->getReasonText()) !=
+        this->TaintedConstraintsByReason.end())
+      return this->TaintedConstraintsByReason[E->getReasonText()].erase(E) > 0;
   }
   return false;
 }
@@ -525,12 +619,25 @@ VarAtom *Constraints::getOrCreateVar(ConstraintKey V, std::string Name,
   return Environment.getOrCreateVar(V, getDefaultSolution(), Name, VK);
 }
 
+VarAtom *Constraints::getOrCreateTaintedVar(ConstraintKey V, std::string Name,
+                                     VarAtom::VarKind VK) {
+  return Environment.getOrCreateTaintedVar(V, getDefaultTaintedSolution(), Name, VK);
+}
+
 VarSolTy Constraints::getDefaultSolution() {
   return std::make_pair(getPtr(), getPtr());
 }
 
+TaintedVarSolTy Constraints::getDefaultTaintedSolution() {
+  return std::make_pair(getTaintedPtr(), getTaintedPtr());
+}
+
 VarAtom *Constraints::getFreshVar(std::string Name, VarAtom::VarKind VK) {
   return Environment.getFreshVar(getDefaultSolution(), Name, VK);
+}
+
+VarAtom *Constraints::getFreshTaintedVar(std::string Name, VarAtom::VarKind VK) {
+  return Environment.getTaintedFreshVar(getDefaultTaintedSolution(), Name, VK);
 }
 
 VarAtom *Constraints::getVar(ConstraintKey V) const {
@@ -547,10 +654,17 @@ VarAtom *Constraints::createFreshGEQ(std::string Name, VarAtom::VarKind VK,
   return VA;
 }
 
+VarAtom *Constraints::createFreshTGEQ(std::string Name, VarAtom::VarKind VK,
+                                     ConstAtom *Con, ReasonLoc Rsn) {
+  VarAtom *VA = getFreshTaintedVar(Name, VK);
+  addTaintedConstraint(createTaintedGeq(VA, Con, Rsn));
+  return VA;
+}
 PtrAtom *Constraints::getPtr() const { return PrebuiltPtr; }
 ArrAtom *Constraints::getArr() const { return PrebuiltArr; }
 NTArrAtom *Constraints::getNTArr() const { return PrebuiltNTArr; }
 WildAtom *Constraints::getWild() const { return PrebuiltWild; }
+TaintedPointerAtom *Constraints::getTaintedPtr() const { return PrebuiltTainted; }
 
 ConstAtom *Constraints::getAssignment(Atom *A) {
   Environment.doCheckedSolve(true);
@@ -580,8 +694,20 @@ Geq *Constraints::createGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
   return new Geq(Lhs, Rhs, Rsn, IsCheckedConstraint, Soft);
 }
 
+TGeq *Constraints::createTaintedGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
+                           bool IsTaintedConstraint, bool Soft) {
+  if (Rsn.Location.valid()) {
+    // Make this invalid, if the source location is not absolute path
+    // this is to avoid crashes in clangd.
+    if (!llvm::sys::path::is_absolute(Rsn.Location.getFileName()))
+      Rsn.Location = PersistentSourceLoc();
+  }
+  assert("Shouldn't be constraining WILD >= VAR" && Lhs != getWild());
+  return new TGeq(Lhs, Rhs, Rsn, IsTaintedConstraint, Soft);
+}
+
 void Constraints::resetEnvironment() {
-  Environment.resetFullSolution(getDefaultSolution());
+  Environment.resetFullSolution(getDefaultSolution(), getDefaultTaintedSolution());
 }
 
 bool Constraints::checkInitialEnvSanity() {
@@ -593,6 +719,7 @@ Constraints::Constraints() {
   PrebuiltArr = new ArrAtom();
   PrebuiltNTArr = new NTArrAtom();
   PrebuiltWild = new WildAtom();
+  PrebuiltTainted = new TaintedPointerAtom();
   ChkCG = new ConstraintsGraph();
   PtrTypCG = new ConstraintsGraph();
 }
@@ -602,6 +729,7 @@ Constraints::~Constraints() {
   delete PrebuiltArr;
   delete PrebuiltNTArr;
   delete PrebuiltWild;
+  delete PrebuiltTainted;
   if (ChkCG != nullptr)
     delete (ChkCG);
   if (PtrTypCG != nullptr)
@@ -652,6 +780,14 @@ VarAtom *ConstraintsEnv::getFreshVar(VarSolTy InitC, std::string Name,
   return NewVA;
 }
 
+VarAtom *ConstraintsEnv::getTaintedFreshVar(TaintedVarSolTy InitV, std::string Name,
+                                     VarAtom::VarKind VK) {
+  VarAtom *NewVA = getOrCreateTaintedVar(ConsFreeKey, InitV, Name, VK);
+  ConsFreeKey++;
+  return NewVA;
+}
+
+
 VarAtom *ConstraintsEnv::getOrCreateVar(ConstraintKey V, VarSolTy InitC,
                                         std::string Name, VarAtom::VarKind VK) {
   VarAtom Tv(V, Name, VK);
@@ -664,9 +800,29 @@ VarAtom *ConstraintsEnv::getOrCreateVar(ConstraintKey V, VarSolTy InitC,
   return VA;
 }
 
+VarAtom *ConstraintsEnv::getOrCreateTaintedVar(ConstraintKey V, TaintedVarSolTy InitC,
+                                        std::string Name, VarAtom::VarKind VK) {
+  VarAtom Tv(V, Name, VK);
+  TaintedEnvironmentMap::iterator I = TaintedEnvironment.find(&Tv);
+  if (I != TaintedEnvironment.end())
+    return I->first;
+  VarAtom *VA = new VarAtom(Tv);
+  TaintedEnvironment[VA] = InitC;
+  return VA;
+}
+
 VarAtom *ConstraintsEnv::getVar(ConstraintKey V) const {
   VarAtom Tv(V);
   EnvironmentMap::const_iterator I = Environment.find(&Tv);
+
+  if (I != Environment.end())
+    return I->first;
+  return nullptr;
+}
+
+VarAtom *ConstraintsEnv::getTaintedVar(ConstraintKey V) const {
+  VarAtom Tv(V);
+  EnvironmentMap::const_iterator I = TaintedEnvironment.find(&Tv);
 
   if (I != Environment.end())
     return I->first;
@@ -695,6 +851,16 @@ bool ConstraintsEnv::checkAssignment(VarSolTy Sol) {
   return true;
 }
 
+bool ConstraintsEnv::checkTaintedAssignment(TaintedVarSolTy Sol) {
+  for (const auto &EnvVar : TaintedEnvironment) {
+    if (EnvVar.second.first != Sol.first ||
+        EnvVar.second.second != Sol.second) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
   auto VI = Environment.find(V);
   if (UseChecked) {
@@ -702,6 +868,12 @@ bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
   } else {
     VI->second.second = C;
   }
+  return true;
+}
+
+bool ConstraintsEnv::assignTainted(VarAtom *V, ConstAtom *C) {
+  auto VI = TaintedEnvironment.find(V);
+  VI->second.first = C;
   return true;
 }
 
@@ -736,8 +908,12 @@ std::set<VarAtom *> ConstraintsEnv::resetSolution(VarAtomPred Pred,
   return Unchanged;
 }
 
-void ConstraintsEnv::resetFullSolution(VarSolTy InitC) {
+void ConstraintsEnv::resetFullSolution(VarSolTy InitC, TaintedVarSolTy TC) {
   for (auto &CurrE : Environment) {
+    CurrE.second = InitC;
+  }
+
+  for (auto &CurrE : TaintedEnvironment) {
     CurrE.second = InitC;
   }
 }

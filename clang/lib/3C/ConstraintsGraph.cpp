@@ -35,6 +35,29 @@ void ConstraintsGraph::addConstraint(Geq *C, const Constraints &CS) {
   addEdge(A2, A1, C->isSoft(), C);
 }
 
+TaintedConstraintsGraph::NodeType *TaintedConstraintsGraph::findOrCreateNode(Atom *A) {
+  // Save all the const atoms.
+  if (auto *CA = clang::dyn_cast<ConstAtom>(A))
+    AllConstAtoms.insert(CA);
+  return TaintedDataGraph::findOrCreateNode(A);
+}
+
+std::set<ConstAtom *> &TaintedConstraintsGraph::getAllConstAtoms() {
+  return AllConstAtoms;
+}
+
+void TaintedConstraintsGraph::addConstraint(TGeq *C, const Constraints &CS) {
+  Atom *A1 = C->getLHS();
+  if (auto *VA1 = clang::dyn_cast<VarAtom>(A1))
+    assert(CS.getVar(VA1->getLoc()) == VA1);
+
+  Atom *A2 = C->getRHS();
+  if (auto *VA2 = clang::dyn_cast<VarAtom>(A2))
+    assert(CS.getVar(VA2->getLoc()) == VA2);
+
+  addEdge(A2, A1, C->isSoft(), C);
+}
+
 std::string llvm::DOTGraphTraits<GraphVizOutputGraph>::getNodeLabel(
     const DataNode<Atom *, GraphVizEdge> *Node, const GraphVizOutputGraph &CG) {
   return Node->getData()->getStr();

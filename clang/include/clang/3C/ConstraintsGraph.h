@@ -19,6 +19,7 @@
 #include "llvm/Support/GraphWriter.h"
 
 template <class DataType> struct DataEdge;
+template <class DataType> struct TaintedDataEdge;
 
 template <typename DataType, typename EdgeType = DataEdge<DataType>>
 class DataNode : public llvm::DGNode<DataNode<DataType, EdgeType>, EdgeType> {
@@ -65,6 +66,51 @@ private:
   void addPredecessor(EdgeType &E) { PredecessorEdges.insert(&E); }
 };
 
+template <typename DataType, typename EdgeType = TaintedDataEdge<DataType>>
+class TaintedDataNode : public llvm::DGNode<TaintedDataNode<DataType, EdgeType>, EdgeType> {
+public:
+    typedef TaintedDataNode<DataType, EdgeType> NodeType;
+    typedef llvm::DGNode<NodeType, EdgeType> SuperType;
+
+    TaintedDataNode() = delete;
+    TaintedDataNode(DataType D, EdgeType &E) : SuperType(E), Data(D) {}
+    explicit TaintedDataNode(DataType D) : SuperType(), Data(D) {}
+    TaintedDataNode(const TaintedDataNode &N) : SuperType(N), Data(N.Data) {}
+    TaintedDataNode(const TaintedDataNode &&N) : SuperType(std::move(N)), Data(N.Data) {}
+
+    ~TaintedDataNode() = default;
+
+    DataType getData() const { return Data; }
+
+    void connectTo(NodeType &Other, bool SoftEdge = false,
+                   TaintedConstraint *C = nullptr) {
+      auto *BLR = new EdgeType(Other, C);
+      BLR->IsSoft = SoftEdge;
+      this->addEdge(*BLR);
+      auto *BRL = new EdgeType(*this, C);
+      Other.addPredecessor(*BRL);
+    }
+
+    const llvm::SetVector<EdgeType *> &getPredecessors() {
+      return PredecessorEdges;
+    }
+
+    // Nodes are defined exactly by the data they contain, not by their
+    // connections to other nodes.
+    bool isEqualTo(const TaintedDataNode &N) const { return this->Data == N.Data; }
+
+private:
+    // Data element stored in each node. This is used by isEqualTo to discriminate
+    // between nodes.
+    DataType Data;
+
+    // While the constraint graph is directed, we want to efficiently traverse
+    // edges in the opposite direction. This set contains an edge entry pointing
+    // back to every node that has an edge to this node.
+    llvm::SetVector<EdgeType *> PredecessorEdges;
+    void addPredecessor(EdgeType &E) { PredecessorEdges.insert(&E); }
+};
+
 namespace llvm {
 // Boilerplate template specialization
 template <typename Data, typename EdgeType>
@@ -100,6 +146,18 @@ struct DataEdge : public llvm::DGEdge<DataNode<DataType>, DataEdge<DataType>> {
       : SuperType(E), EdgeConstraint(C) {}
   bool IsSoft = false;
   Constraint *EdgeConstraint;
+};
+
+
+template <class DataType>
+struct TaintedDataEdge : public llvm::DGEdge<TaintedDataNode<DataType>, TaintedDataEdge<DataType>> {
+    typedef llvm::DGEdge<TaintedDataNode<DataType>, TaintedDataEdge<DataType>> SuperType;
+    explicit TaintedDataEdge(TaintedDataNode<DataType> &Node, TaintedConstraint *C = nullptr)
+            : SuperType(Node), EdgeConstraint(C) {}
+    TaintedDataEdge(const TaintedDataEdge &E, TaintedConstraint *C = nullptr)
+            : SuperType(E), EdgeConstraint(C) {}
+    bool IsSoft = false;
+    TaintedConstraint *EdgeConstraint;
 };
 
 class GraphVizOutputGraph;
@@ -253,6 +311,155 @@ private:
   void invalidateBFSCache() { BFSCache.clear(); }
 };
 
+// Define a general purpose extension to the llvm provided graph class that
+// stores some data at each node in the graph. This is used by the checked and
+// pointer type constraint graphs (which store atoms at each node) as well as
+// the array bounds graph (which stores BoundsKeys).
+template <typename Data, typename EdgeType = TaintedDataEdge<Data>>
+class TaintedDataGraph
+        : public llvm::DirectedGraph<TaintedDataNode<Data, EdgeType>, EdgeType> {
+public:
+    typedef TaintedDataNode<Data, EdgeType> NodeType;
+
+    virtual ~TaintedDataGraph() {
+      for (auto *N : this->Nodes) {
+        for (auto *E : N->getEdges())
+          delete E;
+        N->getEdges().clear();
+        delete N;
+        N = nullptr;
+      }
+      this->Nodes.clear();
+      invalidateBFSCache();
+    }
+
+    void removeEdge(Data Src, Data Dst) {
+      NodeType *NSrc = this->findNode(Src);
+      NodeType *NDst = this->findNode(Dst);
+      assert(NSrc && NDst);
+      llvm::SmallVector<EdgeType *, 10> Edges;
+      NDst->findEdgesTo(*NSrc, Edges);
+      for (EdgeType *E : Edges) {
+        NDst->removeEdge(*E);
+        delete E;
+      }
+      invalidateBFSCache();
+    }
+
+    void addEdge(Data L, Data R, bool SoftEdge = false, TaintedConstraint *C = nullptr) {
+      NodeType *BL = this->findOrCreateNode(L);
+      NodeType *BR = this->findOrCreateNode(R);
+      BL->connectTo(*BR, SoftEdge, C);
+      invalidateBFSCache();
+    }
+
+    void addUniqueEdge(Data L, Data R) {
+      NodeType *BL = this->findOrCreateNode(L);
+      NodeType *BR = this->findOrCreateNode(R);
+      llvm::SmallVector<EdgeType *, 10> Edges;
+      BL->findEdgesTo(*BR, Edges);
+      if (Edges.empty()) {
+        addEdge(L, R);
+      }
+    }
+
+    // This version provides more info by returning graph edges
+    // rather than data items
+    bool getIncidentEdges(Data D, std::set<EdgeType*> &EdgeSet, bool Succ,
+                          bool Append = false, bool IgnoreSoftEdges = false) const {
+      NodeType *N = this->findNode(D);
+      if (N == nullptr)
+        return false;
+      if (!Append)
+        EdgeSet.clear();
+      llvm::SetVector<EdgeType *> Edges;
+      if (Succ)
+        Edges = N->getEdges();
+      else
+        Edges = N->getPredecessors();
+      for (auto *E : Edges)
+        if (!E->IsSoft || !IgnoreSoftEdges)
+          EdgeSet.insert(E);
+      return !EdgeSet.empty();
+    }
+
+    bool getNeighbors(Data D, std::set<Data> &DataSet, bool Succ,
+                      bool Append = false, bool IgnoreSoftEdges = false) const {
+      if (!Append)
+        DataSet.clear();
+
+      std::set<EdgeType *> Edges;
+      getIncidentEdges(D, Edges, Succ, Append, IgnoreSoftEdges);
+      for (auto *E : Edges)
+        DataSet.insert(E->getTargetNode().getData());
+      return !DataSet.empty();
+    }
+
+    bool getSuccessorsEdges(Atom *A, std::set<EdgeType*> &EdgeSet,
+                            bool Append = false) {
+      return getIncidentEdges(A, EdgeSet, true, Append);
+    }
+
+    bool getPredecessorsEdges(Atom *A, std::set<EdgeType*> &EdgeSet,
+                              bool Append = false) {
+      return getIncidentEdges(A, EdgeSet, false, Append);
+    }
+
+    bool
+    getSuccessors(Data D, std::set<Data> &DataSet, bool Append = false) const {
+      return getNeighbors(D, DataSet, true, Append);
+    }
+
+    bool
+    getPredecessors(Data D, std::set<Data> &DataSet, bool Append = false) const {
+      return getNeighbors(D, DataSet, false, Append);
+    }
+
+    NodeType *findNode(Data D) const {
+      if (NodeSet.find(D) != NodeSet.end())
+        return NodeSet.at(D);
+      return nullptr;
+    }
+
+    void visitBreadthFirst(Data Start, llvm::function_ref<void(Data)> Fn) const {
+      NodeType *N = this->findNode(Start);
+      if (N == nullptr)
+        return;
+      // Insert into BFS cache.
+      if (BFSCache.find(Start) == BFSCache.end()) {
+        std::set<Data> ReachableNodes;
+        for (auto TNode : llvm::breadth_first(N)) {
+          ReachableNodes.insert(TNode->getData());
+        }
+        BFSCache[Start] = ReachableNodes;
+      }
+      for (auto SN : BFSCache[Start])
+        Fn(SN);
+    }
+
+protected:
+    // Finds the node containing the Data if it exists, otherwise a new Node
+    // is allocated. Node equality is defined only by the data stored in a node,
+    // so if any node already contains the data, this node will be found.
+    virtual NodeType *findOrCreateNode(Data D) {
+      if (NodeSet.find(D) != NodeSet.end())
+        return NodeSet[D];
+
+      auto *NewN = new NodeType(D);
+      this->Nodes.push_back(NewN);
+      NodeSet[D] = NewN;
+      return NewN;
+    }
+
+private:
+    template <typename G> friend struct llvm::GraphTraits;
+    friend class GraphVizOutputGraph;
+    mutable std::map<Data, std::set<Data>> BFSCache;
+    std::map<Data, NodeType *> NodeSet;
+
+    void invalidateBFSCache() { BFSCache.clear(); }
+};
+
 // Specialize the graph for the checked and pointer type constraint graphs. This
 // graphs stores atoms at each node, and constraints on each edge. These edges
 // are returned by the specialized `getNeighbors` function to provide constraint
@@ -275,6 +482,29 @@ protected:
 
 private:
   std::set<ConstAtom *> AllConstAtoms;
+
+};
+
+class TaintedConstraintsGraph : public TaintedDataGraph<Atom *> {
+public:
+    // Add an edge to the graph according to the Geq constraint. This is an edge
+    // RHSAtom -> LHSAtom
+    void addConstraint(TGeq *C, const Constraints &CS);
+
+    // Const atoms are the starting points for the solving algorithm so, we need
+    // be able to retrieve them from the graph.
+    std::set<ConstAtom *> &getAllConstAtoms();
+
+    typedef TaintedDataEdge<Atom*> EdgeType;
+
+protected:
+    // Add vertex is overridden to save const atoms as they are added to the graph
+    // so that getAllConstAtoms can efficiently retrieve them.
+    NodeType *findOrCreateNode(Atom *A) override;
+
+private:
+    std::set<ConstAtom *> AllConstAtoms;
+
 };
 
 // Below this point we define a graph class specialized for generating the

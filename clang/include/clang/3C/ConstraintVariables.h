@@ -508,6 +508,7 @@ public:
                             int ForceGenericIndex = -1,
                             bool PotentialGeneric = false,
                             bool VarAtomForChecked = false,
+                            bool VarAtomForTainted = false,
                             TypeSourceInfo *TSI = nullptr,
                             const clang::QualType &ItypeT = QualType());
 
@@ -601,7 +602,7 @@ public:
   FVComponentVariable(const clang::QualType &QT, const clang::QualType &ITypeT,
                       clang::DeclaratorDecl *D, std::string N, ProgramInfo &I,
                       const clang::ASTContext &C, std::string *InFunc,
-                      bool PotentialGeneric, bool HasItype);
+                      bool PotentialGeneric, bool HasItype, bool IsTaintedfunction);
 
   void mergeDeclaration(FVComponentVariable *From, ProgramInfo &I,
                         std::string &ReasonFailed);
