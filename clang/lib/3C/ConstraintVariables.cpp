@@ -4304,6 +4304,19 @@ TFVComponentVariable::mkItypeStr(Constraints &CS, bool ForItypeBase) const {
   return "";
 }
 
+bool FVComponentVariable::hasCheckedSolution(Constraints &CS) const {
+  // If the external constraint variable is checked, then the variable should
+  // be advertised as checked to callers. If the internal and external
+  // constraint variables solve to the same type, then they are both checked and
+  // we can use a _Ptr type.
+  return ExternalConstraint->isSolutionChecked(CS.getVariables()) &&
+         ((ExternalConstraint->srcHasItype() &&
+           InternalConstraint->isSolutionChecked(CS.getVariables())) ||
+          ExternalConstraint->anyChanges(CS.getVariables())) &&
+         InternalConstraint->solutionEqualTo(CS, ExternalConstraint);
+}
+
+
 bool TFVComponentVariable::hasTaintedSolution(Constraints &CS) const {
   // If the external constraint variable is checked, then the variable should
   // be advertised as checked to callers. If the internal and external
