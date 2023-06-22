@@ -662,7 +662,9 @@ VarAtom *Constraints::createFreshTGEQ(std::string Name, VarAtom::VarKind VK,
 }
 PtrAtom *Constraints::getPtr() const { return PrebuiltPtr; }
 ArrAtom *Constraints::getArr() const { return PrebuiltArr; }
+TaintedArrAtom* Constraints::getTaintedArr() const { return PrebuiltTaintedArr; }
 NTArrAtom *Constraints::getNTArr() const { return PrebuiltNTArr; }
+TNTArrAtom* Constraints::getTNTArr() const { return PrebuiltTNTArr; }
 WildAtom *Constraints::getWild() const { return PrebuiltWild; }
 TaintedPointerAtom *Constraints::getTaintedPtr() const { return PrebuiltTainted; }
 
@@ -717,7 +719,9 @@ bool Constraints::checkInitialEnvSanity() {
 Constraints::Constraints() {
   PrebuiltPtr = new PtrAtom();
   PrebuiltArr = new ArrAtom();
+  PrebuiltTaintedArr = new TaintedArrAtom();
   PrebuiltNTArr = new NTArrAtom();
+  PrebuiltTNTArr = new TNTArrAtom();
   PrebuiltWild = new WildAtom();
   PrebuiltTainted = new TaintedPointerAtom();
   ChkCG = new ConstraintsGraph();
@@ -727,7 +731,9 @@ Constraints::Constraints() {
 Constraints::~Constraints() {
   delete PrebuiltPtr;
   delete PrebuiltArr;
+  delete PrebuiltTaintedArr;
   delete PrebuiltNTArr;
+  delete PrebuiltTNTArr;
   delete PrebuiltWild;
   delete PrebuiltTainted;
   if (ChkCG != nullptr)

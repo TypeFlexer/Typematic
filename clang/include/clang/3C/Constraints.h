@@ -747,6 +747,10 @@ public:
 
     VarAtom *getFreshVar(std::string Name, VarAtom::VarKind VK);
 
+    TNTArrAtom *getTNTArr() const;
+
+    bool addTaintedConstraint(TaintedConstraint *C);
+
 private:
   ConstraintSet TheConstraints;
   TaintedConstraintSet TheTaintedConstraints;
@@ -774,13 +778,13 @@ private:
   // Constraints class.
   PtrAtom *PrebuiltPtr;
   ArrAtom *PrebuiltArr;
+  TaintedArrAtom* PrebuiltTaintedArr;
   NTArrAtom *PrebuiltNTArr;
+  TNTArrAtom *PrebuiltTNTArr;
   WildAtom *PrebuiltWild;
   TaintedPointerAtom *PrebuiltTainted;
 
   VarAtom *getOrCreateTaintedVar(ConstraintKey V, std::string Name, VarAtom::VarKind VK);
-
-    bool addTaintedConstraint(TaintedConstraint *C);
 
     void editTaintedConstraintHook(TaintedConstraint *C);
 
