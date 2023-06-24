@@ -210,7 +210,6 @@ static void emit(Rewriter &R, ASTContext &C, bool &StdoutModeEmittedMainFile) {
       // Used for diagnostics related to the file.
       SourceLocation BeginningOfFileSourceLoc =
           SM.translateFileLineCol(FE, 1, 1);
-
       DiagnosticsEngine &DE = C.getDiagnostics();
       DiagnosticsEngine::Level UnwritableChangeDiagnosticLevel =
         _3COpts.AllowUnwritableChanges ? DiagnosticsEngine::Warning

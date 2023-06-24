@@ -402,6 +402,23 @@ bool ProgramInfo::link() {
     }
   }
 
+  for (const auto &V : TaintedGlobalVariableSymbols) {
+    const std::set<TPVConstraint *> &C = V.second;
+
+    if (C.size() > 1) {
+      std::set<TPVConstraint *>::iterator I = C.begin();
+      std::set<TPVConstraint *>::iterator J = C.begin();
+      ++J;
+      if (_3COpts.Verbose)
+        llvm::errs() << "Tainted Global variables:" << V.first << "\n";
+      while (J != C.end()) {
+        TaintedconstrainConsVarGeq(*I, *J, CS, Rsn, Same_to_Same, true, this);
+        ++I;
+        ++J;
+      }
+    }
+  }
+
   for (const auto &V : ExternGVars) {
     // if a definition for this global variable has not been seen,
     // constrain everything about it
@@ -412,6 +429,11 @@ bool ProgramInfo::link() {
           Rsn.Location);
       const std::set<PVConstraint *> &C = GlobalVariableSymbols[VarName];
       for (const auto &Var : C) {
+        // TODO: Is there an easy way to get a PSL to attach to the constraint?
+        Var->constrainToWild(CS, WildReason);
+      }
+      const std::set<TPVConstraint *> &T = TaintedGlobalVariableSymbols[VarName];
+      for (const auto &Var : T) {
         // TODO: Is there an easy way to get a PSL to attach to the constraint?
         Var->constrainToWild(CS, WildReason);
       }
@@ -589,6 +611,7 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
   }
 
   ConstraintVariable *NewCV = nullptr;
+  TaintedConstraintVariable *NewTV = nullptr;
 
   if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
     // Function Decls have FVConstraints.
@@ -666,26 +689,51 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
     assert(!isa<ParmVarDecl>(VD));
     QualType QT = VD->getTypeSourceInfo()->getTypeLoc().getType();
     if (QT->isPointerType() || QT->isArrayType()) {
-      PVConstraint *P = new PVConstraint(D, *this, *AstContext);
-      P->setValidDecl();
-      NewCV = P;
-      std::string VarName(VD->getName());
-      unifyIfTypedef(QT, *AstContext, P);
-      auto PSL = PersistentSourceLoc::mkPSL(VD, *AstContext);
-      ensureNtCorrect(VD->getType(), PSL, P);
-      if (VD->hasGlobalStorage()) {
-        // If we see a definition for this global variable, indicate so in
-        // ExternGVars.
-        if (VD->hasDefinition() || VD->hasDefinition(*AstContext)) {
-          ExternGVars[VarName] = true;
+        if (QT->isTaintedPointerType())
+        {
+            TPVConstraint *P = new TPVConstraint(D, *this, *AstContext);
+            P->setValidDecl();
+            NewTV = P;
+            std::string VarName(VD->getName());
+            unifyIfTaintedTypedef(QT, *AstContext, P);
+            auto PSL = PersistentSourceLoc::mkPSL(VD, *AstContext);
+            //ensureNtCorrect(VD->getType(), PSL, P);
+            if (VD->hasGlobalStorage()) {
+                // If we see a definition for this global variable, indicate so in
+                // ExternGVars.
+                if (VD->hasDefinition() || VD->hasDefinition(*AstContext)) {
+                    ExternGVars[VarName] = true;
+                }
+                    // If we don't, check that we haven't seen one before before setting to
+                    // false.
+                else if (!ExternGVars[VarName]) {
+                    ExternGVars[VarName] = false;
+                }
+              TaintedGlobalVariableSymbols[VarName].insert(P);
+            }
         }
-        // If we don't, check that we haven't seen one before before setting to
-        // false.
-        else if (!ExternGVars[VarName]) {
-          ExternGVars[VarName] = false;
+        else {
+            PVConstraint *P = new PVConstraint(D, *this, *AstContext);
+            P->setValidDecl();
+            NewCV = P;
+            std::string VarName(VD->getName());
+            unifyIfTypedef(QT, *AstContext, P);
+            auto PSL = PersistentSourceLoc::mkPSL(VD, *AstContext);
+            ensureNtCorrect(VD->getType(), PSL, P);
+            if (VD->hasGlobalStorage()) {
+                // If we see a definition for this global variable, indicate so in
+                // ExternGVars.
+                if (VD->hasDefinition() || VD->hasDefinition(*AstContext)) {
+                    ExternGVars[VarName] = true;
+                }
+                    // If we don't, check that we haven't seen one before before setting to
+                    // false.
+                else if (!ExternGVars[VarName]) {
+                    ExternGVars[VarName] = false;
+                }
+                GlobalVariableSymbols[VarName].insert(P);
+            }
         }
-        GlobalVariableSymbols[VarName].insert(P);
-      }
     }
 
   } else if (FieldDecl *FlD = dyn_cast<FieldDecl>(D)) {
@@ -704,14 +752,27 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
   } else
     llvm_unreachable("unknown decl type");
 
-  assert("We shouldn't be adding a null CV to Variables map." && NewCV);
-  if (!canWrite(PLoc.getFileName())) {
-    auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
-    NewCV->equateWithItype(*this, Rsn);
-    NewCV->constrainToWild(CS, Rsn);
+//  assert("We shouldn't be adding a null CV to Variables map." && NewCV);
+  if (NewCV)
+  {
+    if (!canWrite(PLoc.getFileName())) {
+      auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
+      NewCV->equateWithItype(*this, Rsn);
+      NewCV->constrainToWild(CS, Rsn);
+    }
+    constrainWildIfMacro(NewCV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
+    Variables[PLoc] = NewCV;
   }
-  constrainWildIfMacro(NewCV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
-  Variables[PLoc] = NewCV;
+    if (NewTV)
+    {
+        if (!canWrite(PLoc.getFileName())) {
+        auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
+        NewTV->equateWithItype(*this, Rsn);
+        NewTV->constrainToWild(CS, Rsn);
+        }
+        TaintedconstrainWildIfMacro(NewTV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
+      Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewTV);
+    }
 }
 
 void ProgramInfo::ensureNtCorrect(const QualType &QT,
@@ -736,6 +797,21 @@ void ProgramInfo::unifyIfTypedef(const QualType &QT, ASTContext &Context,
       constrainConsVarGeq(P, Bounds, CS, Rsn, CA, false, this);
     }
   }
+}
+
+void ProgramInfo::unifyIfTaintedTypedef(const QualType &QT, ASTContext &Context,
+                                 TPVConstraint *P, ConsAction CA) {
+    if (const auto *TDT = dyn_cast<TypedefType>(QT.getTypePtr())) {
+        auto *TDecl = TDT->getDecl();
+        auto PSL = PersistentSourceLoc::mkPSL(TDecl, Context);
+        auto O = lookupTypedef(PSL);
+        auto Rsn = ReasonLoc("typedef", PSL);
+        if (O.hasValue()) {
+            auto *Bounds = &O.getValue();
+            P->setTypedef(reinterpret_cast<TaintedConstraintVariable *>(Bounds), TDecl->getNameAsString());
+           TaintedconstrainConsVarGeq(P, reinterpret_cast<TaintedConstraintVariable *>(Bounds), CS, Rsn, CA, false, this);
+        }
+    }
 }
 
 ProgramInfo::IDAndTranslationUnit ProgramInfo::getExprKey(Expr *E,
@@ -817,6 +893,13 @@ void ProgramInfo::constrainWildIfMacro(ConstraintVariable *CV,
                                        const ReasonLoc &Rsn) {
   if (!Rewriter::isRewritable(Location))
     CV->constrainToWild(CS, Rsn);
+}
+
+void ProgramInfo::TaintedconstrainWildIfMacro(TaintedConstraintVariable *TV,
+                                       SourceLocation Location,
+                                       const ReasonLoc &Rsn) {
+  if (!Rewriter::isRewritable(Location))
+    TV->constrainToWild(CS, Rsn);
 }
 
 //std::string ProgramInfo::getUniqueDeclKey(Decl *D, ASTContext *C) {

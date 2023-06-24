@@ -152,15 +152,15 @@ bool Constraints::addConstraint(Constraint *C) {
 bool Constraints::addTaintedConstraint(TaintedConstraint *C) {
   editTaintedConstraintHook(C);
 
-  auto Search = TheTaintedConstraints.find(C);
+  auto Search = TheConstraints.find(reinterpret_cast<Constraint *const>(C));
 
   // Check if C is already in the set of constraints.
-  if (Search == TheTaintedConstraints.end()) {
-    TheTaintedConstraints.insert(C);
+  if (Search == TheConstraints.end()) {
+    TheConstraints.insert(reinterpret_cast<Constraint *const>(C));
 
     if (TGeq *G = dyn_cast<TGeq>(C)) {
       if (G->constraintIsTainted())
-        TaintedCG->addConstraint(G, *this);
+        TaintedCG->addConstraint(reinterpret_cast<Geq *>(G), *this);
 
       addReasonBasedTaintedConstraint(C);
 
@@ -206,7 +206,7 @@ bool Constraints::addReasonBasedTaintedConstraint(TaintedConstraint *C) {
   if (TGeq *E = dyn_cast<TGeq>(C)) {
     if (E->getReasonText() != DEFAULT_REASON && !E->getReasonText().empty() &&
         E->getReason().Location.valid())
-      return this->TaintedConstraintsByReason[E->getReasonText()].insert(E).second;
+      return this->ConstraintsByReason[E->getReasonText()].insert(reinterpret_cast<Constraint *const>(E)).second;
   }
   return false;
 }
@@ -224,9 +224,9 @@ bool Constraints::removeReasonBasedConstraint(Constraint *C) {
 bool Constraints::removeReasonBasedConstraint(TaintedConstraint *C) {
   if (TGeq *E = dyn_cast<TGeq>(C)) {
     // Remove if the constraint is present.
-    if (this->TaintedConstraintsByReason.find(E->getReasonText()) !=
-        this->TaintedConstraintsByReason.end())
-      return this->TaintedConstraintsByReason[E->getReasonText()].erase(E) > 0;
+    if (this->ConstraintsByReason.find(E->getReasonText()) !=
+        this->ConstraintsByReason.end())
+      return this->ConstraintsByReason[E->getReasonText()].erase(reinterpret_cast<Constraint *const>(E)) > 0;
   }
   return false;
 }
@@ -254,7 +254,7 @@ static bool
 doSolve(ConstraintsGraph &CG,
         ConstraintsEnv &Env, Constraints *CS, bool DoLeastSolution,
         std::set<VarAtom *> *InitVs,
-        std::set<ConstraintsGraph::EdgeType *> &Conflicts) {
+        std::set<std::pair<ConstraintsGraph::EdgeType *, Atom*>> &Conflicts) {
 
   std::vector<Atom *> WorkList;
 
@@ -310,7 +310,7 @@ doSolve(ConstraintsGraph &CG,
           // wild after pointer type solving is finished. Checked types will
           // be resolved with this new constraint, transitively propagating the
           // new WILD-ness.
-          Conflicts.insert(E);
+          Conflicts.insert({E, Cbound});
           // Failure case.
           if (_3COpts.Verbose) {
             errs() << "Unsolvable constraints: ";
@@ -399,7 +399,7 @@ static std::set<VarAtom *> findBounded(ConstraintsGraph &CG,
 }
 
 bool Constraints::graphBasedSolve() {
-  std::set<ConstraintsGraph::EdgeType *> Conflicts;
+  std::set<std::pair<ConstraintsGraph::EdgeType *, Atom*>> Conflicts;
   ConstraintsGraph SolChkCG;
   ConstraintsGraph SolPtrTypCG;
   ConstraintsEnv &Env = Environment;
@@ -514,7 +514,9 @@ bool Constraints::graphBasedSolve() {
     if (!Res) {
       std::set<VarAtom *> Rest;
       Env.doCheckedSolve(true);
-      for (auto *Conflict : Conflicts) {
+      for (auto ConflictPair : Conflicts) {
+        auto Conflict = ConflictPair.first;
+        Atom* ConflictResolve = ConflictPair.second;
         Atom *ConflictAtom = Conflict->getTargetNode().getData();
         assert(ConflictAtom != nullptr);
         ReasonLoc Rsn1 = Conflict->EdgeConstraint->getReason();
@@ -535,14 +537,28 @@ bool Constraints::graphBasedSolve() {
             }
           }
         }
-        auto Rsn = ReasonLoc("Inferred conflicting types",
-                             PersistentSourceLoc());
-        Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
-        ConflictConstraint->addReason(Rsn1);
-        ConflictConstraint->addReason(Rsn2);
-        addConstraint(ConflictConstraint);
-        SolChkCG.addConstraint(ConflictConstraint, *this);
-        Rest.insert(cast<VarAtom>(ConflictAtom));
+        if(ConflictResolve->isTainted())
+        {
+            auto Rsn = ReasonLoc("Inferred conflicting types",
+                                 PersistentSourceLoc());
+            Geq *ConflictConstraint = createGeq(ConflictAtom, ConflictResolve, Rsn);
+            ConflictConstraint->addReason(Rsn1);
+            ConflictConstraint->addReason(Rsn2);
+            addConstraint(ConflictConstraint);
+            SolChkCG.addConstraint(ConflictConstraint, *this);
+            Rest.insert(cast<VarAtom>(ConflictAtom));
+        }
+        else
+        {
+            auto Rsn = ReasonLoc("Inferred conflicting types",
+                                 PersistentSourceLoc());
+            Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
+            ConflictConstraint->addReason(Rsn1);
+            ConflictConstraint->addReason(Rsn2);
+            addConstraint(ConflictConstraint);
+            SolChkCG.addConstraint(ConflictConstraint, *this);
+            Rest.insert(cast<VarAtom>(ConflictAtom));
+        }
       }
       Conflicts.clear();
       /* FIXME: Should we propagate the old res? */
@@ -809,11 +825,11 @@ VarAtom *ConstraintsEnv::getOrCreateVar(ConstraintKey V, VarSolTy InitC,
 VarAtom *ConstraintsEnv::getOrCreateTaintedVar(ConstraintKey V, TaintedVarSolTy InitC,
                                         std::string Name, VarAtom::VarKind VK) {
   VarAtom Tv(V, Name, VK);
-  TaintedEnvironmentMap::iterator I = TaintedEnvironment.find(&Tv);
-  if (I != TaintedEnvironment.end())
+  TaintedEnvironmentMap::iterator I = Environment.find(&Tv);
+  if (I != Environment.end())
     return I->first;
   VarAtom *VA = new VarAtom(Tv);
-  TaintedEnvironment[VA] = InitC;
+  Environment[VA] = InitC;
   return VA;
 }
 
@@ -828,7 +844,7 @@ VarAtom *ConstraintsEnv::getVar(ConstraintKey V) const {
 
 VarAtom *ConstraintsEnv::getTaintedVar(ConstraintKey V) const {
   VarAtom Tv(V);
-  EnvironmentMap::const_iterator I = TaintedEnvironment.find(&Tv);
+  EnvironmentMap::const_iterator I = Environment.find(&Tv);
 
   if (I != Environment.end())
     return I->first;
@@ -858,7 +874,7 @@ bool ConstraintsEnv::checkAssignment(VarSolTy Sol) {
 }
 
 bool ConstraintsEnv::checkTaintedAssignment(TaintedVarSolTy Sol) {
-  for (const auto &EnvVar : TaintedEnvironment) {
+  for (const auto &EnvVar : Environment) {
     if (EnvVar.second.first != Sol.first ||
         EnvVar.second.second != Sol.second) {
       return false;
@@ -878,7 +894,7 @@ bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
 }
 
 bool ConstraintsEnv::assignTainted(VarAtom *V, ConstAtom *C) {
-  auto VI = TaintedEnvironment.find(V);
+  auto VI = Environment.find(V);
   VI->second.first = C;
   return true;
 }
@@ -919,7 +935,7 @@ void ConstraintsEnv::resetFullSolution(VarSolTy InitC, TaintedVarSolTy TC) {
     CurrE.second = InitC;
   }
 
-  for (auto &CurrE : TaintedEnvironment) {
+  for (auto &CurrE : Environment) {
     CurrE.second = InitC;
   }
 }
@@ -935,7 +951,13 @@ void ConstraintsEnv::mergePtrTypes() {
       ConstAtom *OAssign = Elem.second.second;
       assert(dyn_cast<WildAtom>(OAssign) == nullptr &&
              "Expected a checked pointer type.");
-      assign(VA, OAssign);
+      // We do not propagate taintedness into explicitly annotated checked-c pointers
+      if (!OAssign->isExplicit() && CAssign->isTainted()) {
+        // OAssign is the checked-c type solution. We would simply reflect that into a tainted solution
+        assign(VA, OAssign->reflectToTainted());
+      } else {
+        assign(VA, OAssign);
+      }
     }
   }
 }

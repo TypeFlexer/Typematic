@@ -169,6 +169,8 @@ public:
 
   void unifyIfTypedef(const QualType &QT, clang::ASTContext &,
                       PVConstraint *, ConsAction CA = Same_to_Same);
+  void unifyIfTaintedTypedef(const QualType &QT, clang::ASTContext &,
+                        TPVConstraint *, ConsAction CA = Same_to_Same);
 
   CVarOption lookupTypedef(PersistentSourceLoc PSL);
 
@@ -237,6 +239,7 @@ private:
   ExternalFunctionMapType ExternalFunctionFVCons;
   StaticFunctionMapType StaticFunctionFVCons;
   std::map<std::string, std::set<PVConstraint *>> GlobalVariableSymbols;
+  std::map<std::string, std::set<TPVConstraint *>> TaintedGlobalVariableSymbols;
 
   // Object that contains all the bounds information of various array variables.
   AVarBoundsInfo ArrBInfo;
@@ -278,6 +281,10 @@ private:
                    clang::ASTContext *AstContext) override;
 
   void linkFunction(FunctionVariableConstraint *FV);
+
+    void unifyIfTypedef(const QualType &QT, ASTContext &Context, TPVConstraint *P, ConsAction CA);
+
+    void TaintedconstrainWildIfMacro(TaintedConstraintVariable *TV, SourceLocation Location, const ReasonLoc &Rsn);
 };
 
 #endif

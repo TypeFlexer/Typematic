@@ -24,10 +24,12 @@
 #include <unordered_set>
 
 class ConstraintVariable;
+class TaintedConstraintVariable;
 class ProgramInfo;
 
 // Maps a Decl to the set of constraint variables for that Decl.
 typedef std::map<PersistentSourceLoc, ConstraintVariable *> VariableMap;
+typedef std::map<PersistentSourceLoc, TaintedConstraintVariable *> TaintedVariableMap;
 
 // Maps a Decl to the DeclStmt that defines the Decl.
 typedef std::map<clang::Decl *, clang::DeclStmt *> VariableDecltoStmtMap;

@@ -496,9 +496,11 @@ PointerVariableConstraint::PointerVariableConstraint(
       if (Ty->isCheckedPointerNtArrayType() || Ty->isNtCheckedArrayType()) {
         // This is an NT array type.
         CAtom = CS.getNTArr();
+        CAtom->setExplicit(true);
       } else if (Ty->isCheckedPointerArrayType() || Ty->isCheckedArrayType()) {
         // This is an array type.
         CAtom = CS.getArr();
+        CAtom->setExplicit(true);
 
         // In CheckedC, a pointer can be freely converted to a size 0 array
         // pointer, but our constraint system does not allow this. To enable
@@ -514,6 +516,7 @@ PointerVariableConstraint::PointerVariableConstraint(
       } else if (Ty->isCheckedPointerPtrType()) {
         // This is a regular checked pointer.
         CAtom = CS.getPtr();
+        CAtom->setExplicit(true);
       }
       VarCreated = true;
       assert(CAtom != nullptr && "Unable to find the type "
@@ -838,10 +841,11 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
       if (Ty->isTaintedPointerNtArrayType()) {
         // This is an NT array type.
         CAtom = CS.getTNTArr();
+        CAtom->setExplicit(true);
       } else if (Ty->isTaintedPointerArrayType()) {
         // This is an array type.
         CAtom = CS.getTaintedArr();
-
+        CAtom->setExplicit(true);
         // In CheckedC, a pointer can be freely converted to a size 0 array
         // pointer, but our constraint system does not allow this. To enable
         // converting calls to functions with types similar to free, size 0
@@ -856,6 +860,7 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
       } else if (Ty->isTaintedPointerPtrType()) {
         // This is a regular checked pointer.
         CAtom = CS.getTaintedPtr();
+        CAtom->setExplicit(true);
       }
       VarCreated = true;
       assert(CAtom != nullptr && "Unable to find the type "
@@ -4358,49 +4363,100 @@ FVComponentVariable::FVComponentVariable(const QualType &QT,
                                          bool PotentialGeneric,
                                          bool HasItype,
                                          bool IsTaintedFunctionPointer) {
-  ExternalConstraint =
-      new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
-                       nullptr, ITypeT);
-  if (!HasItype && QT->isVoidPointerType()) {
-    InternalConstraint = ExternalConstraint;
-  } else {
-    InternalConstraint =
-        new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
-                         nullptr, ITypeT);
-    bool EquateChecked = QT->isVoidPointerType();
-    linkInternalExternal(I, EquateChecked);
-  }
+    if (IsTaintedFunctionPointer)
+    {
+        ExternalConstraint =
+                reinterpret_cast<PVConstraint *>(new TPVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric,
+                                                                   HasItype,
+                                                                   nullptr, ITypeT));
+        if (!HasItype && QT->isVoidPointerType()) {
+            InternalConstraint = ExternalConstraint;
+        } else {
+            InternalConstraint =
+                    reinterpret_cast<PVConstraint *>(new TPVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric,
+                                                                       HasItype,
+                                                                       nullptr, ITypeT));
+            bool EquateChecked = QT->isVoidPointerType();
+            linkInternalExternal(I, EquateChecked);
+        }
 
-  // Save the original source for the declaration if this is a param
-  // declaration. This lets us avoid macro expansion in function pointer
-  // parameters similarly to how we do it for pointers in regular function
-  // declarations.
-  if (D && D->getType() == QT) {
-    SourceRange DRange = D->getSourceRange();
-    if (DRange.isValid()) {
-      const SourceManager &SM = C.getSourceManager();
-      SourceLocation DLoc = D->getLocation();
-      CharSourceRange CSR;
-      if (SM.isBeforeInTranslationUnit(DRange.getEnd(), DLoc)) {
-        // It's not clear to me why, but the end of the SourceRange for the
-        // declaration can come before the SourceLocation for the declaration.
-        // This can result in SourceDeclaration failing to capture the whole
-        // declaration string, causing rewriting errors. In this case it is also
-        // necessary to use CharSourceRange::getCharRange to work around some
-        // cases where CharSourceRange::getTokenRange (the default behavior of
-        // getSourceText when passed a SourceRange) would not get the full
-        // declaration. For example: a parameter declared without a name such as
-        // `_Ptr<char>` was captured as `_Ptr`.
-        CSR = CharSourceRange::getCharRange(DRange.getBegin(), DLoc);
-      } else {
-        CSR = CharSourceRange::getTokenRange(DRange);
-      }
+        // Save the original source for the declaration if this is a param
+        // declaration. This lets us avoid macro expansion in function pointer
+        // parameters similarly to how we do it for pointers in regular function
+        // declarations.
+        if (D && D->getType() == QT) {
+            SourceRange DRange = D->getSourceRange();
+            if (DRange.isValid()) {
+                const SourceManager &SM = C.getSourceManager();
+                SourceLocation DLoc = D->getLocation();
+                CharSourceRange CSR;
+                if (SM.isBeforeInTranslationUnit(DRange.getEnd(), DLoc)) {
+                    // It's not clear to me why, but the end of the SourceRange for the
+                    // declaration can come before the SourceLocation for the declaration.
+                    // This can result in SourceDeclaration failing to capture the whole
+                    // declaration string, causing rewriting errors. In this case it is also
+                    // necessary to use CharSourceRange::getCharRange to work around some
+                    // cases where CharSourceRange::getTokenRange (the default behavior of
+                    // getSourceText when passed a SourceRange) would not get the full
+                    // declaration. For example: a parameter declared without a name such as
+                    // `_Ptr<char>` was captured as `_Ptr`.
+                    CSR = CharSourceRange::getCharRange(DRange.getBegin(), DLoc);
+                } else {
+                    CSR = CharSourceRange::getTokenRange(DRange);
+                }
 
-      SourceDeclaration = getSourceText(CSR , C);
-    } else {
-      SourceDeclaration = "";
+                SourceDeclaration = getSourceText(CSR , C);
+            } else {
+                SourceDeclaration = "";
+            }
+        }
     }
-  }
+    else
+    {
+        ExternalConstraint =
+                new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
+                                 nullptr, ITypeT);
+        if (!HasItype && QT->isVoidPointerType()) {
+            InternalConstraint = ExternalConstraint;
+        } else {
+            InternalConstraint =
+                    new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
+                                     nullptr, ITypeT);
+            bool EquateChecked = QT->isVoidPointerType();
+            linkInternalExternal(I, EquateChecked);
+        }
+
+        // Save the original source for the declaration if this is a param
+        // declaration. This lets us avoid macro expansion in function pointer
+        // parameters similarly to how we do it for pointers in regular function
+        // declarations.
+        if (D && D->getType() == QT) {
+            SourceRange DRange = D->getSourceRange();
+            if (DRange.isValid()) {
+                const SourceManager &SM = C.getSourceManager();
+                SourceLocation DLoc = D->getLocation();
+                CharSourceRange CSR;
+                if (SM.isBeforeInTranslationUnit(DRange.getEnd(), DLoc)) {
+                    // It's not clear to me why, but the end of the SourceRange for the
+                    // declaration can come before the SourceLocation for the declaration.
+                    // This can result in SourceDeclaration failing to capture the whole
+                    // declaration string, causing rewriting errors. In this case it is also
+                    // necessary to use CharSourceRange::getCharRange to work around some
+                    // cases where CharSourceRange::getTokenRange (the default behavior of
+                    // getSourceText when passed a SourceRange) would not get the full
+                    // declaration. For example: a parameter declared without a name such as
+                    // `_Ptr<char>` was captured as `_Ptr`.
+                    CSR = CharSourceRange::getCharRange(DRange.getBegin(), DLoc);
+                } else {
+                    CSR = CharSourceRange::getTokenRange(DRange);
+                }
+
+                SourceDeclaration = getSourceText(CSR , C);
+            } else {
+                SourceDeclaration = "";
+            }
+        }
+    }
 }
 
 TFVComponentVariable::TFVComponentVariable(const QualType &QT,

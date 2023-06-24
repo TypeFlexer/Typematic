@@ -30,7 +30,6 @@ class ConstraintVariable;
 class Constraints;
 class PersistentSourceLoc;
 class ConstraintsGraph;
-class TaintedConstraintsGraph;
 
 #define INTERNAL_USE_REASON "This reason should never be displayed"
 #define DEFAULT_REASON "UNKNOWN_REASON"
@@ -67,6 +66,10 @@ public:
 
   AtomKind getKind() const { return Kind; }
 
+  bool isTainted() const {
+      return (Kind == A_TPtr || Kind == A_TArr || Kind == A_TNTArr);
+  }
+
   virtual void print(llvm::raw_ostream &) const = 0;
   virtual void dump(void) const = 0;
   virtual void dumpJson(llvm::raw_ostream &) const = 0;
@@ -90,6 +93,20 @@ public:
     // Something is a class of ConstAtom if it ISN'T a Var.
     return A->getKind() != A_Var;
   }
+  void setExplicit(bool I) { IsExplicit = I; }
+  bool isExplicit() const { return IsExplicit; }
+
+  virtual ConstAtom* reflectToTainted() {
+    // By default, return self.
+    // This method will be overridden in the derived classes that have tainted counterparts.
+    return this;
+  }
+
+private:
+    // This boolean is used to indicate that this is a const atom that
+    // that was marked by explicit annotations from the developer and not
+    // inferred by the 3C.
+    bool IsExplicit = false;
 };
 
 // This refers to a location that we are trying to solve for.
@@ -170,6 +187,30 @@ private:
 */
 
 // This refers to the constant NTARR.
+class TNTArrAtom : public ConstAtom {
+public:
+    TNTArrAtom() : ConstAtom(A_TNTArr) {}
+
+    static bool classof(const Atom *S) { return S->getKind() == A_TNTArr; }
+
+    void print(llvm::raw_ostream &O) const override { O << "TNTARR"; }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TNTARR\""; }
+
+    bool operator==(const Atom &Other) const override {
+        return llvm::isa<TNTArrAtom>(&Other);
+    }
+
+    bool operator!=(const Atom &Other) const override {
+        return !(*this == Other);
+    }
+
+    bool operator<(const Atom &Other) const override { return !(*this == Other); }
+};
+
+// This refers to the constant NTARR.
 class NTArrAtom : public ConstAtom {
 public:
   NTArrAtom() : ConstAtom(A_NTArr) {}
@@ -191,30 +232,36 @@ public:
   }
 
   bool operator<(const Atom &Other) const override { return !(*this == Other); }
+
+  ConstAtom* reflectToTainted() override {
+      return new TNTArrAtom();
+  }
 };
 
-// This refers to the constant NTARR.
-class TNTArrAtom : public ConstAtom {
+// This refers to the constant TARR.
+class TaintedArrAtom : public ConstAtom {
 public:
-    TNTArrAtom() : ConstAtom(A_TNTArr) {}
+    TaintedArrAtom() : ConstAtom(A_TArr) {}
 
-    static bool classof(const Atom *S) { return S->getKind() == A_TNTArr; }
+    static bool classof(const Atom *S) { return S->getKind() == A_TArr; }
 
-    void print(llvm::raw_ostream &O) const override { O << "TNTARR"; }
+    void print(llvm::raw_ostream &O) const override { O << "TARR"; }
 
     void dump(void) const override { print(llvm::errs()); }
 
-    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TNTARR\""; }
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TARR\""; }
 
     bool operator==(const Atom &Other) const override {
-      return llvm::isa<TNTArrAtom>(&Other);
+        return llvm::isa<TaintedArrAtom>(&Other);
     }
 
     bool operator!=(const Atom &Other) const override {
-      return !(*this == Other);
+        return !(*this == Other);
     }
 
-    bool operator<(const Atom &Other) const override { return !(*this == Other); }
+    bool operator<(const Atom &Other) const override {
+        return !(llvm::isa<TNTArrAtom>(&Other) || *this == Other);
+    }
 };
 
 // This refers to the constant ARR.
@@ -241,34 +288,38 @@ public:
   bool operator<(const Atom &Other) const override {
     return !(llvm::isa<NTArrAtom>(&Other) || *this == Other);
   }
+
+  ConstAtom* reflectToTainted() override {
+      return new TaintedArrAtom();
+  }
 };
 
-// This refers to the constant ARR.
-class TaintedArrAtom : public ConstAtom {
+// This refers to the constant Tainted Pointer.
+class TaintedPointerAtom : public ConstAtom {
 public:
-    TaintedArrAtom() : ConstAtom(A_TArr) {}
+    TaintedPointerAtom() : ConstAtom(A_TPtr) {}
 
-    static bool classof(const Atom *S) { return S->getKind() == A_TArr; }
+    static bool classof(const Atom *S) { return S->getKind() == A_TPtr; }
 
-    void print(llvm::raw_ostream &O) const override { O << "TARR"; }
+    void print(llvm::raw_ostream &O) const override { O << "TPTR"; }
 
     void dump(void) const override { print(llvm::errs()); }
 
-    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TARR\""; }
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TPTR\""; }
 
     bool operator==(const Atom &Other) const override {
-      return llvm::isa<TaintedArrAtom>(&Other);
+        return llvm::isa<TaintedPointerAtom>(&Other);
     }
 
     bool operator!=(const Atom &Other) const override {
-      return !(*this == Other);
+        return !(*this == Other);
     }
 
     bool operator<(const Atom &Other) const override {
-      return !(llvm::isa<TNTArrAtom>(&Other) || *this == Other);
+        return !(llvm::isa<TaintedArrAtom>(&Other) || llvm::isa<TNTArrAtom>(&Other) ||
+                 *this == Other);
     }
 };
-
 // This refers to the constant PTR.
 class PtrAtom : public ConstAtom {
 public:
@@ -294,33 +345,10 @@ public:
     return !(llvm::isa<ArrAtom>(&Other) || llvm::isa<NTArrAtom>(&Other) ||
              *this == Other);
   }
-};
 
-// This refers to the constant Tainted Pointer.
-class TaintedPointerAtom : public ConstAtom {
-public:
-    TaintedPointerAtom() : ConstAtom(A_TPtr) {}
-
-    static bool classof(const Atom *S) { return S->getKind() == A_TPtr; }
-
-    void print(llvm::raw_ostream &O) const override { O << "TPTR"; }
-
-    void dump(void) const override { print(llvm::errs()); }
-
-    void dumpJson(llvm::raw_ostream &O) const override { O << "\"TPTR\""; }
-
-    bool operator==(const Atom &Other) const override {
-      return llvm::isa<TaintedPointerAtom>(&Other);
-    }
-
-    bool operator!=(const Atom &Other) const override {
-      return !(*this == Other);
-    }
-
-    bool operator<(const Atom &Other) const override {
-      return !(llvm::isa<TaintedArrAtom>(&Other) || llvm::isa<TNTArrAtom>(&Other) ||
-               *this == Other);
-    }
+  ConstAtom* reflectToTainted() override {
+      return new TaintedPointerAtom();
+  }
 };
 
 // This refers to the constant WILD.
@@ -630,7 +658,7 @@ private:
 };
 
 // This is the solution, the first item is Checked Solution and the second
-// is Ptr solution, and the third is the tainted solution
+// is Ptr solution
 typedef std::pair<ConstAtom *, ConstAtom *> VarSolTy;
 typedef std::map<VarAtom *, VarSolTy, PComp<VarAtom *>> EnvironmentMap;
 typedef std::pair<ConstAtom *, ConstAtom *> TaintedVarSolTy;
@@ -670,7 +698,7 @@ public:
 
 private:
   EnvironmentMap Environment; // Solution map: Var --> Sol
-  TaintedEnvironmentMap TaintedEnvironment; // Solution map: TaintedVar --> TaintedSol
+//  TaintedEnvironmentMap TaintedEnvironment; // Solution map: TaintedVar --> TaintedSol
   uint32_t ConsFreeKey;       // Next available integer to assign to a Var
   bool UseChecked;            // Which solution map to use -- checked (vs. ptyp)
   bool assignTainted(VarAtom *V, ConstAtom *C);
@@ -753,13 +781,13 @@ public:
 
 private:
   ConstraintSet TheConstraints;
-  TaintedConstraintSet TheTaintedConstraints;
+  //TaintedConstraintSet TheTaintedConstraints;
   // These are constraint graph representation of constraints.
   ConstraintsGraph *ChkCG;
-  TaintedConstraintsGraph *TaintedCG;
+  ConstraintsGraph *TaintedCG;
   ConstraintsGraph *PtrTypCG;
   std::map<std::string, ConstraintSet> ConstraintsByReason;
-  std::map<std::string, TaintedConstraintSet> TaintedConstraintsByReason;
+//  std::map<std::string, TaintedConstraintSet> TaintedConstraintsByReason;
   ConstraintsEnv Environment;
 
   // Managing constraints based on the underlying reason.
