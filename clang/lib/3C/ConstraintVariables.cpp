@@ -840,7 +840,7 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
       ConstAtom *CAtom = nullptr;
       if (Ty->isTaintedPointerNtArrayType()) {
         // This is an NT array type.
-        CAtom = CS.getTNTArr();
+        CAtom = CS.getTaintedNTArr();
         CAtom->setExplicit(true);
       } else if (Ty->isTaintedPointerArrayType()) {
         // This is an array type.
@@ -2290,6 +2290,11 @@ bool FunctionVariableConstraint::hasWild(const EnvironmentMap &E,
   return ReturnVar.ExternalConstraint->hasWild(E, AIdx);
 }
 
+bool FunctionVariableConstraint::hasTainted(const EnvironmentMap &E,
+                                         int AIdx) const {
+  return ReturnVar.ExternalConstraint->hasTainted(E, AIdx);
+}
+
 bool FunctionVariableConstraint::hasArr(const EnvironmentMap &E,
                                         int AIdx) const {
   return ReturnVar.ExternalConstraint->hasArr(E, AIdx);
@@ -2303,6 +2308,11 @@ bool FunctionVariableConstraint::hasNtArr(const EnvironmentMap &E,
 bool TaintedFunctionVariableConstraint::hasWild(const TaintedEnvironmentMap &E,
                                          int AIdx) const {
   return ReturnVar.ExternalConstraint->hasWild(E, AIdx);
+}
+
+bool TaintedFunctionVariableConstraint::hasTainted(const TaintedEnvironmentMap &E,
+                                                int AIdx) const {
+  return ReturnVar.ExternalConstraint->hasTainted(E, AIdx);
 }
 
 bool TaintedFunctionVariableConstraint::hasTArr(const TaintedEnvironmentMap &E,
@@ -2489,7 +2499,8 @@ void PointerVariableConstraint::constrainIdxTo(Constraints &CS, ConstAtom *C,
                                                unsigned int Idx,
                                                const ReasonLoc &Rsn,
                                                bool DoLB, bool Soft) {
-  assert(C == CS.getPtr() || C == CS.getArr() || C == CS.getNTArr());
+  assert(C == CS.getPtr() || C == CS.getArr() || C == CS.getNTArr() ||
+  C == CS.getTaintedArr() || C == CS.getTaintedNTArr() || C == CS.getTaintedPtr());
 
   if (Vars.size() > Idx) {
     Atom *A = Vars[Idx];
@@ -2749,6 +2760,24 @@ bool PointerVariableConstraint::hasWild(const EnvironmentMap &E,
   return false;
 }
 
+bool PointerVariableConstraint::hasTainted(const EnvironmentMap &E,
+                                        int AIdx) const {
+  int VarIdx = 0;
+  for (const auto &C : Vars) {
+    const ConstAtom *CS = getSolution(C, E);
+    if (CS->isTainted())
+      return true;
+    if (VarIdx == AIdx)
+      break;
+    VarIdx++;
+  }
+
+  if (FV)
+    return FV->hasTainted(E, AIdx);
+
+  return false;
+}
+
 bool TaintedPointerVariableConstraint::hasWild(const TaintedEnvironmentMap &E,
                                         int AIdx) const {
   int VarIdx = 0;
@@ -2763,6 +2792,24 @@ bool TaintedPointerVariableConstraint::hasWild(const TaintedEnvironmentMap &E,
 
   if (FV)
     return FV->hasWild(E, AIdx);
+
+  return false;
+}
+
+bool TaintedPointerVariableConstraint::hasTainted(const TaintedEnvironmentMap &E,
+                                               int AIdx) const {
+  int VarIdx = 0;
+  for (const auto &C : Vars) {
+    const ConstAtom *CS = getSolution(C, E);
+    if (CS->isTainted())
+      return true;
+    if (VarIdx == AIdx)
+      break;
+    VarIdx++;
+  }
+
+  if (FV)
+    return FV->hasTainted(E, AIdx);
 
   return false;
 }

@@ -33,6 +33,7 @@ public:
   unsigned long NumFixedCasts;
   unsigned long NumITypes;
   unsigned long NumCheckedRegions;
+  unsigned long NumTaintedRegions;
   unsigned long NumUnCheckedRegions;
 
   PerformanceStats() {
@@ -47,7 +48,7 @@ public:
     NumAssumeBoundsCasts = NumCheckedCasts = 0;
     NumWildCasts = NumITypes = NumFixedCasts = 0;
 
-    NumCheckedRegions = NumUnCheckedRegions = 0;
+    NumCheckedRegions = NumUnCheckedRegions = NumTaintedRegions = 0;
   }
 
   void startCompileTime();
@@ -74,6 +75,7 @@ public:
   void incrementNumFixedCasts();
   void incrementNumITypes();
   void incrementNumCheckedRegions();
+  void incrementNumTaintedRegions();
   void incrementNumUnCheckedRegions();
 
   void printPerformanceStats(llvm::raw_ostream &O, bool JsonFormat);

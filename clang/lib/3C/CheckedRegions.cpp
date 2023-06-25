@@ -60,12 +60,50 @@ bool CheckedRegionAdder::VisitCompoundStmt(CompoundStmt *S) {
       PState.incrementNumCheckedRegions();
     }
     break;
+  case IS_TAINTED:
+    if (!isParentTainted(DTN)) {
+      auto *FD = getFunctionDeclOfBody(Context, S);
+      if (FD != nullptr) {
+        auto Loc = FD->getBeginLoc();  // Get the location of the function declarator
+        Writer.InsertTextBefore(Loc, "_Tainted ");
+        PState.incrementNumTaintedRegions();
+      }
+    }
+  break;
+//  case IS_TAINTED:
+//    //this flag requires placement of _Tainted in the function declaration
+//    //hence this is handled in VisitFunctionDecl
+//      break;
   default:
     llvm_unreachable("Bad flag in CheckedRegionAdder");
   }
 
   return true;
 }
+
+//bool CheckedRegionAdder::VisitFunctionDecl (FunctionDecl *F) {
+//  llvm::FoldingSetNodeID Id;
+//  DynTypedNode DTN = DynTypedNode::create(*F);
+//
+//  auto &PState = Info.getPerfStats();
+//  switch (Map[Id]) {
+//    case IS_TAINTED:
+//      if (!isParentTainted(DTN)) {
+//        auto Loc = F->getBeginLoc();  // Get the location of the function declarator
+//        Writer.InsertTextBefore(Loc, "_Tainted ");
+//        PState.incrementNumTaintedRegions();
+//      }
+//          break;
+//    case IS_UNCHECKED:
+//    case IS_CHECKED:
+//      break;
+//    default:
+//      llvm_unreachable("Bad flag in CheckedRegionAdder");
+//  }
+//
+//  return true;
+//}
+
 
 bool CheckedRegionAdder::VisitCallExpr(CallExpr *C) {
   auto *FD = C->getDirectCallee();
@@ -83,6 +121,7 @@ bool CheckedRegionAdder::VisitCallExpr(CallExpr *C) {
     PState.incrementNumUnCheckedRegions();
   }
 
+  // You might want to handle TLIB HERE --> TODO
   return true;
 }
 
@@ -117,6 +156,15 @@ bool CheckedRegionAdder::isParentChecked(const DynTypedNode &DTN) {
   return false;
 }
 
+bool CheckedRegionAdder::isParentTainted(const clang::DynTypedNode &N) {
+    if (const auto *Parent = findParentCompound(N).first) {
+        llvm::FoldingSetNodeID ID;
+        Parent->Profile(ID, *Context, true);
+        return Map[ID] == IS_TAINTED;
+    }
+    return false;
+}
+
 bool CheckedRegionAdder::isWrittenChecked(const clang::CompoundStmt *S) {
   CheckedScopeSpecifier WCSS = S->getWrittenCheckedSpecifier();
   switch (WCSS) {
@@ -128,6 +176,25 @@ bool CheckedRegionAdder::isWrittenChecked(const clang::CompoundStmt *S) {
     return true;
   case CSS_Memory:
     return true;
+  case CSS_Tainted:
+    return false;
+  }
+  llvm_unreachable("Invalid Checked Scope Specifier.");
+}
+
+bool CheckedRegionAdder::isWrittenTainted(const clang::CompoundStmt *S) {
+  CheckedScopeSpecifier WCSS = S->getWrittenCheckedSpecifier();
+  switch (WCSS) {
+    case CSS_None:
+      return false;
+    case CSS_Unchecked:
+      return false;
+    case CSS_Bounds:
+      return false;
+    case CSS_Memory:
+      return false;
+    case CSS_Tainted:
+      return true;
   }
   llvm_unreachable("Invalid Checked Scope Specifier.");
 }
@@ -161,7 +228,7 @@ bool CheckedRegionFinder::VisitDoStmt(DoStmt *S) {
 
 bool CheckedRegionFinder::VisitCompoundStmt(CompoundStmt *S) {
   bool Localwild = false;
-
+  bool isTainted = false;
   // Is this compound statement the body of a function?
   FunctionDecl *FD = getFunctionDeclOfBody(Context, S);
   if (FD != nullptr) {
@@ -185,6 +252,9 @@ bool CheckedRegionFinder::VisitCompoundStmt(CompoundStmt *S) {
     if (RetType->isPointerType()) {
       CVarOption CV = Info.getVariable(FD, Context);
       Localwild |= isWild(CV) || containsUncheckedPtr(FD->getReturnType());
+      if (containsTaintedPtr(FD->getReturnType())) {
+        isTainted = true;
+      }
     }
   }
 
@@ -196,6 +266,10 @@ bool CheckedRegionFinder::VisitCompoundStmt(CompoundStmt *S) {
   }
 
   markChecked(S, Localwild);
+
+  if (Tainted) {
+    markTainted(S, Localwild);
+  }
 
   Wild = false;
 
@@ -255,6 +329,7 @@ bool CheckedRegionFinder::VisitParmVarDecl(ParmVarDecl *PVD) {
   // Check if the variable is WILD.
   CVarOption CV = Info.getVariable(PVD, Context);
   Wild |= isWild(CV) || containsUncheckedPtr(PVD->getType());
+  Tainted |= isTainted(CV) || containsTaintedPtr(PVD->getType());
   return true;
 }
 
@@ -322,6 +397,27 @@ bool CheckedRegionFinder::hasUncheckedParameters(CompoundStmt *S) {
   return Localwild || Parent->isVariadic();
 }
 
+bool CheckedRegionFinder::hasTaintedParameters(CompoundStmt *S) {
+  const auto &Parents = Context->getParents(*S);
+  if (Parents.empty()) {
+    return false;
+  }
+
+  const auto *Parent = Parents[0].get<FunctionDecl>();
+  if (!Parent) {
+    return false;
+  }
+
+  bool Tainted = true;
+  for (auto *Child : Parent->parameters()) {
+    CheckedRegionFinder Sub(Context, Writer, Info, Seen, Map, EmitWarnings);
+    Sub.TraverseParmVarDecl(Child);
+    Tainted &= Sub.Tainted;
+  }
+
+  return Tainted;
+}
+
 bool CheckedRegionFinder::isInStatementPosition(CallExpr *C) {
   // First check if our parent is a compound statement
   const auto &Parents = Context->getParents(*C);
@@ -350,10 +446,23 @@ bool CheckedRegionFinder::isWild(CVarOption Cv) {
   return false;
 }
 
+bool CheckedRegionFinder::isTainted(CVarOption Cv) {
+  if (Cv.hasValue() &&
+      Cv.getValue().hasTainted(Info.getConstraints().getVariables()))
+    return true;
+  return false;
+}
+
+
 bool CheckedRegionFinder::containsUncheckedPtr(QualType Qt) {
   // TODO does a more efficient representation exist?
   std::set<std::string> Seen;
   return containsUncheckedPtrAcc(Qt, Seen);
+}
+
+bool CheckedRegionFinder::containsTaintedPtr(QualType Qt) {
+  std::set<std::string> Seen;
+  return containsTaintedPtrAcc(Qt, Seen);
 }
 
 // Recursively determine if a type is unchecked.
@@ -395,6 +504,45 @@ bool CheckedRegionFinder::containsUncheckedPtrAcc(QualType Qt,
   return false;
 }
 
+// Recursively determine if a type is unchecked.
+bool CheckedRegionFinder::containsTaintedPtrAcc(QualType Qt,
+                                                  std::set<std::string> &Seen) {
+  auto Ct = Qt.getCanonicalType();
+  auto TyStr = Ct.getAsString();
+  bool IsSeen = false;
+  auto Search = Seen.find(TyStr);
+  if (Search == Seen.end()) {
+    Seen.insert(TyStr);
+  } else {
+    IsSeen = true;
+  }
+
+  if (Ct->isFunctionPointerType()) {
+    if (const auto *FPT = dyn_cast<FunctionProtoType>(Ct->getPointeeType())) {
+      auto PTs = FPT->getParamTypes();
+      bool Params =
+              std::any_of(PTs.begin(), PTs.end(), [this, &Seen](QualType QT) {
+                  return containsTaintedPtrAcc(QT, Seen);
+              });
+      return containsTaintedPtrAcc(FPT->getReturnType(), Seen) || Params;
+    }
+    return false;
+  }
+  if (Ct->isTaintedPointerType()) {
+    return true;
+  }
+  if (Ct->isPointerType()) {
+    return containsTaintedPtrAcc(Ct->getPointeeType(), Seen);
+  }
+  if (Ct->isRecordType()) {
+    if (IsSeen) {
+      return false;
+    }
+    return isTaintedStruct(Ct, Seen);
+  }
+  return false;
+}
+
 // Iterate through all fields of the struct and find unchecked types.
 bool CheckedRegionFinder::isUncheckedStruct(QualType Qt,
                                             std::set<std::string> &Seen) {
@@ -417,6 +565,12 @@ bool CheckedRegionFinder::isUncheckedStruct(QualType Qt,
   return false;
 }
 
+bool CheckedRegionFinder::isTaintedStruct(QualType Qt,
+                                            std::set<std::string> &Seen) {
+  const auto *RcdTy = dyn_cast<RecordType>(Qt);
+  return RcdTy->isTaintedStructureType();
+}
+
 // Mark the given compound statement with
 // whether or not it is checked
 void CheckedRegionFinder::markChecked(CompoundStmt *S, int Localwild) {
@@ -429,6 +583,18 @@ void CheckedRegionFinder::markChecked(CompoundStmt *S, int Localwild) {
 
   Map[Id] = IsChecked ? IS_CHECKED : IS_UNCHECKED;
 }
+
+void CheckedRegionFinder::markTainted(CompoundStmt *S, int Localwild) {
+  llvm::FoldingSetNodeID Id;
+  S->Profile(Id, *Context, true);
+
+
+  bool IsTainted = !hasUncheckedParameters(S) && hasTaintedParameters(S) &&
+                   Localwild == 0 ;
+
+  Map[Id] = IsTainted ? IS_TAINTED : Map[Id] ;
+}
+
 
 void CheckedRegionFinder::emitCauseDiagnostic(PersistentSourceLoc PSL) {
   if (Emitted.find(PSL) == Emitted.end()) {

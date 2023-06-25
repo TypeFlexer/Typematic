@@ -179,6 +179,7 @@ public:
   // Here, AIdx is the pointer level which needs to be checked.
   // By default, we check for all pointer levels (or VarAtoms)
   virtual bool hasWild(const EnvironmentMap &E, int AIdx = -1) const = 0;
+  virtual bool hasTainted(const EnvironmentMap &E, int AIdx = -1) const = 0;
   virtual bool hasArr(const EnvironmentMap &E, int AIdx = -1) const = 0;
   virtual bool hasNtArr(const EnvironmentMap &E, int AIdx = -1) const = 0;
 
@@ -353,6 +354,7 @@ public:
     // Here, AIdx is the pointer level which needs to be checked.
     // By default, we check for all pointer levels (or VarAtoms)
     virtual bool hasWild(const TaintedEnvironmentMap &E, int AIdx = -1) const = 0;
+    virtual bool hasTainted(const TaintedEnvironmentMap &E, int AIdx = -1) const = 0;
     virtual bool hasTArr(const TaintedEnvironmentMap &E, int AIdx = -1) const = 0;
     virtual bool hasTNtArr(const TaintedEnvironmentMap &E, int AIdx = -1) const = 0;
 
@@ -736,6 +738,7 @@ public:
   bool anyChanges(const EnvironmentMap &E) const override;
   bool anyArgumentIsWild(const EnvironmentMap &E);
   bool hasWild(const EnvironmentMap &E, int AIdx = -1) const override;
+  bool hasTainted(const EnvironmentMap &E, int AIdx = -1) const override;
   bool hasArr(const EnvironmentMap &E, int AIdx = -1) const override;
   bool hasNtArr(const EnvironmentMap &E, int AIdx = -1) const override;
 
@@ -763,6 +766,7 @@ public:
 
   void equateWithItype(ProgramInfo &CS,
                        const ReasonLoc &ReasonUnchangeable) override;
+
 };
 
 class TaintedPointerVariableConstraint : public TaintedConstraintVariable {
@@ -1030,6 +1034,7 @@ public:
     bool anyChanges(const TaintedEnvironmentMap &E) const override;
     bool anyArgumentIsWild(const TaintedEnvironmentMap &E);
     bool hasWild(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
+    bool hasTainted(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
     bool hasTArr(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
     bool hasTNtArr(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
 
@@ -1280,6 +1285,7 @@ public:
   void constrainToWild(Constraints &CS, const ReasonLoc &Rsn) const override;
   bool anyChanges(const EnvironmentMap &E) const override;
   bool hasWild(const EnvironmentMap &E, int AIdx = -1) const override;
+  bool hasTainted(const EnvironmentMap &E, int AIdx = -1) const override;
   bool hasArr(const EnvironmentMap &E, int AIdx = -1) const override;
   bool hasNtArr(const EnvironmentMap &E, int AIdx = -1) const override;
 
@@ -1408,6 +1414,7 @@ public:
     void constrainToWild(Constraints &CS, const ReasonLoc &Rsn) const override;
     bool anyChanges(const TaintedEnvironmentMap &E) const override;
     bool hasWild(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
+    bool hasTainted(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
     bool hasTArr(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
     bool hasTNtArr(const TaintedEnvironmentMap &E, int AIdx = -1) const override;
 

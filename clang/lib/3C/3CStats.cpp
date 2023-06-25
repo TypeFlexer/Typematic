@@ -66,6 +66,8 @@ void PerformanceStats::incrementNumITypes() { NumITypes++; }
 
 void PerformanceStats::incrementNumCheckedRegions() { NumCheckedRegions++; }
 
+void PerformanceStats::incrementNumTaintedRegions() { NumTaintedRegions++; }
+
 void PerformanceStats::incrementNumUnCheckedRegions() { NumUnCheckedRegions++; }
 
 void PerformanceStats::printPerformanceStats(llvm::raw_ostream &O,
@@ -87,6 +89,7 @@ void PerformanceStats::printPerformanceStats(llvm::raw_ostream &O,
     O << ", \"NumFixedCasts\":" << NumFixedCasts;
     O << ", \"NumITypes\":" << NumITypes;
     O << ", \"NumCheckedRegions\":" << NumCheckedRegions;
+    O << ", \"NumTaintedRegions\":" << NumTaintedRegions;
     O << ", \"NumUnCheckedRegions\":" << NumUnCheckedRegions;
     O << "}}";
 
@@ -106,6 +109,7 @@ void PerformanceStats::printPerformanceStats(llvm::raw_ostream &O,
     O << "NumFixedCasts:" << NumFixedCasts << "\n";
     O << "NumITypes:" << NumITypes << "\n";
     O << "NumCheckedRegions:" << NumCheckedRegions << "\n";
+    O << "NumTaintedRegions:" << NumTaintedRegions << "\n";
     O << "NumUnCheckedRegions:" << NumUnCheckedRegions << "\n";
   }
 }
@@ -126,6 +130,9 @@ bool StatsRecorder::VisitCompoundStmt(clang::CompoundStmt *S) {
       case CSS_Memory:
       case CSS_Bounds:
         PStats.incrementNumCheckedRegions();
+        break;
+      case CSS_Tainted:
+        PStats.incrementNumTaintedRegions();
         break;
       }
     }

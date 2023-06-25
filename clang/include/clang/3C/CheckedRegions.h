@@ -24,6 +24,7 @@ typedef enum {
   IS_UNCHECKED,
   IS_CHECKED,
   IS_CONTAINED,
+  IS_TAINTED
 } AnnotationNeeded;
 
 class CheckedRegionAdder
@@ -36,16 +37,20 @@ public:
 
   bool VisitCompoundStmt(clang::CompoundStmt *S);
   bool VisitCallExpr(clang::CallExpr *C);
+//  bool VisitFunctionDecl(FunctionDecl *F);
 
 private:
   std::pair<const clang::CompoundStmt *, int>
   findParentCompound(const clang::DynTypedNode &N, int);
   bool isParentChecked(const clang::DynTypedNode &N);
+  bool isParentTainted(const clang::DynTypedNode &N);
   bool isWrittenChecked(const clang::CompoundStmt *);
+  bool isWrittenTainted(const clang::CompoundStmt *);
   clang::ASTContext *Context;
   clang::Rewriter &Writer;
   std::map<llvm::FoldingSetNodeID, AnnotationNeeded> &Map;
   ProgramInfo &Info;
+
 };
 
 class CheckedRegionFinder
@@ -58,6 +63,7 @@ public:
       : Context(C), Writer(R), Info(I), Seen(S), Map(M),
         EmitWarnings(EmitWarnings) {}
   bool Wild = false;
+  bool Tainted = false;
 
   bool VisitForStmt(clang::ForStmt *S);
   bool VisitSwitchStmt(clang::SwitchStmt *S);
@@ -76,10 +82,14 @@ public:
 private:
   void handleChildren(const clang::Stmt::child_range &Stmts);
   void markChecked(clang::CompoundStmt *S, int LocalWild);
+  void markTainted(clang::CompoundStmt *S, int LocalWild);
   bool isInStatementPosition(clang::CallExpr *C);
   bool hasUncheckedParameters(clang::CompoundStmt *S);
+  bool hasTaintedParameters(clang::CompoundStmt *S);
   bool containsUncheckedPtr(clang::QualType Qt);
+  bool containsTaintedPtr(clang::QualType Qt);
   bool containsUncheckedPtrAcc(clang::QualType Qt, std::set<std::string> &Seen);
+  bool containsTaintedPtrAcc(clang::QualType Qt, std::set<std::string> &Seen);
   bool isUncheckedStruct(clang::QualType Qt, std::set<std::string> &Seen);
   void emitCauseDiagnostic(PersistentSourceLoc);
   bool isWild(CVarOption CVar);
@@ -91,6 +101,10 @@ private:
   std::map<llvm::FoldingSetNodeID, AnnotationNeeded> &Map;
   std::set<PersistentSourceLoc> Emitted;
   bool EmitWarnings;
+
+    bool isTaintedStruct(QualType Qt, std::set<std::string> &Seen);
+
+    bool isTainted(CVarOption Cv);
 };
 
 #endif // LLVM_CLANG_3C_CHECKEDREGIONS_H

@@ -779,7 +779,13 @@ void ProgramInfo::ensureNtCorrect(const QualType &QT,
                                   const PersistentSourceLoc &PSL,
                                   PointerVariableConstraint *PV) {
   if (_3COpts.AllTypes && !canBeNtArray(QT)) {
-    PV->constrainOuterTo(CS, CS.getArr(),
+    if(QT->isTaintedPointerType())
+    {
+      PV->constrainOuterTo(CS, CS.getTaintedArr(),
+                           ReasonLoc(ARRAY_REASON, PSL), true, true);
+    }
+    else
+      PV->constrainOuterTo(CS, CS.getArr(),
                          ReasonLoc(ARRAY_REASON, PSL), true, true);
   }
 }

@@ -395,7 +395,9 @@ namespace clang {
 
     /// Check properties for bounds safety and preventing type confusion.
     /// Corresponds to _Bounds
-    CSS_Memory = 0x3
+    CSS_Memory = 0x3,
+
+    CSS_Tainted = 0x4
   };
 
   /// CheckCBox-C - tainted specifiers.  Used for function, structs,

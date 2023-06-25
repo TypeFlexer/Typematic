@@ -305,21 +305,39 @@ doSolve(ConstraintsGraph &CG,
         ConstAtom *Csol = Env.getAssignment(VA);
         if ((DoLeastSolution && *Cbound < *Csol) ||
             (!DoLeastSolution && *Csol < *Cbound)) {
-          Ok = false;
-          // Save effected VarAtom in conflict set. This will be constrained to
-          // wild after pointer type solving is finished. Checked types will
-          // be resolved with this new constraint, transitively propagating the
-          // new WILD-ness.
-          Conflicts.insert({E, Cbound});
-          // Failure case.
-          if (_3COpts.Verbose) {
-            errs() << "Unsolvable constraints: ";
-            VA->print(errs());
-            errs() << "=";
-            Csol->print(errs());
-            errs() << (DoLeastSolution ? "<" : ">");
-            Cbound->print(errs());
-            errs() << " var will be made WILD\n";
+
+          if ((Csol->isTainted() && !Cbound->isTainted()) ||
+              (!Csol->isTainted() && Cbound->isTainted()))
+          {
+            // the taintedness is applied to the constant atom that does not contain the taintedness
+            if (Csol->isTainted())
+            {
+              Env.assign(reinterpret_cast<VarAtom *>(Cbound), Cbound->reflectToTainted());
+              WorkList.push_back(Cbound);
+            }
+            else
+            {
+              Env.assign(reinterpret_cast<VarAtom *>(Csol), Csol->reflectToTainted());
+              WorkList.push_back(Csol);
+            }
+          }
+          else{
+            Ok = false;
+            // Save effected VarAtom in conflict set. This will be constrained to
+            // wild after pointer type solving is finished. Checked types will
+            // be resolved with this new constraint, transitively propagating the
+            // new WILD-ness.
+            Conflicts.insert({E, Cbound});
+            // Failure case.
+            if (_3COpts.Verbose) {
+              errs() << "Unsolvable constraints: ";
+              VA->print(errs());
+              errs() << "=";
+              Csol->print(errs());
+              errs() << (DoLeastSolution ? "<" : ">");
+              Cbound->print(errs());
+              errs() << " var will be made WILD\n";
+            }
           }
         }
       }
@@ -537,28 +555,14 @@ bool Constraints::graphBasedSolve() {
             }
           }
         }
-        if(ConflictResolve->isTainted())
-        {
-            auto Rsn = ReasonLoc("Inferred conflicting types",
-                                 PersistentSourceLoc());
-            Geq *ConflictConstraint = createGeq(ConflictAtom, ConflictResolve, Rsn);
-            ConflictConstraint->addReason(Rsn1);
-            ConflictConstraint->addReason(Rsn2);
-            addConstraint(ConflictConstraint);
-            SolChkCG.addConstraint(ConflictConstraint, *this);
-            Rest.insert(cast<VarAtom>(ConflictAtom));
-        }
-        else
-        {
-            auto Rsn = ReasonLoc("Inferred conflicting types",
-                                 PersistentSourceLoc());
-            Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
-            ConflictConstraint->addReason(Rsn1);
-            ConflictConstraint->addReason(Rsn2);
-            addConstraint(ConflictConstraint);
-            SolChkCG.addConstraint(ConflictConstraint, *this);
-            Rest.insert(cast<VarAtom>(ConflictAtom));
-        }
+        auto Rsn = ReasonLoc("Inferred conflicting types",
+                             PersistentSourceLoc());
+        Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
+        ConflictConstraint->addReason(Rsn1);
+        ConflictConstraint->addReason(Rsn2);
+        addConstraint(ConflictConstraint);
+        SolChkCG.addConstraint(ConflictConstraint, *this);
+        Rest.insert(cast<VarAtom>(ConflictAtom));
       }
       Conflicts.clear();
       /* FIXME: Should we propagate the old res? */
@@ -680,7 +684,7 @@ PtrAtom *Constraints::getPtr() const { return PrebuiltPtr; }
 ArrAtom *Constraints::getArr() const { return PrebuiltArr; }
 TaintedArrAtom* Constraints::getTaintedArr() const { return PrebuiltTaintedArr; }
 NTArrAtom *Constraints::getNTArr() const { return PrebuiltNTArr; }
-TNTArrAtom* Constraints::getTNTArr() const { return PrebuiltTNTArr; }
+TNTArrAtom* Constraints::getTaintedNTArr() const { return PrebuiltTNTArr; }
 WildAtom *Constraints::getWild() const { return PrebuiltWild; }
 TaintedPointerAtom *Constraints::getTaintedPtr() const { return PrebuiltTainted; }
 
@@ -955,6 +959,8 @@ void ConstraintsEnv::mergePtrTypes() {
       if (!OAssign->isExplicit() && CAssign->isTainted()) {
         // OAssign is the checked-c type solution. We would simply reflect that into a tainted solution
         assign(VA, OAssign->reflectToTainted());
+        //furthermore OAssign should be modified to the tainted solution as well
+        OAssign = OAssign->reflectToTainted();
       } else {
         assign(VA, OAssign);
       }
