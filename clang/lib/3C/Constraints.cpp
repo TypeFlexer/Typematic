@@ -312,13 +312,11 @@ doSolve(ConstraintsGraph &CG,
             // the taintedness is applied to the constant atom that does not contain the taintedness
             if (Csol->isTainted())
             {
-              Env.assign(reinterpret_cast<VarAtom *>(Cbound), Cbound->reflectToTainted());
-              WorkList.push_back(Cbound);
+              Env.assign(VA, Cbound->reflectToTainted());
             }
             else
             {
-              Env.assign(reinterpret_cast<VarAtom *>(Csol), Csol->reflectToTainted());
-              WorkList.push_back(Csol);
+              Env.assign(VA, Csol->reflectToTainted());
             }
           }
           else{
@@ -555,14 +553,28 @@ bool Constraints::graphBasedSolve() {
             }
           }
         }
-        auto Rsn = ReasonLoc("Inferred conflicting types",
-                             PersistentSourceLoc());
-        Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
-        ConflictConstraint->addReason(Rsn1);
-        ConflictConstraint->addReason(Rsn2);
-        addConstraint(ConflictConstraint);
-        SolChkCG.addConstraint(ConflictConstraint, *this);
-        Rest.insert(cast<VarAtom>(ConflictAtom));
+        if(ConflictResolve->isTainted())
+        {
+          auto Rsn = ReasonLoc("Inferred conflicting types",
+                               PersistentSourceLoc());
+          Geq *ConflictConstraint = createGeq(ConflictAtom, ConflictResolve, Rsn);
+          ConflictConstraint->addReason(Rsn1);
+          ConflictConstraint->addReason(Rsn2);
+          addConstraint(ConflictConstraint);
+          SolChkCG.addConstraint(ConflictConstraint, *this);
+          Rest.insert(cast<VarAtom>(ConflictAtom));
+        }
+        else
+        {
+          auto Rsn = ReasonLoc("Inferred conflicting types",
+                               PersistentSourceLoc());
+          Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
+          ConflictConstraint->addReason(Rsn1);
+          ConflictConstraint->addReason(Rsn2);
+          addConstraint(ConflictConstraint);
+          SolChkCG.addConstraint(ConflictConstraint, *this);
+          Rest.insert(cast<VarAtom>(ConflictAtom));
+        }
       }
       Conflicts.clear();
       /* FIXME: Should we propagate the old res? */
@@ -889,10 +901,18 @@ bool ConstraintsEnv::checkTaintedAssignment(TaintedVarSolTy Sol) {
 
 bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
   auto VI = Environment.find(V);
-  if (UseChecked) {
-    VI->second.first = C;
-  } else {
-    VI->second.second = C;
+  if(C->isTainted())
+  {
+      VI->second.first = C;
+      VI->second.second = C;
+  }
+  else
+  {
+      if (UseChecked) {
+          VI->second.first = C;
+      } else {
+          VI->second.second = C;
+      }
   }
   return true;
 }

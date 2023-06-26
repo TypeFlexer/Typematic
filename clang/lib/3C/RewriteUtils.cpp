@@ -445,8 +445,86 @@ public:
   explicit TypeArgumentAdder(ASTContext *C, ProgramInfo &I, Rewriter &R)
       : Context(C), Info(I), Writer(R) {}
 
-  bool VisitCallExpr(CallExpr *CE) {
+    bool VisitDeclStmt(DeclStmt *DS) {
+      for (auto I = DS->decl_begin(), E = DS->decl_end(); I != E; ++I) {
+        if (auto VarD = dyn_cast<VarDecl>(*I)) {
+          auto VarDInfo = Info.getVariable(VarD, Context);
+          if (VarDInfo.hasValue() && VarDInfo.getValue().hasTainted(Info.getConstraints().getVariables())) {
+            if (VarD->hasInit()) {
+              Expr *rhs = VarD->getInit();
+              if (CallExpr *CE = dyn_cast<CallExpr>(rhs->IgnoreParenImpCasts())) {
+                modifyCallExpr(CE);
+              }
+            }
+          }
+        }
+      }
+      return true;  // Continue traversing the AST.
+    }
+
+    bool VisitBinaryOperator(BinaryOperator *BO) {
+      if (BO->isAssignmentOp()) {
+        Expr *lhs = BO->getLHS();
+        QualType lhsType = lhs->getType();
+        Expr *rhs = BO->getRHS();
+        // Check if the lhs is of tainted pointer type.
+        if (lhsType->isTaintedPointerType()) {
+          if (CallExpr *CE = dyn_cast<CallExpr>(rhs->IgnoreParenImpCasts())) {
+            modifyCallExpr(CE);
+          }
+        }
+      }
+      return true;  // Continue traversing the AST.
+    }
+
+    void modifyCallExpr(CallExpr *CE) {
+      if (auto *FD = dyn_cast_or_null<FunctionDecl>(CE->getCalleeDecl())) {
+        std::string funcName = FD->getNameAsString();
+
+        if (funcName == "malloc") {
+
+          // Get the location of the callee
+          SourceLocation loc = CE->getBeginLoc();
+          // Get the source manager from the context
+          SourceManager &SM = Context->getSourceManager();
+
+          // Check if the location belongs to the main file
+          if (SM.getFileID(loc) == SM.getMainFileID()) {
+            // Modify the callee name
+            std::string newCalleeName = "t_" + funcName;
+            Writer.ReplaceText(loc, funcName.length(), newCalleeName);
+          }
+        }
+      }
+    }
+
+    bool VisitCallExpr(CallExpr *CE) {
     if (auto *FD = dyn_cast_or_null<FunctionDecl>(CE->getCalleeDecl())) {
+        std::string funcName = FD->getNameAsString();
+
+        // If the function called is "free", "realloc", or "calloc"
+        if (funcName == "free" || funcName == "realloc" || funcName == "calloc") {
+            if (CE->getNumArgs() > 0) {
+                // For "realloc" and "calloc", we should check the first argument
+                // For "free", this will be the only argument
+                Expr *arg = CE->getArg(0)->IgnoreImpCasts();
+                QualType argType = arg->getType();
+
+                // Check if the argument is of tainted pointer type
+                if (argType->isTaintedPointerType()) {
+                    SourceLocation loc = CE->getBeginLoc();
+                    // Get the source manager from the context
+                    SourceManager &SM = Context->getSourceManager();
+
+                    // Check if the location belongs to the main file
+                    if (SM.getFileID(loc) == SM.getMainFileID()) {
+                        // Modify the callee name
+                        std::string newCalleeName = "t_" + funcName;
+                        Writer.ReplaceText(loc, funcName.length(), newCalleeName);
+                    }
+                }
+            }
+        }
       // If the function call already has type arguments, we'll trust that
       // they're correct and not add anything else.
       if (typeArgsProvided(CE))
@@ -496,7 +574,7 @@ private:
   ProgramInfo &Info;
   Rewriter &Writer;
 
-  // Attempt to find the right spot to insert the type arguments. This should be
+    // Attempt to find the right spot to insert the type arguments. This should be
   // directly after the name of the function being called.
   SourceLocation getTypeArgLocation(CallExpr *Call) {
     Expr *Callee = Call->getCallee()->IgnoreParenImpCasts();
