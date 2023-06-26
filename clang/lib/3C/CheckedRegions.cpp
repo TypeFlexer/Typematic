@@ -37,8 +37,11 @@ FunctionDecl *getFunctionDeclOfBody(ASTContext *Context, CompoundStmt *S) {
   return const_cast<FunctionDecl *>(Parents[0].get<FunctionDecl>());
 }
 
-// CheckedRegionAdder
+std::string getSourceText(clang::SourceRange range, const clang::SourceManager &SM, const clang::LangOptions &LO) {
+  return std::string(clang::Lexer::getSourceText(clang::CharSourceRange::getTokenRange(range), SM, LO));
+}
 
+// CheckedRegionAdder
 bool CheckedRegionAdder::VisitCompoundStmt(CompoundStmt *S) {
   llvm::FoldingSetNodeID Id;
   DynTypedNode DTN = DynTypedNode::create(*S);
@@ -64,46 +67,21 @@ bool CheckedRegionAdder::VisitCompoundStmt(CompoundStmt *S) {
     if (!isParentTainted(DTN)) {
       auto *FD = getFunctionDeclOfBody(Context, S);
       if (FD != nullptr) {
-        auto Loc = FD->getBeginLoc();  // Get the location of the function declarator
-        Writer.InsertTextBefore(Loc, "_Tainted ");
-        PState.incrementNumTaintedRegions();
+        SourceRange range(FD->getBeginLoc(), FD->getBeginLoc().getLocWithOffset(8));
+        std::string funcDeclStart = getSourceText(range, Context->getSourceManager(), Context->getLangOpts());
+        if (funcDeclStart != "_Tainted") {
+          Writer.InsertTextBefore(FD->getBeginLoc(), "_Tainted ");
+          PState.incrementNumTaintedRegions();
+        }
       }
     }
-  break;
-//  case IS_TAINTED:
-//    //this flag requires placement of _Tainted in the function declaration
-//    //hence this is handled in VisitFunctionDecl
-//      break;
+    break;
   default:
     llvm_unreachable("Bad flag in CheckedRegionAdder");
   }
 
   return true;
 }
-
-//bool CheckedRegionAdder::VisitFunctionDecl (FunctionDecl *F) {
-//  llvm::FoldingSetNodeID Id;
-//  DynTypedNode DTN = DynTypedNode::create(*F);
-//
-//  auto &PState = Info.getPerfStats();
-//  switch (Map[Id]) {
-//    case IS_TAINTED:
-//      if (!isParentTainted(DTN)) {
-//        auto Loc = F->getBeginLoc();  // Get the location of the function declarator
-//        Writer.InsertTextBefore(Loc, "_Tainted ");
-//        PState.incrementNumTaintedRegions();
-//      }
-//          break;
-//    case IS_UNCHECKED:
-//    case IS_CHECKED:
-//      break;
-//    default:
-//      llvm_unreachable("Bad flag in CheckedRegionAdder");
-//  }
-//
-//  return true;
-//}
-
 
 bool CheckedRegionAdder::VisitCallExpr(CallExpr *C) {
   auto *FD = C->getDirectCallee();

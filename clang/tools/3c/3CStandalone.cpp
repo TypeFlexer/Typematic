@@ -404,7 +404,7 @@ int main(int argc, const char **argv) {
   if (OptVerbose)
     errs() << "Parsing source files.\n";
 
-  // Build AST from source.
+    // Build AST from source.
   if (!_3CInterface.parseASTs()) {
     errs() << "Failure occurred while parsing source files. Exiting.\n";
     return _3CInterface.determineExitCode();

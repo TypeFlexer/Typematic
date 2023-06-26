@@ -500,7 +500,15 @@ bool _3CInterface::parseASTs() {
 
   std::lock_guard<std::mutex> Lock(InterfaceMutex);
 
-  auto *Tool = new ClangTool(*CurrCompDB, SourceFiles);
+  // Generate arguments vector, adding -ferror-limit=0
+  std::vector<std::string> CommandLineArgs = {"-fdrymatic"};
+
+  // You might need to include other arguments that were implicitly included in the original compilation database.
+  // std::vector<std::string> CommandLineArgs = {"-ferror-limit=0", "-Ipath/to/include", "-other-option"};
+
+  auto NewCompDB = new FixedCompilationDatabase(".", CommandLineArgs);
+
+  auto *Tool = new ClangTool(*NewCompDB, SourceFiles);
 
   // load the ASTs
   _3CASTBuilderAction Action(ASTs);

@@ -308,6 +308,7 @@ BENIGN_LANGOPT(CompatibilityQualifiedIdBlockParamTypeChecking, 1, 0,
                "compatibility mode for type checking block parameters "
                "involving qualified id types")
 LANGOPT(CFProtectionBranch , 1, 0, "Control-Flow Branch Protection enabled")
+LANGOPT(drymatic, 1, 0, "Relax typeflexer for 3C")
 LANGOPT(FakeAddressSpaceMap , 1, 0, "OpenCL fake address space map")
 ENUM_LANGOPT(AddressSpaceMapMangling , AddrSpaceMapMangling, 2, ASMM_Target, "OpenCL address space map mangling mode")
 LANGOPT(IncludeDefaultHeader, 1, 0, "Include default header file for OpenCL")

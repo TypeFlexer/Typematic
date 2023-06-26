@@ -9267,9 +9267,8 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
  *
  */
 
-    if(!isTaintedAssignmentValid(lhkind, rhkind))
-  {
-      return Sema::IncompatibleTaintedAssignment;
+  if (!S.getLangOpts().drymatic && !isTaintedAssignmentValid(lhkind, rhkind)) {
+  return Sema::IncompatibleTaintedAssignment;
   }
 
   // C99 6.5.16.1p1: This following citation is common to constraints

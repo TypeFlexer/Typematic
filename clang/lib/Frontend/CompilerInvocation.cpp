@@ -410,6 +410,7 @@ static void FixupInvocation(CompilerInvocation &Invocation,
   TargetOptions &TargetOpts = Invocation.getTargetOpts();
   FrontendOptions &FrontendOpts = Invocation.getFrontendOpts();
   CodeGenOpts.XRayInstrumentFunctions = LangOpts.XRayInstrument;
+  CodeGenOpts.drymatic = LangOpts.drymatic;
   CodeGenOpts.XRayAlwaysEmitCustomEvents = LangOpts.XRayAlwaysEmitCustomEvents;
   CodeGenOpts.XRayAlwaysEmitTypedEvents = LangOpts.XRayAlwaysEmitTypedEvents;
   CodeGenOpts.DisableFree = FrontendOpts.DisableFree;
@@ -1183,6 +1184,9 @@ bool CompilerInvocation::ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args,
       Args.getLastArg(OPT_fno_emulated_tls)) {
     Opts.ExplicitEmulatedTLS = true;
   }
+
+  if (Args.hasArg(OPT_fdrymatic))
+    Opts.drymatic = true;
 
   if (Arg *A = Args.getLastArg(OPT_fdenormal_fp_math_EQ)) {
     StringRef Val = A->getValue();

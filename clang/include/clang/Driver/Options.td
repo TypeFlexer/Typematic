@@ -2549,6 +2549,10 @@ defm stack_size_section : BoolFOption<"stack-size-section",
   PosFlag<SetTrue, [CC1Option], "Emit section containing metadata on function stack sizes">,
   NegFlag<SetFalse>>;
 
+defm drymatic : BoolFOption<"drymatic",
+  LangOpts<"drymatic">, DefaultFalse,
+  PosFlag<SetTrue, [CC1Option], "Relaxes typeflexer for 3C">, NegFlag<SetFalse>>;
+
 defm unique_basic_block_section_names : BoolFOption<"unique-basic-block-section-names",
   CodeGenOpts<"UniqueBasicBlockSectionNames">, DefaultFalse,
   PosFlag<SetTrue, [CC1Option], "Use unique names for basic block sections (ELF Only)">,
