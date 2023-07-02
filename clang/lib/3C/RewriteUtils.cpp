@@ -508,10 +508,12 @@ public:
                 // For "realloc" and "calloc", we should check the first argument
                 // For "free", this will be the only argument
                 Expr *arg = CE->getArg(0)->IgnoreImpCasts();
-                QualType argType = arg->getType();
+                auto *DRE = llvm::dyn_cast<DeclRefExpr>(arg);
+                ValueDecl *VD = DRE->getDecl();
 
-                // Check if the argument is of tainted pointer type
-                if (argType->isTaintedPointerType()) {
+                auto VarDInfo = Info.getVariable(VD, Context);
+                if (VarDInfo.hasValue()
+                && VarDInfo.getValue().hasTainted(Info.getConstraints().getVariables())){
                     SourceLocation loc = CE->getBeginLoc();
                     // Get the source manager from the context
                     SourceManager &SM = Context->getSourceManager();

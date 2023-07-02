@@ -901,6 +901,11 @@ bool ConstraintsEnv::checkTaintedAssignment(TaintedVarSolTy Sol) {
 
 bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
   auto VI = Environment.find(V);
+  if (UseChecked && VI->second.first->isTainted() && !C->isTainted())
+  {
+      //A checked/unchecked pointer solution can never overwrite a tainted solution
+      return true;
+  }
   if(C->isTainted())
   {
       VI->second.first = C;
@@ -955,10 +960,6 @@ std::set<VarAtom *> ConstraintsEnv::resetSolution(VarAtomPred Pred,
 }
 
 void ConstraintsEnv::resetFullSolution(VarSolTy InitC, TaintedVarSolTy TC) {
-  for (auto &CurrE : Environment) {
-    CurrE.second = InitC;
-  }
-
   for (auto &CurrE : Environment) {
     CurrE.second = InitC;
   }
