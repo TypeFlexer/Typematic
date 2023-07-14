@@ -444,6 +444,8 @@ public:
       if (FL.isValid())
         for (auto *const D : Definition->fields())
           addVariable(D);
+
+      VarAdder.addVariable(reinterpret_cast<DeclaratorDecl *>(Declaration), Context);
     }
     return true;
   }
@@ -456,6 +458,7 @@ private:
     VarAdder.addABoundsVariable(D);
     if (isPtrOrArrayType(D->getType()))
       VarAdder.addVariable(D, Context);
+
   }
 };
 

@@ -30,6 +30,7 @@ class ConstraintVariable;
 class Constraints;
 class PersistentSourceLoc;
 class ConstraintsGraph;
+class TaintedStructureAtom;
 
 #define INTERNAL_USE_REASON "This reason should never be displayed"
 #define DEFAULT_REASON "UNKNOWN_REASON"
@@ -55,7 +56,7 @@ class VarAtom;
 // Represents atomic values that can occur at positions in constraints.
 class Atom {
 public:
-  enum AtomKind { A_Var, A_Ptr, A_Arr, A_NTArr, A_TPtr, A_TArr, A_TNTArr, A_Wild, A_Const };
+  enum AtomKind { A_Var, A_Ptr, A_Arr, A_NTArr, A_TPtr, A_TArr, A_TNTArr, A_Wild, A_Const, A_struct, A_Tstruct, A_DTstruct };
 
 private:
   const AtomKind Kind;
@@ -68,6 +69,14 @@ public:
 
   bool isTainted() const {
       return (Kind == A_TPtr || Kind == A_TArr || Kind == A_TNTArr);
+  }
+
+  bool isStructure() const{
+      return (Kind == A_struct);
+  }
+
+  bool isTaintedStructure() const {
+      return (Kind == A_Tstruct);
   }
 
   virtual void print(llvm::raw_ostream &) const = 0;
@@ -320,6 +329,83 @@ public:
                  *this == Other);
     }
 };
+
+class StructureAtom : public ConstAtom {
+public:
+    StructureAtom() : ConstAtom(A_struct) {}
+
+    static bool classof(const Atom *S) { return S->getKind() == A_struct; }
+
+    void print(llvm::raw_ostream &O) const override { O << "struct"; }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"struct\""; }
+
+    bool operator==(const Atom &Other) const override {
+        return llvm::isa<StructureAtom>(&Other);
+    }
+
+    bool operator!=(const Atom &Other) const override {
+        return !(*this == Other);
+    }
+
+    bool operator<(const Atom &Other) const override {
+        return !(llvm::isa<TaintedStructureAtom>(&Other) ||
+                 *this == Other);
+    }
+};
+
+class TaintedStructureAtom : public ConstAtom {
+public:
+    TaintedStructureAtom() : ConstAtom(A_Tstruct) {}
+
+    static bool classof(const Atom *S) { return S->getKind() == A_Tstruct; }
+
+    void print(llvm::raw_ostream &O) const override { O << "Tstruct"; }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"Tstruct\""; }
+
+    bool operator==(const Atom &Other) const override {
+        return llvm::isa<StructureAtom>(&Other);
+    }
+
+    bool operator!=(const Atom &Other) const override {
+        return !(*this == Other);
+    }
+
+    bool operator<(const Atom &Other) const override {
+        return !(*this == Other);
+    }
+};
+
+class DecoyTaintedStructureAtom : public ConstAtom {
+public:
+    DecoyTaintedStructureAtom() : ConstAtom(A_DTstruct) {}
+
+    static bool classof(const Atom *S) { return S->getKind() == A_DTstruct; }
+
+    void print(llvm::raw_ostream &O) const override { O << "_Decoy Tstruct"; }
+
+    void dump(void) const override { print(llvm::errs()); }
+
+    void dumpJson(llvm::raw_ostream &O) const override { O << "\"_Decoy Tstruct\""; }
+
+    bool operator==(const Atom &Other) const override {
+        return llvm::isa<StructureAtom>(&Other);
+    }
+
+    bool operator!=(const Atom &Other) const override {
+        return !(*this == Other);
+    }
+
+    bool operator<(const Atom &Other) const override {
+        return !(*this == Other);
+    }
+};
+
 // This refers to the constant PTR.
 class PtrAtom : public ConstAtom {
 public:
@@ -684,6 +770,9 @@ public:
   VarAtom *getTaintedFreshVar(TaintedVarSolTy InitC, std::string Name, VarAtom::VarKind VK);
   VarAtom *getOrCreateTaintedVar(ConstraintKey V, TaintedVarSolTy InitC, std::string Name,
                         VarAtom::VarKind VK);
+VarAtom *getTaintedStructFreshVar(TaintedVarSolTy InitC, std::string Name, VarAtom::VarKind VK);
+VarAtom *getOrCreateTaintedStructVar(ConstraintKey V, TaintedVarSolTy InitC, std::string Name,
+                               VarAtom::VarKind VK);
   VarAtom *getVar(ConstraintKey V) const;
   /* solving */
   ConstAtom *getAssignment(Atom *A);
@@ -696,6 +785,8 @@ public:
   bool checkTaintedAssignment(TaintedVarSolTy C);
   std::set<VarAtom *> filterAtoms(VarAtomPred Pred);
 
+    VarAtom *getFreshStructVar(TaintedVarSolTy InitV, std::string Name, VarAtom::VarKind VK);
+
 private:
   EnvironmentMap Environment; // Solution map: Var --> Sol
 //  TaintedEnvironmentMap TaintedEnvironment; // Solution map: TaintedVar --> TaintedSol
@@ -703,6 +794,8 @@ private:
   bool UseChecked;            // Which solution map to use -- checked (vs. ptyp)
   bool assignTainted(VarAtom *V, ConstAtom *C);
   VarAtom *getTaintedVar(ConstraintKey V) const;
+
+    VarAtom *getFreshStructVar(ConstraintKey V, TaintedVarSolTy InitC, std::string Name, VarAtom::VarKind VK);
 };
 
 class ConstraintVariable;
@@ -754,6 +847,8 @@ public:
   VarAtom *getVar(ConstraintKey V) const;
   PtrAtom *getPtr() const;
   TaintedPointerAtom *getTaintedPtr() const;
+  StructureAtom *getStruct() const;
+  TaintedStructureAtom *getTaintedStruct() const;
   ArrAtom *getArr() const;
   TaintedArrAtom *getTaintedArr() const;
   NTArrAtom *getNTArr() const;
@@ -778,6 +873,8 @@ public:
     TNTArrAtom *getTNTArr() const;
 
     bool addTaintedConstraint(TaintedConstraint *C);
+
+    VarAtom *getFreshStructVar(std::string Name, VarAtom::VarKind VK);
 
 private:
   ConstraintSet TheConstraints;
@@ -811,6 +908,8 @@ private:
   TNTArrAtom *PrebuiltTNTArr;
   WildAtom *PrebuiltWild;
   TaintedPointerAtom *PrebuiltTainted;
+  StructureAtom *PrebuiltStruct;
+  TaintedStructureAtom *PrebuiltTaintedStruct;
 
   VarAtom *getOrCreateTaintedVar(ConstraintKey V, std::string Name, VarAtom::VarKind VK);
 
@@ -820,6 +919,9 @@ private:
 
     bool removeReasonBasedConstraint(TaintedConstraint *C);
 
+    TaintedVarSolTy getDefaultTaintedStructureSolution();
+
+    VarSolTy getDefaultStructureSolution();
 };
 
 #endif

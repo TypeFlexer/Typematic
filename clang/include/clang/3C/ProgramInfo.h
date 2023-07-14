@@ -187,6 +187,8 @@ public:
 
   ProgramMultiDeclsInfo TheMultiDeclsInfo;
 
+    SVarOption getStructVariable(Decl *D, ASTContext *C);
+
 private:
   // List of constraint variables for declarations, indexed by their location in
   // the source. This information persists across invocations of the constraint
@@ -285,6 +287,9 @@ private:
     void unifyIfTypedef(const QualType &QT, ASTContext &Context, TPVConstraint *P, ConsAction CA);
 
     void TaintedconstrainWildIfMacro(TaintedConstraintVariable *TV, SourceLocation Location, const ReasonLoc &Rsn);
+
+    void StructureconstrainWildIfMacro(StructureConstraintVariable *SV, SourceLocation Location, const ReasonLoc &Rsn);
+
 };
 
 #endif

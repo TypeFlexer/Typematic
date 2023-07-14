@@ -7489,7 +7489,7 @@ NamedDecl *Sema::ActOnVariableDeclarator(
   QualType R = TInfo->getType();
   // The starting location of the last token in the type
   auto typedef_resolved_type = R;
-  if (R->isTaintedPointerType() &&
+  if (!this->getLangOpts().drymatic && R->isTaintedPointerType() &&
       !R->getCoreTypeInternal()->isTaintedStructureType() && R->getCoreTypeInternal()->isStructureType())
   {
     Diag(D.getIdentifierLoc(), diag::err_invalid_tainted_ptr_struct);

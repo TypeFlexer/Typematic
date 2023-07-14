@@ -69,7 +69,7 @@ struct MkStringOpts {
 // and on each parameter.
 class ConstraintVariable {
 public:
-  enum ConstraintVariableKind { PointerVariable, FunctionVariable };
+  enum ConstraintVariableKind { PointerVariable, FunctionVariable, StructureVariable };
 
   ConstraintVariableKind getKind() const { return Kind; }
 
@@ -413,10 +413,163 @@ public:
     virtual ~TaintedConstraintVariable(){};
 };
 
+// Base class for TaintedConstraintVariable. A TaintedConstraintVariable can either be a
+// PointerVariableConstraint or a FunctionVariableConstraint. The difference
+// is that FunctionVariableConstraints have constraints on the return value
+// and on each parameter.
+class StructureConstraintVariable {
+public:
+    enum ConstraintVariableKind { TaintedStructure, NonTaintedStructure };
+
+    ConstraintVariableKind getKind() const { return Kind; }
+
+private:
+    ConstraintVariableKind Kind;
+
+protected:
+    // A string representation for the type of this variable. Note that for
+    // complex types (e.g., function pointer, constant sized arrays), you cannot
+    // concatenate the type string with an identifier and expect to obtain a valid
+    // variable declaration.
+    std::string OriginalType;
+    // Underlying name of the C variable this TaintedConstraintVariable represents. This
+    // is not always a valid C identifier. It will be empty if no name was given
+    // (e.g., some parameter declarations). It will be the predefined string
+    // "$ret" when the TaintedConstraintVariable represents a function return. It may
+    // take other values if the TaintedConstraintVariable does not represent a C
+    // variable (e.g., explict casts and compound literals) .
+    std::string Name;
+    // The combination of the type and name of the represented C variable. The
+    // combination is handled by clang library routines, so complex types
+    // like function pointers and constant size are handled correctly. See
+    // comments on Name for when name should be a valid identifier.
+    std::string OriginalTypeWithName;
+    // Set of constraint variables that have been constrained due to a
+    // bounds-safe interface (itype). They are remembered as being constrained
+    // so that later on we do not introduce a spurious constraint
+    // making those variables WILD.
+    std::set<ConstraintKey> ConstrainedVars;
+    // A flag to indicate that we already forced argConstraints to be equated
+    // Avoids infinite recursive calls.
+    bool HasEqArgumentConstraints;
+    // Flag to indicate if this Constraint Variable has a bounds key.
+    bool ValidBoundsKey;
+    // Bounds key of this Constraint Variable.
+    BoundsKey BKey;
+    // Is this Constraint Variable for a declaration?
+    bool IsForDecl;
+
+    // Only subclasses should call this
+    StructureConstraintVariable(ConstraintVariableKind K, std::string T, std::string N,
+                              std::string TN)
+            : Kind(K), OriginalType(T), Name(N), OriginalTypeWithName(TN),
+              HasEqArgumentConstraints(false), ValidBoundsKey(false),
+              IsForDecl(false) {}
+
+    StructureConstraintVariable(ConstraintVariableKind K, QualType QT, std::string N)
+            : StructureConstraintVariable(K, qtyToStr(QT), N,
+                                        qtyToStr(QT, N == RETVAR ? "" : N)) {}
+
+public:
+    // Generate source code for the type and (in certain cases) the name of the
+    // variable or function represented by this ConstraintVariable that reflects
+    // any changes made by 3C and is suitable to insert during rewriting.
+    //
+    // This method is used in several contexts with special requirements, which
+    // are addressed by the options in MkStringOpts; see the comments there.
+    virtual std::string mkString(Constraints &CS,
+                                 const MkStringOpts &Opts = {}) const = 0;
+
+    // Debug printing of the constraint variable.
+    virtual void print(llvm::raw_ostream &O) const = 0;
+    virtual void dump() const = 0;
+
+    bool hasBoundsKey() const { return ValidBoundsKey; }
+    BoundsKey getBoundsKey() const {
+        assert(ValidBoundsKey && "No valid Bkey");
+        return BKey;
+    }
+    void setBoundsKey(BoundsKey NK) {
+        ValidBoundsKey = true;
+        BKey = NK;
+    }
+    void constrainToWild(Constraints &CS, const ReasonLoc &Rsn) const;
+//    virtual bool solutionEqualTo(Constraints &, const StructureConstraintVariable *,
+//                                 bool ComparePtyp = true) const = 0;
+
+    // Returns true if any of the constraint variables 'within' this instance
+    // have a binding in E other than top. E should be the EnvironmentMap that
+    // results from running unification on the set of constraints and the
+    // environment.
+
+    // Returns true if this constraint variable has a different checked type after
+    // running unification. Note that if the constraint variable had a checked
+    // type in the input program, it will have the same checked type after solving
+    // so, the type will not have changed. To test if the type is checked, use
+    // isSolutionChecked instead.
+    virtual bool anyChanges(const TaintedEnvironmentMap &E) const = 0;
+
+//    // Force use of equality constraints in function calls for this CV
+//    virtual void equateArgumentConstraints(ProgramInfo &I, ReasonLoc &Rsn) = 0;
+
+    // Internally combine the constraints and other data from the first parameter
+    // with this constraint variable. Used with redeclarations, especially of
+    // functions declared in multiple files.
+//    virtual void mergeDeclaration(StructureConstraintVariable *, ProgramInfo &,
+//                                  std::string &ReasonFailed) = 0;
+
+    std::string getOriginalTy() const { return OriginalType; }
+    // Get the original type string that can be directly
+    // used for rewriting.
+    std::string getRewritableOriginalTy() const;
+    std::string getOriginalTypeWithName() const;
+    std::string getName() const { return Name; }
+
+    void setValidDecl() { IsForDecl = true; }
+    bool isForValidDecl() const { return IsForDecl; }
+
+    // By default, 3C allows itypes to be re-solved arbitrarily. But in several
+    // cases, we need to restrict itype re-solving; this function applies those
+    // restrictions. (It isn't needed for fully checked types because 3C doesn't
+    // allow checked types to be re-solved yet.)
+    //
+    // In some cases, we don't want the checked portion of the type to change, but
+    // the itype can still become a fully checked type; we achieve that by copying
+    // ConstAtoms from SrcVars vector into the main VarAtoms vector, which forces
+    // the solved checked type for the variable to be the same as it was in the
+    // source. In other cases, we don't want the itype to change at all; to
+    // achieve that, we additionally constrain the internal variables to not
+    // change.
+    //
+    // Some cases in which the itype needs to be constrained not change at all are
+    // indicated by passing a non-default reason for the "root cause of wildness"
+    // in ReasonUnchangeable. If the reason is DEFAULT_REASON, this is a sentinel
+    // meaning that the caller is not requesting such a constraint. Other cases
+    // that need the constraint are detected within equateWithItype itself, and
+    // the appropriate reason is attached there.
+    //
+    // TODO: It looks like there may be some unusual cases in which
+    // equateWithType generates constraints using the reason from
+    // ReasonUnchangeable even if it is the DEFAULT_REASON sentinel. Rethink the
+    // equateWithItype design to figure out what reason should actually be used or
+    // if those constraints should be generated at all.
+
+    // Copy this variable and replace all VarAtoms with fresh VarAtoms. Using
+    // fresh atoms allows the new variable to solve to different types than the
+    // original.
+   // virtual StructureConstraintVariable *getCopy(ReasonLoc &Rsn, Constraints &CS) = 0;
+
+    virtual ~StructureConstraintVariable(){};
+};
+
 typedef std::set<ConstraintVariable *> CVarSet;
 typedef Option<ConstraintVariable> CVarOption;
 
+
 typedef std::set<TaintedConstraintVariable *> TVarSet;
+typedef std::set<StructureConstraintVariable *> SVarSet;
+typedef Option<StructureConstraintVariable> SVarOption;
+
 typedef Option<TaintedConstraintVariable> TVarOption;
 enum ConsAction { Safe_to_Wild, Wild_to_Safe, Same_to_Same };
 
@@ -430,6 +583,19 @@ void constrainConsVarGeq(ConstraintVariable *LHS, const CVarSet &RHS,
                          ConsAction CA, bool DoEqType, ProgramInfo *Info,
                          bool HandleBoundsKey = true);
 void constrainConsVarGeq(ConstraintVariable *LHS, ConstraintVariable *RHS,
+                         Constraints &CS, const ReasonLoc &Rsn,
+                         ConsAction CA, bool DoEqType, ProgramInfo *Info,
+                         bool HandleBoundsKey = true);
+
+void StructureconstrainConsVarGeq(StructureConstraintVariable *LHS, StructureConstraintVariable *RHS,
+                                  Constraints &CS, const ReasonLoc &Rsn,
+                                  ConsAction CA, bool DoEqType, ProgramInfo *Info,
+                                  bool HandleBoundsKey);
+void StructureconstrainConsVarGeq(StructureConstraintVariable *LHS, const SVarSet &RHS,
+                         Constraints &CS, const ReasonLoc &Rsn,
+                         ConsAction CA, bool DoEqType, ProgramInfo *Info,
+                         bool HandleBoundsKey = true);
+void StructureconstrainConsVarGeq(StructureConstraintVariable *LHS, StructureConstraintVariable *RHS,
                          Constraints &CS, const ReasonLoc &Rsn,
                          ConsAction CA, bool DoEqType, ProgramInfo *Info,
                          bool HandleBoundsKey = true);
@@ -458,6 +624,7 @@ class PointerVariableConstraint;
 class FunctionVariableConstraint;
 
 class TaintedPointerVariableConstraint;
+class StructureVariableConstraint;
 class TaintedFunctionVariableConstraint;
 
 // We need to store the level inside the type AST at which the first
@@ -769,6 +936,234 @@ public:
 
 };
 
+// Represents an individual constraint on a pointer variable.
+// This could contain a reference to a FunctionVariableConstraint
+// in the case of a function pointer declaration.
+class StructureVariableConstraint : public StructureConstraintVariable {
+public:
+    enum Qualification {
+        DecoyQualification
+    };
+
+    // Get constraint variables representing values that are not pointers. If a
+    // meaningful name can be assigned to the value, the second method should be
+    // used to get higher quality root-cause and debugging output.
+    static StructureVariableConstraint *getNonPtrPVConstraint(Constraints &CS);
+    static StructureVariableConstraint *getNamedNonPtrPVConstraint(StringRef Name,
+                                                                 Constraints &CS);
+
+    // Given a constraint variable, return a new constraint variable with the same
+    // atoms as the original, but with one fresh atoms added to the front of the
+    // Vars vector. This effectively takes the address of the pointer represented
+    // by the original constraint variable.
+    static StructureVariableConstraint *
+    addAtomPVConstraint(StructureVariableConstraint *PVC, ConstAtom *PtrTyp,
+                        ReasonLoc &Rsn, Constraints &CS);
+
+private:
+    std::string BaseType;
+    CAtoms Vars;
+    std::vector<ConstAtom *> SrcVars;
+    FunctionVariableConstraint *FV;
+    std::map<uint32_t, std::set<Qualification>> QualMap;
+    enum OriginalArrType { O_Pointer, O_SizedArray, O_UnSizedArray };
+    // Map from pointer idx to original type and size.
+    // If the original variable U was:
+    //  * A pointer, then U -> (a,b) , a = O_Pointer, b has no meaning.
+    //  * A sized array, then U -> (a,b) , a = O_SizedArray, b is static size.
+    //  * An unsized array, then U -(a,b) , a = O_UnSizedArray, b has no meaning.
+    std::map<uint32_t, std::pair<OriginalArrType, uint64_t>> ArrSizes;
+
+    // To help rewriting preserve macros and constant expressions in arrays size
+    // expressions, the source strings for bounds of arrays are also stored.
+    std::map<uint32_t, std::string> ArrSizeStrs;
+
+    // True if this variable has an itype in the original source code.
+    bool SrcHasItype;
+    // The string representation of the itype of in the original source. This
+    // string is empty if the variable did not have an itype OR if the itype was
+    // implicitly declared by a bounds declaration on an unchecked pointer.
+    std::string ItypeStr;
+
+    // Get the qualifier string (e.g., const, etc) for the provided
+    // pointer type into the provided string stream (ss).
+    void getQualString(uint32_t TypeIdx, std::ostringstream &Ss) const;
+    void insertQualType(uint32_t TypeIdx, QualType &QTy);
+    // This function tries to emit an array size for the variable.
+    // and returns true if the variable is an array and a size is emitted.
+
+    // Flag to indicate that this constraint is a part of function prototype
+    // e.g., Parameters or Return.
+    bool PartOfFuncPrototype;
+    // For the function parameters and returns,
+    // this set contains the constraint variable of
+    // the values used as arguments.
+    std::set<StructureConstraintVariable *> ArgumentConstraints;
+    // Get solution for the atom of a pointer.
+    const ConstAtom *getSolution(const Atom *A, const EnvironmentMap &E) const;
+
+    // Construct a copy of this variable, reusing all VarAtoms. To instead obtains
+    // a copy of the constraint variable which contains fresh VarAtoms (allowing
+    // the new variable to solve to different type than the original), instead use
+    // the method getCopy.
+    StructureVariableConstraint(StructureVariableConstraint *Ot);
+    StructureVariableConstraint *Parent;
+    // String representing declared bounds expression.
+    std::string BoundsAnnotationStr;
+
+    // TODO can we move this to an optional instead of the -1?
+    // Does this variable represent a generic type? Which one (or -1 for none)?
+    // Generic types can be used with fewer restrictions, so this field is used
+    // stop assignments with generic variables from forcing constraint variables
+    // to be wild.
+    // Source is generated from the source code, Inferred is set internally
+    int SourceGenericIndex;
+    int InferredGenericIndex;
+
+    // Empty array pointers are represented the same as standard pointers. This
+    // lets pointers be passed to functions expecting a zero width array. This
+    // flag is used to discriminate between standard pointer and zero width array
+    // pointers.
+    bool IsZeroWidthArray;
+
+    bool IsTypedef = false;
+    StructureConstraintVariable *TypedefVar;
+    std::string TypedefString;
+    // Does the type internally contain a typedef, and if so: at what level and
+    // what is it's name?
+    struct InternalTypedefInfo TypedefLevelInfo;
+
+    // Is this a pointer to void? Possibly with multiple levels of indirection.
+    bool IsVoidPtr;
+
+    // Construct and empty StructureVariableConstraint with only the name set. All
+    // other fields are initialized to default values. This is used to construct
+    // variables for non-pointer expressions.
+    StructureVariableConstraint(std::string Name) :
+            StructureConstraintVariable(NonTaintedStructure, "", Name, ""), FV(nullptr),
+            SrcHasItype(false), PartOfFuncPrototype(false), Parent(nullptr),
+            SourceGenericIndex(-1), InferredGenericIndex(-1),
+            IsZeroWidthArray(false), IsTypedef(false),
+            TypedefLevelInfo({}), IsVoidPtr(false) {}
+
+public:
+    std::string getTy() const { return BaseType; }
+
+    bool isTypedef(void) const;
+    const StructureConstraintVariable *getTypedefVar() const;
+    void setTypedef(StructureConstraintVariable *TDVar, std::string S);
+
+    // Return true if this constraint had an itype in the original source code.
+
+    // Return the string representation of the itype for this constraint if an
+    // itype was present in the original source code. Returns empty string
+    // otherwise.
+
+    bool solutionEqualTo(Constraints &CS, const StructureConstraintVariable *CV,
+                         bool ComparePtyp = true) const;
+
+    bool isOriginallyTainted() const {
+        return llvm::any_of(Vars, [](Atom *A) { return isa<ConstAtom>(A); });
+    }
+
+    // Constructors for creating StructureVariableConstraint from a specific declaration (either
+    // a typedef of declarator declaration). These constructors call the larger
+    // constructor below with type, type source info, and name instantiated with
+    // information in D.
+    StructureVariableConstraint(clang::DeclaratorDecl *D, ProgramInfo &I,
+                              const clang::ASTContext &C);
+    StructureVariableConstraint(clang::TypedefDecl *D, ProgramInfo &I,
+                              const clang::ASTContext &C);
+    StructureVariableConstraint(clang::Expr *E, ProgramInfo &I,
+                              const clang::ASTContext &C);
+
+    // QT: Defines the type for the constraint variable. One atom is added for
+    //     each level of pointer (or array) indirection in the type.
+    // D: If this constraint is generated because of a variable declaration, this
+    //    should be a pointer to the the declaration AST node. May be null if the
+    //    constraint is not generated by a declaration.
+    // N: Name for the constraint variable. Use for rewriting declarations that
+    //    need an identifier. Otherwise used to give descriptive names to atoms in
+    //    the constraint graph.
+    // I and C: Context objects required for this construction. It is expected
+    //          that all constructor calls will take the same global objects here.
+    // inFunc: If this variable is part of a function prototype, this string is
+    //         the name of the function. nullptr otherwise.
+    // ForceGenericIndex: CheckedC supports generic types (_Itype_for_any) which
+    //                    need less restrictive constraints. Set >= 0 to indicate
+    //                    that this variable should be considered generic.
+    // PotentialGeneric: Whether this may become generic after analysis. Disables
+    //                   constraint to wild for non-generics. If you use this
+    //                   you'll have to add that constraint later if it is
+    //                   not generic.
+    // TSI: TypeSourceInfo object gives access to information about the source
+    //      code representation of the type. Allows for more precise rewriting by
+    //      preserving the exact syntax used to write types that aren't rewritten
+    //      by 3C. If this is null, then the type will be reconstructed from QT.
+    StructureVariableConstraint(const clang::QualType &QT, clang::DeclaratorDecl *D,
+                              std::string N, ProgramInfo &I,
+                              const clang::ASTContext &C,
+                              std::string *InFunc = nullptr,
+                              int ForceGenericIndex = -1,
+                              bool PotentialGeneric = false,
+                              bool VarAtomForChecked = false,
+                              TypeSourceInfo *TSI = nullptr,
+                              const clang::QualType &ItypeT = QualType());
+
+    const CAtoms &getCvars() const { return Vars; }
+
+    // Include new ConstAtoms, supplemental info, and merge function pointers
+    void mergeDeclaration(StructureConstraintVariable *From, ProgramInfo &I,
+                          std::string &ReasonFailed) ;
+
+    static bool classof(const StructureConstraintVariable *S) {
+        return S->getKind() == ConstraintVariable::StructureVariable;
+    }
+
+    std::string gatherQualStrings(void) const;
+
+    std::string mkString(Constraints &CS,
+                         const MkStringOpts &Opts = {}) const override;
+
+    FunctionVariableConstraint *getFV() const { return FV; }
+
+    void print(llvm::raw_ostream &O) const override;
+    void dump() const override { print(llvm::errs()); }
+    void dumpJson(llvm::raw_ostream &O) const;
+
+    void constrainOuterTo(Constraints &CS, ConstAtom *C, const ReasonLoc &Rsn,
+                          bool DoLB = false, bool Soft = false);
+    void constrainIdxTo(Constraints &CS, ConstAtom *C, unsigned int Idx,
+                        const ReasonLoc &Rsn,
+                        bool DoLB = false, bool Soft = false);
+    bool anyChanges(const EnvironmentMap &E) const override;
+    bool hasDecoyedTstruct(const EnvironmentMap &E, int AIdx = -1) const;
+    bool hasTstruct(const EnvironmentMap &E, int AIdx = -1) const ;
+
+    void equateArgumentConstraints(ProgramInfo &I, ReasonLoc &Rsn);
+
+    bool isPartOfFunctionPrototype() const { return PartOfFuncPrototype; }
+    static std::string tryExtractBaseType(MultiDeclMemberDecl *MMD,
+                                          TypeSourceInfo *TSI, QualType QT,
+                                          const Type *Ty, const ASTContext &C);
+
+    // Add the provided constraint variable as an argument constraint.
+//    bool addArgumentConstraint(ConstraintVariable *DstCons,
+//                               ReasonLoc &Rsn, ProgramInfo &Info);
+    // Get the set of constraint variables corresponding to the arguments.
+//    const std::set<ConstraintVariable *> &getArgumentConstraints() const;
+
+    StructureVariableConstraint *getCopy(ReasonLoc &Rsn, Constraints &CS);
+
+    // Retrieve the atom at the specified index. This function includes special
+    // handling for generic constraint variables to create deeper pointers as
+    // they are needed.
+    Atom *getAtom(unsigned int AtomIdx, Constraints &CS);
+
+    ~StructureVariableConstraint() override{};
+
+};
+
 class TaintedPointerVariableConstraint : public TaintedConstraintVariable {
 public:
     enum Qualification {
@@ -1065,6 +1460,7 @@ public:
 };
 
 typedef PointerVariableConstraint PVConstraint;
+typedef StructureVariableConstraint StructConstraint;
 typedef TaintedPointerVariableConstraint TPVConstraint;
 
 // This class contains a pair of PVConstraints that represent an internal and

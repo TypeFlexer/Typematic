@@ -612,6 +612,7 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
 
   ConstraintVariable *NewCV = nullptr;
   TaintedConstraintVariable *NewTV = nullptr;
+  StructureConstraintVariable *NewSV = nullptr;
 
   if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
     // Function Decls have FVConstraints.
@@ -749,7 +750,13 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
         NewCV->constrainToWild(CS, Rsn);
       }
     }
-  } else
+  } else if (RecordDecl* RlD = dyn_cast<RecordDecl>(D))
+  {
+      StructConstraint *P = new StructConstraint(D, *this, *AstContext);
+      NewSV = P;
+      NewSV->setValidDecl();
+  }
+  else
     llvm_unreachable("unknown decl type");
 
 //  assert("We shouldn't be adding a null CV to Variables map." && NewCV);
@@ -772,6 +779,16 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
         }
         TaintedconstrainWildIfMacro(NewTV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
       Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewTV);
+    }
+
+    if (NewSV)
+    {
+        if (!canWrite(PLoc.getFileName())) {
+            auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
+            NewSV->constrainToWild(CS, Rsn);
+        }
+        StructureconstrainWildIfMacro(NewSV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
+        Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewSV);
     }
 }
 
@@ -908,6 +925,13 @@ void ProgramInfo::TaintedconstrainWildIfMacro(TaintedConstraintVariable *TV,
     TV->constrainToWild(CS, Rsn);
 }
 
+void ProgramInfo::StructureconstrainWildIfMacro(StructureConstraintVariable *SV,
+                                              SourceLocation Location,
+                                              const ReasonLoc &Rsn) {
+    if (!Rewriter::isRewritable(Location))
+        SV->constrainToWild(CS, Rsn);
+}
+
 //std::string ProgramInfo::getUniqueDeclKey(Decl *D, ASTContext *C) {
 //  auto Psl = PersistentSourceLoc::mkPSL(D, *C);
 //  std::string FileName = Psl.getFileName() + ":" +
@@ -1008,6 +1032,36 @@ CVarOption ProgramInfo::getVariable(clang::Decl *D, clang::ASTContext *C) {
   if (I != Variables.end())
     return CVarOption(*I->second);
   return CVarOption();
+}
+
+SVarOption ProgramInfo::getStructVariable(clang::Decl *D, clang::ASTContext *C) {
+  assert(!Persisted);
+
+//  if (ParmVarDecl *PD = dyn_cast<ParmVarDecl>(D)) {
+//    DeclContext *DC = PD->getParentFunctionOrMethod();
+//    // This can fail for extern definitions
+//    if (!DC)
+//      return SVarOption();
+//    FunctionDecl *FD = dyn_cast<FunctionDecl>(DC);
+//    // Get the parameter index with in the function.
+//    unsigned int PIdx = getParameterIndex(PD, FD);
+//    // Get corresponding FVConstraint vars.
+//    FVConstraint *FunFVar = getFuncFVConstraint(FD, C);
+//    assert(FunFVar != nullptr && "Unable to find function constraints.");
+//    return SVarOption(*FunFVar->getInternalParam(PIdx));
+//  }
+//  if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+//    FVConstraint *FunFVar = getFuncFVConstraint(FD, C);
+//    if (FunFVar == nullptr) {
+//      llvm::errs() << "No fun constraints for " << FD->getName() << "?!\n";
+//    }
+//    return SVarOption(*FunFVar);
+//  }
+  /* neither function nor function parameter */
+  auto I = Variables.find(PersistentSourceLoc::mkPSL(D, *C));
+  if (I != Variables.end())
+    return SVarOption(*(StructureConstraintVariable*)I->second);
+  return SVarOption();
 }
 
 FVConstraint *

@@ -664,12 +664,24 @@ TaintedVarSolTy Constraints::getDefaultTaintedSolution() {
   return std::make_pair(getTaintedPtr(), getTaintedPtr());
 }
 
+TaintedVarSolTy Constraints::getDefaultTaintedStructureSolution() {
+    return std::make_pair(getTaintedStruct() , getTaintedStruct());
+}
+
+VarSolTy Constraints::getDefaultStructureSolution() {
+    return std::make_pair(getStruct() , getStruct());
+}
+
 VarAtom *Constraints::getFreshVar(std::string Name, VarAtom::VarKind VK) {
   return Environment.getFreshVar(getDefaultSolution(), Name, VK);
 }
 
 VarAtom *Constraints::getFreshTaintedVar(std::string Name, VarAtom::VarKind VK) {
   return Environment.getTaintedFreshVar(getDefaultTaintedSolution(), Name, VK);
+}
+
+VarAtom *Constraints::getFreshStructVar(std::string Name, VarAtom::VarKind VK) {
+  return Environment.getFreshStructVar(getDefaultTaintedStructureSolution(), Name, VK);
 }
 
 VarAtom *Constraints::getVar(ConstraintKey V) const {
@@ -699,6 +711,8 @@ NTArrAtom *Constraints::getNTArr() const { return PrebuiltNTArr; }
 TNTArrAtom* Constraints::getTaintedNTArr() const { return PrebuiltTNTArr; }
 WildAtom *Constraints::getWild() const { return PrebuiltWild; }
 TaintedPointerAtom *Constraints::getTaintedPtr() const { return PrebuiltTainted; }
+StructureAtom *Constraints::getStruct() const { return PrebuiltStruct; }
+TaintedStructureAtom *Constraints::getTaintedStruct() const { return PrebuiltTaintedStruct; }
 
 ConstAtom *Constraints::getAssignment(Atom *A) {
   Environment.doCheckedSolve(true);
@@ -756,6 +770,8 @@ Constraints::Constraints() {
   PrebuiltTNTArr = new TNTArrAtom();
   PrebuiltWild = new WildAtom();
   PrebuiltTainted = new TaintedPointerAtom();
+  PrebuiltStruct = new StructureAtom();
+  PrebuiltTaintedStruct = new TaintedStructureAtom();
   ChkCG = new ConstraintsGraph();
   PtrTypCG = new ConstraintsGraph();
 }
@@ -768,6 +784,8 @@ Constraints::~Constraints() {
   delete PrebuiltTNTArr;
   delete PrebuiltWild;
   delete PrebuiltTainted;
+  delete PrebuiltStruct;
+  delete PrebuiltTaintedStruct;
   if (ChkCG != nullptr)
     delete (ChkCG);
   if (PtrTypCG != nullptr)
@@ -825,6 +843,13 @@ VarAtom *ConstraintsEnv::getTaintedFreshVar(TaintedVarSolTy InitV, std::string N
   return NewVA;
 }
 
+VarAtom *ConstraintsEnv::getFreshStructVar(TaintedVarSolTy InitV, std::string Name,
+                                            VarAtom::VarKind VK) {
+  VarAtom *NewVA = getFreshStructVar(ConsFreeKey, InitV, Name, VK);
+  ConsFreeKey++;
+  return NewVA;
+}
+
 
 VarAtom *ConstraintsEnv::getOrCreateVar(ConstraintKey V, VarSolTy InitC,
                                         std::string Name, VarAtom::VarKind VK) {
@@ -847,6 +872,17 @@ VarAtom *ConstraintsEnv::getOrCreateTaintedVar(ConstraintKey V, TaintedVarSolTy 
   VarAtom *VA = new VarAtom(Tv);
   Environment[VA] = InitC;
   return VA;
+}
+
+VarAtom *ConstraintsEnv::getFreshStructVar(ConstraintKey V, TaintedVarSolTy InitC,
+                                               std::string Name, VarAtom::VarKind VK) {
+    VarAtom Tv(V, Name, VK);
+    TaintedEnvironmentMap::iterator I = Environment.find(&Tv);
+    if (I != Environment.end())
+        return I->first;
+    VarAtom *VA = new VarAtom(Tv);
+    Environment[VA] = InitC;
+    return VA;
 }
 
 VarAtom *ConstraintsEnv::getVar(ConstraintKey V) const {

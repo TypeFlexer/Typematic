@@ -185,6 +185,45 @@ PointerVariableConstraint *PointerVariableConstraint::addAtomPVConstraint(
   return Copy;
 }
 
+StructureVariableConstraint *
+StructureVariableConstraint::getNonPtrPVConstraint(Constraints &CS) {
+    static StructureVariableConstraint *GlobalNonPtrPV = nullptr;
+    if (GlobalNonPtrPV == nullptr)
+        GlobalNonPtrPV = new StructureVariableConstraint("basevar");
+    return GlobalNonPtrPV;
+}
+
+StructureVariableConstraint *
+StructureVariableConstraint::getNamedNonPtrPVConstraint(StringRef Name,
+                                                             Constraints &CS) {
+    return new StructureVariableConstraint(std::string(Name));
+}
+
+StructureVariableConstraint *StructureVariableConstraint::addAtomPVConstraint(
+        StructureVariableConstraint *PVC, ConstAtom *PtrTyp,
+        ReasonLoc &Rsn, Constraints &CS) {
+    auto *Copy = new StructureVariableConstraint(PVC);
+    std::vector<Atom *> &Vars = Copy->Vars;
+    std::vector<ConstAtom *> &SrcVars = Copy->SrcVars;
+
+    VarAtom *NewA = CS.getFreshTaintedVar("&" + Copy->Name, VarAtom::V_Other);
+    CS.addTaintedConstraint(CS.createTaintedGeq(NewA, PtrTyp, Rsn, false));
+
+    // Add a constraint between the new atom and any existing atom for this
+    // pointer. This is the same constraint that is added between atoms of a
+    // pointer in the PointerVariableConstraint constructor. It forces all inner
+    // atoms to be wild if an outer atom is wild.
+    if (!Vars.empty())
+    if (auto *VA = dyn_cast<VarAtom>(*Vars.begin()))
+    CS.addTaintedConstraint(new TGeq(VA, NewA,
+            ReasonLoc(INNER_POINTER_REASON, PersistentSourceLoc())));
+
+    Vars.insert(Vars.begin(), NewA);
+    SrcVars.insert(SrcVars.begin(), PtrTyp);
+
+    return Copy;
+}
+
 TaintedPointerVariableConstraint *TaintedPointerVariableConstraint::addAtomPVConstraint(
         TaintedPointerVariableConstraint *PVC, ConstAtom *PtrTyp,
         ReasonLoc &Rsn, Constraints &CS) {
@@ -250,12 +289,39 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
   this->BKey = Ot->BKey;
 }
 
+StructureVariableConstraint::StructureVariableConstraint(
+        StructureVariableConstraint *Ot)
+        : StructureConstraintVariable(ConstraintVariableKind::NonTaintedStructure, Ot->OriginalType,
+                                    Ot->Name, Ot->OriginalTypeWithName),
+          BaseType(Ot->BaseType), Vars(Ot->Vars), SrcVars(Ot->SrcVars), FV(Ot->FV),
+          QualMap(Ot->QualMap), ArrSizes(Ot->ArrSizes), ArrSizeStrs(Ot->ArrSizeStrs),
+          SrcHasItype(Ot->SrcHasItype), ItypeStr(Ot->ItypeStr),
+          PartOfFuncPrototype(Ot->PartOfFuncPrototype), Parent(Ot),
+          BoundsAnnotationStr(Ot->BoundsAnnotationStr),
+          SourceGenericIndex(Ot->SourceGenericIndex),
+          InferredGenericIndex(Ot->InferredGenericIndex),
+          IsZeroWidthArray(Ot->IsZeroWidthArray),
+          IsTypedef(Ot->IsTypedef), TypedefString(Ot->TypedefString),
+          TypedefLevelInfo(Ot->TypedefLevelInfo), IsVoidPtr(Ot->IsVoidPtr) {
+    // These are fields of the super class Constraint Variable
+    this->HasEqArgumentConstraints = Ot->HasEqArgumentConstraints;
+    this->ValidBoundsKey = Ot->ValidBoundsKey;
+    this->BKey = Ot->BKey;
+}
+
 PointerVariableConstraint::PointerVariableConstraint(DeclaratorDecl *D,
                                                      ProgramInfo &I,
                                                      const ASTContext &C)
     : PointerVariableConstraint(D->getType(), D, std::string(D->getName()), I,
                                 C, nullptr, -1, false, false,
                                 D->getTypeSourceInfo()) {}
+
+StructureVariableConstraint::StructureVariableConstraint(DeclaratorDecl *D,
+                                                     ProgramInfo &I,
+                                                     const ASTContext &C)
+        : StructureVariableConstraint(D->getType(), D, std::string(D->getName()), I,
+                                    C, nullptr, -1, false, false,
+                                    D->getTypeSourceInfo()) {}
 
 TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(DeclaratorDecl *D,
                                                      ProgramInfo &I,
@@ -271,6 +337,13 @@ PointerVariableConstraint::PointerVariableConstraint(TypedefDecl *D,
                                 D->getNameAsString(), I, C, nullptr, -1, false,
                                 false, D->getTypeSourceInfo()) {}
 
+StructureVariableConstraint::StructureVariableConstraint(TypedefDecl *D,
+                                                     ProgramInfo &I,
+                                                     const ASTContext &C)
+        : StructureVariableConstraint(D->getUnderlyingType(), nullptr,
+                                    D->getNameAsString(), I, C, nullptr, -1, false,
+                                    false, D->getTypeSourceInfo()) {}
+
 TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(TypedefDecl *D,
                                                      ProgramInfo &I,
                                                      const ASTContext &C)
@@ -282,6 +355,13 @@ PointerVariableConstraint::PointerVariableConstraint(Expr *E, ProgramInfo &I,
                                                      const ASTContext &C)
     : PointerVariableConstraint(E->getType(), nullptr, E->getStmtClassName(), I,
                                 C, nullptr) {}
+
+
+StructureVariableConstraint::StructureVariableConstraint(Expr *E, ProgramInfo &I,
+                                                     const ASTContext &C)
+        : StructureVariableConstraint(E->getType(), nullptr, E->getStmtClassName(), I,
+                                    C, nullptr) {}
+
 
 TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(Expr *E, ProgramInfo &I,
                                                      const ASTContext &C)
@@ -331,6 +411,170 @@ private:
   std::string TDname = "";
   bool HasTypedef = false;
 };
+
+//TODO: NEED to FILL THIS IN ?
+void StructureConstraintVariable::constrainToWild(Constraints &CS,
+                                                       const ReasonLoc &Rsn) const {
+
+//    // Find the first VarAtom. All atoms before this are ConstAtoms, so
+//    // constraining them isn't useful;
+//    VarAtom *FirstVA = nullptr;
+//    for (Atom *A : Vars)
+//        if (isa<VarAtom>(A)) {
+//            FirstVA = cast<VarAtom>(A);
+//            break;
+//        }
+//
+//    // Constrains the outer VarAtom to WILD. All inner pointer levels will also be
+//    // implicitly constrained to WILD because of GEQ constraints that exist
+//    // between levels of a pointer.
+//    if (FirstVA)
+//        CS.addTaintedConstraint(CS.createTaintedGeq(FirstVA, CS.getWild(), Rsn, true));
+//
+//    if (FV)
+//        FV->constrainToWild(CS, Rsn);
+return;
+}
+
+StructureVariableConstraint::StructureVariableConstraint(
+        const QualType &QT, DeclaratorDecl *D, std::string N, ProgramInfo &I,
+        const ASTContext &C, std::string *InFunc, int ForceGenericIndex,
+        bool PotentialGeneric,
+        bool VarAtomForChecked, TypeSourceInfo *TSInfo, const QualType &ITypeT)
+        : StructureConstraintVariable(NonTaintedStructure, QT, N),
+          FV(nullptr), SrcHasItype(false), PartOfFuncPrototype(InFunc != nullptr),
+          Parent(nullptr) {
+    PersistentSourceLoc PSL = PersistentSourceLoc::mkPSL(D, C);
+    QualType QTy = QT;
+    const Type *Ty = QTy.getTypePtr();
+    auto &CS = I.getConstraints();
+    // If the type is a decayed type, then maybe this is the result of
+    // decaying an array to a pointer. If the original type is some
+    // kind of array type, we want to use that instead.
+    if (const DecayedType *DC = dyn_cast<DecayedType>(Ty)) {
+        QualType QTytmp = DC->getOriginalType();
+        if (QTytmp->isArrayType() || QTytmp->isIncompleteArrayType()) {
+            QTy = QTytmp;
+            Ty = QTy.getTypePtr();
+        }
+    }
+
+    bool IsTypedef = false;
+    if (Ty->getAs<TypedefType>())
+        IsTypedef = true;
+
+    bool IsDeclTy = false;
+
+    auto &ABInfo = I.getABoundsInfo();
+    if (D != nullptr) {
+        if (ABInfo.tryGetVariable(D, BKey)) {
+            ValidBoundsKey = true;
+        }
+
+        IsDeclTy = D->getType() == QT; // If false, then QT may be D's return type
+    }
+    if (!SrcHasItype && !ITypeT.isNull()) {
+        QTy = ITypeT;
+        Ty = QTy.getTypePtr();
+        SrcHasItype = true;
+    }
+
+    // At this point `QTy`/`Ty` hold the computed type (and `QT` still holds the
+    // input type). It will be consumed to create atoms, so any code that needs
+    // to be coordinated with the atoms should access it here first.
+
+    TypedefLevelInfo = TypedefLevelFinder::find(QTy);
+
+    if (ForceGenericIndex >= 0) {
+        SourceGenericIndex = ForceGenericIndex;
+    } else {
+        SourceGenericIndex = -1;
+        // This makes a lot of assumptions about how the AST will look, and limits
+        // it to one level.
+        // TODO: Enhance TypedefLevelFinder to get this info.
+        if (Ty->isPointerType()) {
+            auto *PtrTy = Ty->getPointeeType().getTypePtr();
+            if (auto *TypdefTy = dyn_cast_or_null<TypedefType>(PtrTy)) {
+                const auto *Tv = dyn_cast<TypeVariableType>(TypdefTy->desugar());
+                if (Tv)
+                    SourceGenericIndex = Tv->GetIndex();
+            }
+        }
+    }
+    InferredGenericIndex = SourceGenericIndex;
+
+    uint32_t TypeIdx = 0;
+    std::string Npre = InFunc ? ((*InFunc) + ":") : "";
+    VarAtom::VarKind VK =
+            InFunc ? (N == RETVAR ? VarAtom::V_Return : VarAtom::V_Param)
+                   : VarAtom::V_Other;
+
+    // Even though references don't exist in C, `va_list` is a typedef of
+    // `__builtin_va_list &` on windows. In order to generate correct constraints
+    // for var arg functions on windows, we need to strip the reference type.
+    if (Ty->isLValueReferenceType()) {
+        QTy = Ty->getPointeeType();
+        Ty = QTy.getTypePtr();
+    }
+
+    IsZeroWidthArray = false;
+
+    TypeLoc TLoc = TypeLoc();
+
+    if (Ty->isRecordType()) {
+        bool VarCreated = false;
+
+        // Is this a VarArg type?
+        std::string TyName = tyToStr(Ty);
+
+        if (Ty->isTaintedStructureType()) {
+            ConstAtom *CAtom = nullptr;
+            if (D->isDecoyDecl()) {
+                CAtom = CS.getTaintedStruct();
+                CAtom->setExplicit(true);
+            }
+            else
+            {
+                CAtom = CS.getTaintedStruct();
+                CAtom->setExplicit(true);
+            }
+            VarCreated = true;
+            Atom *NewAtom;
+            if (VarAtomForChecked)
+                NewAtom = CS.getFreshVar(Npre + N, VK);
+            else
+                NewAtom = CAtom;
+            Vars.push_back(NewAtom);
+            SrcVars.push_back(CAtom);
+        }
+        else
+        {
+            ConstAtom *CAtom = nullptr;
+            CAtom = CS.getStruct();
+            CAtom->setExplicit(true);
+            VarCreated = true;
+            Atom *NewAtom;
+            if (VarAtomForChecked)
+                NewAtom = CS.getFreshVar(Npre + N, VK);
+            else
+                NewAtom = CAtom;
+            Vars.push_back(NewAtom);
+            SrcVars.push_back(CAtom);
+        }
+
+        // Save here if QTy is qualified or not into a map that
+        // indexes K to the qualification of QTy, if any.
+        insertQualType(TypeIdx, QTy);
+
+        // This type is not a constant atom. We need to create a VarAtom for this.
+        if (!VarCreated) {
+            VarAtom *VA = CS.getFreshStructVar(Npre + N, VK);
+            Vars.push_back(VA);
+            SrcVars.push_back(CS.getWild());
+            CS.addConstraint(CS.createGeq(VA, CS.getStruct(), ReasonLoc("Generic C Struct",PSL), false));
+        }
+    }
+}
 
 PointerVariableConstraint::PointerVariableConstraint(
     const QualType &QT, DeclaratorDecl *D, std::string N, ProgramInfo &I,
@@ -872,6 +1116,19 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
         NewAtom = CAtom;
       Vars.push_back(NewAtom);
       SrcVars.push_back(CAtom);
+
+      if (Ty->getPointeeType()->isRecordType() && !Ty->getPointeeType()->isTaintedStructureType())
+      {
+            RecordDecl* RD = Ty->getPointeeType()->getAsRecordDecl();
+            PersistentSourceLoc PLoc = PersistentSourceLoc::mkPSL(RD, C);
+            //now create a constraint for the structure
+            ASTContext *TmpCtx = const_cast<ASTContext *>(&C);
+            SVarOption CV = I.getStructVariable(RD, TmpCtx);
+            StructureVariableConstraint *Tmp = (StructureVariableConstraint *)(&CV.getValue());
+            for (const auto &V : Tmp->getCvars())
+                  CS.addConstraint(CS.createGeq(V, CS.getTaintedStruct(),
+                                                ReasonLoc("Tainted Pointer to the Structure",PSL)));
+      }
     }
 
     if (Ty->isArrayType() || Ty->isIncompleteArrayType()) {
@@ -1186,6 +1443,84 @@ void PointerVariableConstraint::dumpJson(llvm::raw_ostream &O) const {
   O << "}}";
 }
 
+std::string StructureVariableConstraint::tryExtractBaseType(
+        MultiDeclMemberDecl *D, TypeSourceInfo *TSI, QualType QT, const Type *Ty,
+        const ASTContext &C) {
+    // Implicit parameters declarations from typedef function declarations will
+    // still have valid and non-empty source ranges, but implicit declarations
+    // aren't written in the source, so extracting the base type from this range
+    // gives incorrect type strings. For example, the base type for the implicit
+    // parameter for `foo_decl` in `typedef void foo(int*); foo foo_decl;` would
+    // be extracted as "foo_decl", when it should be "int".
+    if (!D || D->isImplicit())
+        return "";
+
+    if (!TSI)
+        TSI = getTypeSourceInfoOfMultiDeclMember(D);
+    if (!QT->isOrContainsCheckedOrTaintedType() && !Ty->getAs<TypedefType>() && TSI) {
+        // Try to extract the type from original source to preserve defines
+        TypeLoc TL = TSI->getTypeLoc();
+        bool FoundBaseTypeInSrc = false;
+        if (isa<FunctionDecl>(D)) {
+            FoundBaseTypeInSrc = D->getAsFunction()->getReturnType() == QT;
+            TL = getBaseTypeLoc(TL).getAs<FunctionTypeLoc>();
+            // FunctionDecl that doesn't have function type? weird
+            if (TL.isNull())
+                return "";
+            TL = TL.getAs<clang::FunctionTypeLoc>().getReturnLoc();
+        } else {
+            FoundBaseTypeInSrc = getTypeOfMultiDeclMember(D) == QT;
+        }
+        if (!TL.isNull()) {
+            TypeLoc BaseLoc = getBaseTypeLoc(TL);
+            // Only proceed if the base type location is not null, amd it is not a
+            // typedef type location.
+            if (!BaseLoc.isNull() && BaseLoc.getAs<TypedefTypeLoc>().isNull()) {
+                SourceRange SR = BaseLoc.getSourceRange();
+                if (FoundBaseTypeInSrc && SR.isValid())
+                    return getSourceText(SR, C);
+            }
+        }
+    }
+
+    return "";
+}
+
+void StructureVariableConstraint::print(raw_ostream &O) const {
+    O << "{ ";
+    for (const auto &I : Vars) {
+        I->print(O);
+        O << " ";
+    }
+    O << " }";
+
+    if (FV) {
+        O << "(";
+        FV->print(O);
+        O << ")";
+    }
+}
+
+void StructureVariableConstraint::dumpJson(llvm::raw_ostream &O) const {
+    O << "{\"StructureVar\":{";
+    O << "\"Vars\":[";
+    bool AddComma = false;
+    for (const auto &I : Vars) {
+        if (AddComma) {
+            O << ",";
+        }
+        I->dumpJson(O);
+
+        AddComma = true;
+    }
+    O << "], \"name\":\"" << getName() << "\"";
+    if (FV) {
+        O << ", \"FunctionVariable\":";
+        FV->dumpJson(O);
+    }
+    O << "}}";
+}
+
 void TaintedPointerVariableConstraint::dumpJson(llvm::raw_ostream &O) const {
   O << "{\"PointerVar\":{";
   O << "\"Vars\":[";
@@ -1226,6 +1561,20 @@ void PointerVariableConstraint::getQualString(uint32_t TypeIdx,
   }
 }
 
+void StructureVariableConstraint::getQualString(uint32_t TypeIdx,
+                                              std::ostringstream &Ss) const {
+    auto QIter = QualMap.find(TypeIdx);
+    if (QIter != QualMap.end()) {
+        for (Qualification Q : QIter->second) {
+            switch (Q) {
+                case DecoyQualification:
+                    Ss << "_Decoy ";
+                    break;
+            }
+        }
+    }
+}
+
 void TaintedPointerVariableConstraint::getQualString(uint32_t TypeIdx,
                                               std::ostringstream &Ss) const {
   auto QIter = QualMap.find(TypeIdx);
@@ -1254,6 +1603,12 @@ void PointerVariableConstraint::insertQualType(uint32_t TypeIdx,
     QualMap[TypeIdx].insert(VolatileQualification);
   if (QTy.isRestrictQualified())
     QualMap[TypeIdx].insert(RestrictQualification);
+}
+
+void StructureVariableConstraint::insertQualType(uint32_t TypeIdx,
+                                               QualType &QTy) {
+    if (QTy.isLocalDecoyQualified())
+        QualMap[TypeIdx].insert(DecoyQualification);
 }
 
 void TaintedPointerVariableConstraint::insertQualType(uint32_t TypeIdx,
@@ -2362,6 +2717,19 @@ void PVConstraint::equateArgumentConstraints(ProgramInfo &Info, ReasonLoc &Rsn) 
   }
 }
 
+void StructConstraint::equateArgumentConstraints(ProgramInfo &Info, ReasonLoc &Rsn) {
+    if (HasEqArgumentConstraints) {
+        return;
+    }
+    HasEqArgumentConstraints = true;
+    StructureconstrainConsVarGeq(this, this->ArgumentConstraints, Info.getConstraints(),
+                        Rsn, Same_to_Same, true, &Info);
+
+    if (this->FV != nullptr) {
+        this->FV->equateArgumentConstraints(Info, Rsn);
+    }
+}
+
 void TPVConstraint::equateArgumentConstraints(ProgramInfo &Info, ReasonLoc &Rsn) {
   if (HasEqArgumentConstraints) {
     return;
@@ -2683,6 +3051,37 @@ PVConstraint *PointerVariableConstraint::getCopy(ReasonLoc &Rsn,
   return Copy;
 }
 
+StructConstraint *StructureVariableConstraint::getCopy(ReasonLoc &Rsn,
+                                                 Constraints &CS) {
+    auto *Copy = new StructureVariableConstraint(this);
+
+    // After the copy construct, the copy Vars vector holds exactly the same
+    // atoms as this. For this method, we want it to contain fresh VarAtoms.
+    std::vector<Atom *> FreshVars;
+    auto VAIt = Copy->Vars.begin();
+    auto CAIt = Copy->SrcVars.begin();
+    while (VAIt != Copy->Vars.end() && CAIt != Copy->SrcVars.end()) {
+        if (auto *CA = dyn_cast<ConstAtom>(*VAIt)) {
+            FreshVars.push_back(CA);
+        } else if (auto *VA = dyn_cast<VarAtom>(*VAIt)) {
+            VarAtom *FreshVA = CS.getFreshVar(VA->getName(), VA->getVarKind());
+            //TODO: How do you handle for tainted pointers
+            FreshVars.push_back(FreshVA);
+            if (!isa<WildAtom>(*CAIt)){
+                CS.addConstraint(CS.createGeq(*CAIt, FreshVA, Rsn, false));
+            }
+        }
+        ++VAIt;
+        ++CAIt;
+    }
+    Copy->Vars = FreshVars;
+
+    if (Copy->FV != nullptr)
+        Copy->FV = Copy->FV->getCopy(Rsn, CS);
+
+    return Copy;
+}
+
 TPVConstraint *TaintedPointerVariableConstraint::getCopy(ReasonLoc &Rsn,
                                                  Constraints &CS) {
   auto *Copy = new TaintedPointerVariableConstraint(this);
@@ -2726,6 +3125,103 @@ PointerVariableConstraint::getSolution(const Atom *A,
   }
   assert(CS != nullptr && "Atom should be either const or var");
   return CS;
+}
+
+bool StructureVariableConstraint::isTypedef(void) const { return IsTypedef; }
+
+void StructureVariableConstraint::setTypedef(StructureConstraintVariable *TDVar,
+                                                  std::string S) {
+    IsTypedef = true;
+    TypedefVar = TDVar;
+    TypedefString = S;
+}
+
+const StructureConstraintVariable *StructureVariableConstraint::getTypedefVar() const {
+    assert(isTypedef());
+    return TypedefVar;
+}
+
+std::string StructureVariableConstraint::gatherQualStrings(void) const {
+    std::ostringstream S;
+    getQualString(0, S);
+    return S.str();
+}
+
+std::string
+StructureVariableConstraint::mkString(Constraints &CS,
+                                           const MkStringOpts &Opts) const {
+  return "Need to think on this!!";
+}
+
+void StructureVariableConstraint::constrainIdxTo(Constraints &CS, ConstAtom *C,
+                                                      unsigned int Idx,
+                                                      const ReasonLoc &Rsn,
+                                                      bool DoLB, bool Soft) {
+    assert(C == CS.getPtr() || C == CS.getArr() || C == CS.getNTArr());
+
+    if (Vars.size() > Idx) {
+        Atom *A = Vars[Idx];
+        if (VarAtom *VA = dyn_cast<VarAtom>(A)) {
+            if (DoLB)
+                CS.addTaintedConstraint(CS.createTaintedGeq(VA, C, Rsn, false, Soft));
+            else
+                CS.addTaintedConstraint(CS.createTaintedGeq(C, VA, Rsn, false, Soft));
+        } else if (ConstAtom *CA = dyn_cast<ConstAtom>(A)) {
+            if (DoLB) {
+                if (*CA < *C) {
+                    llvm::errs() << "Warning: " << CA->getStr() << " not less than "
+                                 << C->getStr() << "\n";
+                    //assert(CA == CS.getWild()); // Definitely bogus if not.
+                }
+            } else if (*C < *CA) {
+                llvm::errs() << "Warning: " << C->getStr() << " not less than "
+                             << CA->getStr() << "\n";
+                //assert(CA == CS.getWild()); // Definitely bogus if not.
+            }
+        }
+    }
+}
+
+void StructureVariableConstraint::constrainOuterTo(Constraints &CS, ConstAtom *C,
+                                                        const ReasonLoc &Rsn,
+                                                        bool DoLB, bool Soft) {
+    constrainIdxTo(CS, C, 0, Rsn, DoLB, Soft);
+}
+
+//TODO: Need to handle for tainted Structures pointers
+bool StructureVariableConstraint::anyChanges(const EnvironmentMap &E) const {
+    // If it was not checked in the input, then it has changed if it now has a
+    // checked type.
+    bool PtrChanged = false;
+
+    // Are there any non-WILD pointers?
+    for (unsigned I = 0; I < Vars.size(); I++) {
+        ConstAtom *SrcType = SrcVars[I];
+        const ConstAtom *SolutionType = getSolution(Vars[I], E);
+        PtrChanged |= SrcType != SolutionType;
+    }
+
+    // also check if we've make this generic
+    //PtrChanged |= isGenericChanged();
+
+    if (FV)
+        PtrChanged |= FV->anyChanges(E);
+
+    return PtrChanged;
+}
+
+const ConstAtom *
+StructureVariableConstraint::getSolution(const Atom *A,
+                                       const EnvironmentMap &E) const {
+    const ConstAtom *CS = nullptr;
+    if (const ConstAtom *CA = dyn_cast<ConstAtom>(A)) {
+        CS = CA;
+    } else if (const VarAtom *VA = dyn_cast<VarAtom>(A)) {
+        // If this is a VarAtom?, we need to fetch from solution i.e., environment.
+        CS = E.at(const_cast<VarAtom *>(VA)).first;
+    }
+    assert(CS != nullptr && "Atom should be either const or var");
+    return CS;
 }
 
 const ConstAtom *
@@ -2866,6 +3362,41 @@ bool PointerVariableConstraint::hasNtArr(const EnvironmentMap &E,
     return FV->hasNtArr(E, AIdx);
 
   return false;
+}
+
+bool StructureVariableConstraint::hasDecoyedTstruct(const EnvironmentMap &E,
+                                         int AIdx) const {
+    int VarIdx = 0;
+    for (const auto &C : Vars) {
+        const ConstAtom *CS = getSolution(C, E);
+        if (isa<DecoyTaintedStructureAtom>(CS))
+            return true;
+        if (VarIdx == AIdx)
+            break;
+        VarIdx++;
+    }
+
+    return false;
+}
+
+Atom *StructureVariableConstraint::getAtom(unsigned AtomIdx, Constraints &CS) {
+    assert(AtomIdx < Vars.size());
+    return Vars[AtomIdx];
+}
+
+bool StructureVariableConstraint::hasTstruct(const EnvironmentMap &E,
+                                                    int AIdx) const {
+    int VarIdx = 0;
+    for (const auto &C : Vars) {
+        const ConstAtom *CS = getSolution(C, E);
+        if (isa<TaintedStructureAtom>(CS))
+            return true;
+        if (VarIdx == AIdx)
+            break;
+        VarIdx++;
+    }
+
+    return false;
 }
 
 bool TaintedPointerVariableConstraint::hasTNtArr(const TaintedEnvironmentMap &E,
@@ -3030,6 +3561,67 @@ bool PointerVariableConstraint::solutionEqualTo(Constraints &CS,
     }
   }
   return Ret;
+}
+
+bool StructureVariableConstraint::solutionEqualTo(Constraints &CS,
+                                                const StructureConstraintVariable *CV,
+                                                bool ComparePtyp) const {
+    bool Ret = false;
+    if (CV != nullptr) {
+        if (const auto *PV = dyn_cast<StructConstraint>(CV)) {
+            auto &OthCVars = PV->Vars;
+            if (Vars.size() == OthCVars.size()) {
+                Ret = true;
+
+                auto I = Vars.begin();
+                auto J = OthCVars.begin();
+                // Special handling for zero width arrays so they can compare equal to
+                // ARR or PTR.
+                if (ComparePtyp && IsZeroWidthArray) {
+                    assert(I != Vars.end() && "Zero width array cannot be base type.");
+                    assert("Zero width arrays should be encoded as PTR." &&
+                           CS.getAssignment(*I) == CS.getPtr());
+                    ConstAtom *JAtom = CS.getAssignment(*J);
+                    // Zero width array can compare as either ARR or PTR
+                    if (JAtom != CS.getArr() && JAtom != CS.getPtr())
+                        Ret = false;
+                    ++I;
+                    ++J;
+                }
+                // Compare Vars to see if they are same.
+                while (Ret && I != Vars.end() && J != OthCVars.end()) {
+                    ConstAtom *IAssign = CS.getAssignment(*I);
+                    ConstAtom *JAssign = CS.getAssignment(*J);
+                    if (ComparePtyp) {
+                        if (IAssign != JAssign) {
+                            Ret = false;
+                            break;
+                        }
+                    } else {
+                        bool IIsWild = isa<WildAtom>(IAssign);
+                        bool JIsWild = isa<WildAtom>(JAssign);
+                        if (IIsWild != JIsWild) {
+                            Ret = false;
+                            break;
+                        }
+                    }
+                    ++I;
+                    ++J;
+                }
+
+                if (Ret) {
+                    FVConstraint *OtherFV = PV->getFV();
+                    if (FV != nullptr && OtherFV != nullptr) {
+                        Ret = FV->solutionEqualTo(CS, OtherFV, ComparePtyp);
+                    } else if (FV != nullptr || OtherFV != nullptr) {
+                        // One of them has FV null.
+                        Ret = false;
+                    }
+                }
+            }
+        }
+    }
+    return Ret;
 }
 
 bool TaintedPointerVariableConstraint::solutionEqualTo(Constraints &CS,
@@ -3732,6 +4324,14 @@ void constrainConsVarGeq(ConstraintVariable *LHS, ConstraintVariable *RHS,
 
 // Generate constraints according to CA |- RHS <: LHS.
 // If doEqType is true, then also do CA |- LHS <: RHS.
+void StructureconstrainConsVarGeq(StructureConstraintVariable *LHS, StructureConstraintVariable *RHS,
+                                Constraints &CS, const ReasonLoc &Rsn,
+                                ConsAction CA, bool DoEqType, ProgramInfo *Info,
+                                bool HandleBoundsKey) {
+}
+
+// Generate constraints according to CA |- RHS <: LHS.
+// If doEqType is true, then also do CA |- LHS <: RHS.
 void TaintedconstrainConsVarGeq(TaintedConstraintVariable *LHS, TaintedConstraintVariable *RHS,
                          Constraints &CS, const ReasonLoc &Rsn,
                          ConsAction CA, bool DoEqType, ProgramInfo *Info,
@@ -3894,6 +4494,14 @@ void constrainConsVarGeq(ConstraintVariable *LHS, const CVarSet &RHS,
     constrainConsVarGeq(LHS, J, CS, Rsn, CA, DoEqType, Info, HandleBoundsKey);
 }
 
+void StructureconstrainConsVarGeq(StructureConstraintVariable *LHS, const SVarSet &RHS,
+                         Constraints &CS, const ReasonLoc &Rsn,
+                         ConsAction CA, bool DoEqType, ProgramInfo *Info,
+                         bool HandleBoundsKey) {
+    for (const auto &J : RHS)
+        StructureconstrainConsVarGeq(LHS, J, CS, Rsn, CA, DoEqType, Info, HandleBoundsKey);
+}
+
 // Given an RHS and a LHS, constrain them to be equal.
 void constrainConsVarGeq(const CVarSet &LHS, const CVarSet &RHS,
                          Constraints &CS, const ReasonLoc &Rsn,
@@ -3997,6 +4605,71 @@ void PointerVariableConstraint::mergeDeclaration(ConstraintVariable *FromCV,
       return;
     }
   }
+}
+
+void StructureVariableConstraint::mergeDeclaration(StructureConstraintVariable *FromCV,
+                                                 ProgramInfo &Info,
+                                                 std::string &ReasonFailed) {
+    StructConstraint *From = dyn_cast<StructConstraint>(FromCV);
+    std::vector<Atom *> NewVAtoms;
+    std::vector<ConstAtom *> NewSrcAtoms;
+    CAtoms CFrom = From->getCvars();
+    if (CFrom.size() != Vars.size()) {
+        ReasonFailed = "transplanting between pointers with different depths";
+        return;
+    }
+    for (unsigned AtomIdx = 0; AtomIdx < Vars.size(); AtomIdx++) {
+        // Take the ConstAtom if merging from a constraint variable with ConstAtoms
+        // into a variable with VarAtoms. This case shows up less often with the
+        // changes made to allow updating itype pointer types, but it can still
+        // happen whenever a pointer other than a function parameter is redeclared
+        // with a checked type after an unchecked declaration. For example, an
+        // extern global can be redeclared with an itype.
+        if (!isa<ConstAtom>(Vars[AtomIdx]) && isa<ConstAtom>(From->Vars[AtomIdx]))
+            NewVAtoms.push_back(From->Vars[AtomIdx]);
+        else
+            NewVAtoms.push_back(Vars[AtomIdx]);
+
+        // If the current variable was wild in the source, and we're merging
+        // something that had a checked type, then take the checked type. This is
+        // particularly important for itypes since function parameters can be
+        // redeclared with an itype.
+        if (isa<WildAtom>(SrcVars[AtomIdx]))
+            NewSrcAtoms.push_back(From->SrcVars[AtomIdx]);
+        else
+            NewSrcAtoms.push_back(SrcVars[AtomIdx]);
+    }
+    assert(Vars.size() == NewVAtoms.size() &&
+           SrcVars.size() == NewSrcAtoms.size() &&
+           "Merging error, pointer depth change");
+    Vars = NewVAtoms;
+    SrcVars = NewSrcAtoms;
+    if (Name.empty()) {
+        Name = From->Name;
+        OriginalTypeWithName = From->OriginalTypeWithName;
+    }
+    SrcHasItype = SrcHasItype || From->SrcHasItype;
+    if (!From->ItypeStr.empty())
+        ItypeStr = From->ItypeStr;
+
+    // Merge Bounds Related information.
+    if (hasBoundsKey() && From->hasBoundsKey())
+        Info.getABoundsInfo().mergeBoundsKey(getBoundsKey(), From->getBoundsKey());
+    if (!From->BoundsAnnotationStr.empty())
+        BoundsAnnotationStr = From->BoundsAnnotationStr;
+
+    if (From->SourceGenericIndex >= 0) {
+        SourceGenericIndex = From->SourceGenericIndex;
+        InferredGenericIndex = From->InferredGenericIndex;
+    }
+    if (FV) {
+        assert(From->FV);
+        FV->mergeDeclaration(From->FV, Info, ReasonFailed);
+        if (ReasonFailed != "") {
+            ReasonFailed += " within the referenced function";
+            return;
+        }
+    }
 }
 
 void TaintedPointerVariableConstraint::mergeDeclaration(TaintedConstraintVariable *FromCV,
