@@ -69,7 +69,7 @@ struct MkStringOpts {
 // and on each parameter.
 class ConstraintVariable {
 public:
-  enum ConstraintVariableKind { PointerVariable, FunctionVariable, StructureVariable };
+    enum ConstraintVariableKind { PointerVariable, FunctionVariable, StructureVariable };
 
   ConstraintVariableKind getKind() const { return Kind; }
 
@@ -244,7 +244,7 @@ public:
 // and on each parameter.
 class TaintedConstraintVariable {
 public:
-    enum ConstraintVariableKind { PointerVariable, FunctionVariable };
+    enum ConstraintVariableKind { PointerVariable, FunctionVariable, StructureVariable};
 
     ConstraintVariableKind getKind() const { return Kind; }
 
@@ -419,7 +419,7 @@ public:
 // and on each parameter.
 class StructureConstraintVariable {
 public:
-    enum ConstraintVariableKind { TaintedStructure, NonTaintedStructure };
+    enum ConstraintVariableKind { PointerVariable, FunctionVariable,  StructureVariable };
 
     ConstraintVariableKind getKind() const { return Kind; }
 
@@ -963,6 +963,7 @@ public:
 private:
     std::string BaseType;
     CAtoms Vars;
+    bool isTstruct;
     std::vector<ConstAtom *> SrcVars;
     FunctionVariableConstraint *FV;
     std::map<uint32_t, std::set<Qualification>> QualMap;
@@ -1040,7 +1041,7 @@ private:
     // other fields are initialized to default values. This is used to construct
     // variables for non-pointer expressions.
     StructureVariableConstraint(std::string Name) :
-            StructureConstraintVariable(NonTaintedStructure, "", Name, ""), FV(nullptr),
+            StructureConstraintVariable(StructureVariable, "", Name, ""), FV(nullptr),
             SrcHasItype(false), PartOfFuncPrototype(false), Parent(nullptr),
             SourceGenericIndex(-1), InferredGenericIndex(-1),
             IsZeroWidthArray(false), IsTypedef(false),
@@ -1052,7 +1053,8 @@ public:
     bool isTypedef(void) const;
     const StructureConstraintVariable *getTypedefVar() const;
     void setTypedef(StructureConstraintVariable *TDVar, std::string S);
-
+    void setTstruct(bool T) { isTstruct = T; }
+    bool isTstructV() const { return isTstruct; }
     // Return true if this constraint had an itype in the original source code.
 
     // Return the string representation of the itype for this constraint if an
@@ -1162,6 +1164,9 @@ public:
 
     ~StructureVariableConstraint() override{};
 
+    bool srcHasItype() const;
+
+    bool srcHasBounds() const;
 };
 
 class TaintedPointerVariableConstraint : public TaintedConstraintVariable {

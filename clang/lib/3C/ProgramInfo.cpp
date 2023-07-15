@@ -160,10 +160,11 @@ void ProgramInfo::printAggregateStats(const std::set<std::string> &F,
   CVarSet Visited;
   CAtoms FoundVars;
 
-  unsigned int TotP, TotNt, TotA, TotWi;
-  TotP = TotNt = TotA = TotWi = 0;
+  unsigned int TotP, TotNt, TotA, TotWi, TotTstruct, Totstrct, TotDTstruct;
+  TotP = TotNt = TotA = TotWi = TotTstruct = Totstrct = TotDTstruct = 0;
 
   CVarSet ArrPtrs, NtArrPtrs;
+  SVarSet Structs, Tstructs, DTstructs;
   ConstraintVariable *Tmp = nullptr;
 
   for (auto &I : Variables) {
@@ -177,14 +178,25 @@ void ProgramInfo::printAggregateStats(const std::set<std::string> &F,
         std::copy(FoundVars.begin(), FoundVars.end(),
                   std::back_inserter(AllAtoms));
         Tmp = C;
-        if (FVConstraint *FV = dyn_cast<FVConstraint>(C)) {
-          Tmp = FV->getInternalReturn();
+        if (Tmp->getKind() == ConstraintVariable::StructureVariable) {
+          StructConstraint *SVC = (StructConstraint *) (Tmp);
+          if (SVC->hasTstruct(CS.getVariables(), 0))
+            Tstructs.insert(SVC);
+          else if (SVC->hasDecoyedTstruct(CS.getVariables(), 0))
+            DTstructs.insert(SVC);
+          else
+            Structs.insert(SVC);
         }
-        // If this is a var atom?
-        if (Tmp->hasNtArr(CS.getVariables(), 0)) {
-          NtArrPtrs.insert(Tmp);
-        } else if (Tmp->hasArr(CS.getVariables(), 0)) {
-          ArrPtrs.insert(Tmp);
+        else {
+          if (FVConstraint *FV = dyn_cast<FVConstraint>(C)) {
+            Tmp = FV->getInternalReturn();
+          }
+          // If this is a var atom?
+          if (Tmp->hasNtArr(CS.getVariables(), 0)) {
+            NtArrPtrs.insert(Tmp);
+          } else if (Tmp->hasArr(CS.getVariables(), 0)) {
+            ArrPtrs.insert(Tmp);
+          }
         }
       }
     }
@@ -205,6 +217,15 @@ void ProgramInfo::printAggregateStats(const std::set<std::string> &F,
     case Atom::A_Wild:
       TotWi += 1;
       break;
+    case Atom::A_struct:
+      Totstrct += 1;
+      break;
+    case Atom::A_Tstruct:
+      TotTstruct += 1;
+      break;
+    case Atom::A_DTstruct:
+      TotDTstruct += 1;
+      break;
     case Atom::A_Var:
     case Atom::A_Const:
       llvm_unreachable("bad constant in environment map");
@@ -220,6 +241,9 @@ void ProgramInfo::printAggregateStats(const std::set<std::string> &F,
   O << "\"ntarr\":" << TotNt << ",";
   O << "\"arr\":" << TotA << ",";
   O << "\"wild\":" << TotWi;
+  O << "\"structs\":" << Totstrct;
+  O << "\"Tstructs\":" << TotTstruct;
+  O << "\"Decoy Tstructs\":" << TotDTstruct;
   O << "}},";
   O << "{\"ArrBoundsStats\":";
   ArrBInfo.printStats(O, ArrPtrs, true);
@@ -240,10 +264,10 @@ void ProgramInfo::printStats(const std::set<std::string> &F, raw_ostream &O,
     O << "Sound handling of var args functions:" << _3COpts.HandleVARARGS
       << "\n";
   }
-  std::map<std::string, std::tuple<int, int, int, int, int>> FilesToVars;
+  std::map<std::string, std::tuple<int, int, int, int, int, int, int, int>> FilesToVars;
   CVarSet InSrcCVars, Visited;
-  unsigned int TotC, TotP, TotNt, TotA, TotWi;
-  TotC = TotP = TotNt = TotA = TotWi = 0;
+  unsigned int TotC, TotP, TotNt, TotA, TotWi, TotTstruct, Totstrct, TotDTstruct;
+  TotC = TotP = TotNt = TotA = TotWi = TotTstruct = Totstrct = TotDTstruct = 0;
 
   // First, build the map and perform the aggregation.
   for (auto &I : Variables) {
@@ -255,41 +279,74 @@ void ProgramInfo::printStats(const std::set<std::string> &F, raw_ostream &O,
       int NtaC = 0;
       int AC = 0;
       int WC = 0;
+      int ATS = 0;
+      int AS = 0;
+      int ADTS = 0;
 
       auto J = FilesToVars.find(FileName);
       if (J != FilesToVars.end())
-        std::tie(VarC, PC, NtaC, AC, WC) = J->second;
+        std::tie(VarC, PC, NtaC, AC, WC, ATS, AS, ADTS) = J->second;
 
       ConstraintVariable *C = I.second;
-      if (C->isForValidDecl()) {
-        InSrcCVars.insert(C);
-        CAtoms FoundVars;
-        getVarsFromConstraint(C, FoundVars, Visited);
+      if (C->getKind() == ConstraintVariable::StructureVariable)
+      {
+        if (C->isForValidDecl()) {
+          InSrcCVars.insert(C);
+          CAtoms FoundVars;
+          getVarsFromConstraint(C, FoundVars, Visited);
 
-        VarC += FoundVars.size();
-        for (const auto &N : FoundVars) {
-          ConstAtom *CA = CS.getAssignment(N);
-          switch (CA->getKind()) {
-          case Atom::A_Arr:
-            AC += 1;
-            break;
-          case Atom::A_NTArr:
-            NtaC += 1;
-            break;
-          case Atom::A_Ptr:
-            PC += 1;
-            break;
-          case Atom::A_Wild:
-            WC += 1;
-            break;
-          case Atom::A_Var:
-          case Atom::A_Const:
-            llvm_unreachable("bad constant in environment map");
+          VarC += FoundVars.size();
+          for (const auto &N : FoundVars) {
+            ConstAtom *CA = CS.getAssignment(N);
+            switch (CA->getKind()) {
+              case Atom::A_Tstruct:
+                ATS += 1;
+                    break;
+              case Atom::A_DTstruct:
+                ADTS += 1;
+                    break;
+              case Atom::A_struct:
+                AS += 1;
+                    break;
+              default:
+                llvm_unreachable("bad constant in environment map");
+            }
           }
         }
       }
+      else
+      {
+        if (C->isForValidDecl()) {
+          InSrcCVars.insert(C);
+          CAtoms FoundVars;
+          getVarsFromConstraint(C, FoundVars, Visited);
+
+          VarC += FoundVars.size();
+          for (const auto &N : FoundVars) {
+            ConstAtom *CA = CS.getAssignment(N);
+            switch (CA->getKind()) {
+              case Atom::A_Arr:
+                AC += 1;
+                    break;
+              case Atom::A_NTArr:
+                NtaC += 1;
+                    break;
+              case Atom::A_Ptr:
+                PC += 1;
+                    break;
+              case Atom::A_Wild:
+                WC += 1;
+                    break;
+              case Atom::A_Var:
+              case Atom::A_Const:
+                llvm_unreachable("bad constant in environment map");
+            }
+          }
+        }
+      }
+
       FilesToVars[FileName] =
-          std::tuple<int, int, int, int, int>(VarC, PC, NtaC, AC, WC);
+          std::tuple<int, int, int, int, int, int, int, int>(VarC, PC, NtaC, AC, WC, ATS, AS, ADTS);
     }
   }
 
@@ -308,14 +365,18 @@ void ProgramInfo::printStats(const std::set<std::string> &F, raw_ostream &O,
   }
   bool AddComma = false;
   for (const auto &I : FilesToVars) {
-    int V, P, Nt, A, W;
-    std::tie(V, P, Nt, A, W) = I.second;
+    int V, P, Nt, A, W, ATS, AS, ADTS;
+    std::tie(V, P, Nt, A, W, ATS, AS, ADTS) = I.second;
 
     TotC += V;
     TotP += P;
     TotNt += Nt;
     TotA += A;
     TotWi += W;
+    TotTstruct += ATS;
+    Totstrct += AS;
+    TotDTstruct += ADTS;
+
     if (!OnlySummary) {
       if (JsonFormat) {
         if (AddComma) {
@@ -341,9 +402,10 @@ void ProgramInfo::printStats(const std::set<std::string> &F, raw_ostream &O,
   }
 
   if (!JsonFormat) {
-    O << "Summary\nTotalConstraints|TotalPtrs|TotalNTArr|TotalArr|TotalWild\n";
-    O << TotC << "|" << TotP << "|" << TotNt << "|" << TotA << "|" << TotWi
-      << "\n";
+    O << "Summary\nTotalConstraints|TotalPtrs|TotalNTArr|TotalArr|TotalWild|Totalstructs|TotalTstructs|TotalDecoyTstructs\n";
+    O << TotC << "|" << TotP << "|" << TotNt << "|" << TotA << "|" << TotWi << "|" << Totstrct << "|"
+    << TotTstruct << "|" << TotDTstruct
+    << "\n";
   } else {
     O << "\"Summary\":{";
     O << "\"TotalConstraints\":" << TotC << ",";
@@ -351,6 +413,9 @@ void ProgramInfo::printStats(const std::set<std::string> &F, raw_ostream &O,
     O << "\"TotalNTArr\":" << TotNt << ",";
     O << "\"TotalArr\":" << TotA << ",";
     O << "\"TotalWild\":" << TotWi;
+    O << "\"Totalstructs\":" << Totstrct << ",";
+    O << "\"TotalTstructs\":" << TotTstruct << ",";
+    O << "\"TotalDecoyTstructs\":" << TotDTstruct;
     O << "}},\n";
   }
 
@@ -1248,7 +1313,20 @@ void ProgramInfo::insertCVAtoms(
     insertCVAtoms(FVC->getInternalReturn(), AtomMap);
     for (unsigned I = 0; I < FVC->numParams(); I++)
       insertCVAtoms(FVC->getInternalParam(I), AtomMap);
-  } else {
+  }
+  else if (CV->getKind() == ConstraintVariable::StructureVariable)
+  {
+    StructureVariableConstraint* SVC = (StructureVariableConstraint*)CV;
+    for (Atom *A : SVC->getCvars())
+      if (auto *VA = dyn_cast<VarAtom>(A)) {
+        // It is possible that VA->getLoc() already exists in the map if there
+        // is a function which is declared before it is defined.
+        assert(AtomMap.find(VA->getLoc()) == AtomMap.end() ||
+                       SVC->isPartOfFunctionPrototype());
+        AtomMap[VA->getLoc()] = CV;
+      }
+  }
+  else {
     llvm_unreachable("Unknown kind of constraint variable.");
   }
 }

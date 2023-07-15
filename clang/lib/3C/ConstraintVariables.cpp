@@ -193,6 +193,10 @@ StructureVariableConstraint::getNonPtrPVConstraint(Constraints &CS) {
     return GlobalNonPtrPV;
 }
 
+bool StructureVariableConstraint::srcHasItype() const {
+    return false;
+}
+
 StructureVariableConstraint *
 StructureVariableConstraint::getNamedNonPtrPVConstraint(StringRef Name,
                                                              Constraints &CS) {
@@ -291,7 +295,7 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
 
 StructureVariableConstraint::StructureVariableConstraint(
         StructureVariableConstraint *Ot)
-        : StructureConstraintVariable(ConstraintVariableKind::NonTaintedStructure, Ot->OriginalType,
+        : StructureConstraintVariable(ConstraintVariableKind::StructureVariable, Ot->OriginalType,
                                     Ot->Name, Ot->OriginalTypeWithName),
           BaseType(Ot->BaseType), Vars(Ot->Vars), SrcVars(Ot->SrcVars), FV(Ot->FV),
           QualMap(Ot->QualMap), ArrSizes(Ot->ArrSizes), ArrSizeStrs(Ot->ArrSizeStrs),
@@ -441,7 +445,7 @@ StructureVariableConstraint::StructureVariableConstraint(
         const ASTContext &C, std::string *InFunc, int ForceGenericIndex,
         bool PotentialGeneric,
         bool VarAtomForChecked, TypeSourceInfo *TSInfo, const QualType &ITypeT)
-        : StructureConstraintVariable(NonTaintedStructure, QT, N),
+        : StructureConstraintVariable(StructureVariable, QT, N),
           FV(nullptr), SrcHasItype(false), PartOfFuncPrototype(InFunc != nullptr),
           Parent(nullptr) {
     PersistentSourceLoc PSL = PersistentSourceLoc::mkPSL(D, C);
@@ -1125,6 +1129,7 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
             ASTContext *TmpCtx = const_cast<ASTContext *>(&C);
             SVarOption CV = I.getStructVariable(RD, TmpCtx);
             StructureVariableConstraint *Tmp = (StructureVariableConstraint *)(&CV.getValue());
+            Tmp->setTstruct(true);
             for (const auto &V : Tmp->getCvars())
                   CS.addConstraint(CS.createGeq(V, CS.getTaintedStruct(),
                                                 ReasonLoc("Tainted Pointer to the Structure",PSL)));
@@ -3776,6 +3781,10 @@ bool FunctionVariableConstraint::srcHasItype() const {
 
 bool FunctionVariableConstraint::srcHasBounds() const {
   return ReturnVar.ExternalConstraint->srcHasBounds();
+}
+
+bool StructureVariableConstraint::srcHasBounds() const {
+    return false;
 }
 
 bool FunctionVariableConstraint::solutionEqualTo(Constraints &CS,
