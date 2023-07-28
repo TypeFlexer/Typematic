@@ -44,6 +44,10 @@ public:
                    std::string UseName, ProgramInfo &Info,
                    ArrayBoundsRewriter &ABR, bool GenerateSDecls);
 
+  static RewrittenDecl buildTstructDecl(StructConstraint *Defn,
+                                        RecordDecl *Decl,
+                                        std::string UseName, ProgramInfo &Info);
+
 private:
   Rewriter &R;
   ProgramInfo &Info;
@@ -70,6 +74,7 @@ private:
                                      SourceLocation Loc);
   SourceLocation getNextCommaOrSemicolon(SourceLocation L);
   void denestTagDecls();
+
 };
 
 // Visits function declarations and adds entries with their new rewritten
@@ -83,6 +88,8 @@ public:
 
   bool VisitFunctionDecl(FunctionDecl *);
   bool isFunctionVisited(std::string FuncName);
+
+    bool VisitRecordDecl(RecordDecl *RD);
 
 protected:
   ASTContext *Context;
@@ -113,5 +120,12 @@ protected:
                                bool SDeclChecked);
 
   bool inParamMultiDecl(const ParmVarDecl *PVD);
+
+    RewrittenDecl
+    buildTstructDecl(StructConstraint *Defn, RecordDecl *Decl, std::string UseName,
+                     bool RewriteToTstructType,
+                     bool RewriteToDecoyTstructType);
+
+    RewrittenDecl buildStructVar(const StructureVariableConstraint *SV, RecordDecl *Decl);
 };
 #endif // LLVM_CLANG_3C_DECLREWRITER_H

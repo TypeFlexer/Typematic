@@ -1100,28 +1100,6 @@ CVarOption ProgramInfo::getVariable(clang::Decl *D, clang::ASTContext *C) {
 }
 
 SVarOption ProgramInfo::getStructVariable(clang::Decl *D, clang::ASTContext *C) {
-  assert(!Persisted);
-
-//  if (ParmVarDecl *PD = dyn_cast<ParmVarDecl>(D)) {
-//    DeclContext *DC = PD->getParentFunctionOrMethod();
-//    // This can fail for extern definitions
-//    if (!DC)
-//      return SVarOption();
-//    FunctionDecl *FD = dyn_cast<FunctionDecl>(DC);
-//    // Get the parameter index with in the function.
-//    unsigned int PIdx = getParameterIndex(PD, FD);
-//    // Get corresponding FVConstraint vars.
-//    FVConstraint *FunFVar = getFuncFVConstraint(FD, C);
-//    assert(FunFVar != nullptr && "Unable to find function constraints.");
-//    return SVarOption(*FunFVar->getInternalParam(PIdx));
-//  }
-//  if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
-//    FVConstraint *FunFVar = getFuncFVConstraint(FD, C);
-//    if (FunFVar == nullptr) {
-//      llvm::errs() << "No fun constraints for " << FD->getName() << "?!\n";
-//    }
-//    return SVarOption(*FunFVar);
-//  }
   /* neither function nor function parameter */
   auto I = Variables.find(PersistentSourceLoc::mkPSL(D, *C));
   if (I != Variables.end())

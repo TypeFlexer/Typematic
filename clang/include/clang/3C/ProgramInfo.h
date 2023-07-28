@@ -290,6 +290,7 @@ private:
 
     void StructureconstrainWildIfMacro(StructureConstraintVariable *SV, SourceLocation Location, const ReasonLoc &Rsn);
 
+    StructConstraint *getStructConstraint(RecordDecl *D, ASTContext *C) const;
 };
 
 #endif

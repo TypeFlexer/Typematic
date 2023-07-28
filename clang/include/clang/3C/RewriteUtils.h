@@ -32,6 +32,7 @@ public:
   enum DRKind {
     DRK_MultiDeclMember,
     DRK_FunctionDecl,
+    DRK_RecordDecl, // New kind for Record Declaration
   };
 
   DRKind getKind() const { return Kind; }
@@ -73,8 +74,39 @@ protected:
   DeclT *Decl;
 };
 
+//class RecordDeclReplacement
+//        : public DeclReplacementTempl<RecordDecl,
+//                DeclReplacement::DRK_RecordDecl> {
+//public:
+//    explicit RecordDeclReplacement(RecordDecl *D, std::string R,
+//                                     std::vector<std::string> SDecls, bool DecoyTstruct,
+//                                     bool Params, bool Generic = false)
+//            : DeclReplacementTempl(D, R, SDecls), RewriteGeneric(Generic),
+//              AddDecoyTstruct(DecoyTstruct), RewriteParams(Params) {
+//      assert("Doesn't make sense to rewrite nothing!" &&
+//             (RewriteGeneric || AddDecoyTstruct || RewriteParams));
+//    }
+//
+//    SourceRange getSourceRange(SourceManager &SM) const override;
+//
+//private:
+//    // This determines if the full declaration or the return will be replaced.
+//    bool RewriteGeneric;
+//    bool RewriteParams;
+//    bool AddDecoyTstruct;
+//
+//    SourceLocation getDeclBegin(SourceManager &SM) const;
+//    SourceLocation getReturnBegin(SourceManager &SM) const;
+//    SourceLocation getParamBegin(SourceManager &SM) const;
+//    SourceLocation getReturnEnd(SourceManager &SM) const;
+//    SourceLocation getDeclEnd(SourceManager &SM) const;
+//};
+
 typedef DeclReplacementTempl<NamedDecl, DeclReplacement::DRK_MultiDeclMember>
     MultiDeclMemberReplacement;
+
+typedef DeclReplacementTempl<RecordDecl, DeclReplacement::DRK_RecordDecl>
+    RecordDeclReplacement;
 
 class FunctionDeclReplacement
     : public DeclReplacementTempl<FunctionDecl,

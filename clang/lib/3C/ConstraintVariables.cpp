@@ -3155,7 +3155,72 @@ std::string StructureVariableConstraint::gatherQualStrings(void) const {
 std::string
 StructureVariableConstraint::mkString(Constraints &CS,
                                            const MkStringOpts &Opts) const {
-  return "Need to think on this!!";
+//  return "Need to think on this!!";
+
+    bool IsReturn = getName() == RETVAR;
+
+    std::ostringstream Ss;
+    // Annotations that will need to be placed on the identifier of an unchecked
+    // function pointer.
+    std::ostringstream FptrInner;
+    // This deque will store all the type strings that need to pushed
+    // to the end of the type string. This is typically things like
+    // closing delimiters.
+    std::deque<std::string> EndStrs;
+    // This will store stacked array decls to ensure correct order
+    // We encounter constant arrays variables in the reverse order they
+    // need to appear in, so the LIFO structure reverses these annotations
+    std::stack<std::string> ConstArrs;
+    // Have we emitted the string for the base type
+    bool EmittedBase = false;
+    // Have we emitted the name of the variable yet?
+    bool EmittedName = false;
+    int TypeIdx = 0;
+
+    auto It = Vars.begin();
+
+    // Iterate through the vars(), but if we have an internal typedef, then stop
+    // once you reach the typedef's level.
+    for (; It != Vars.end() && IMPLIES(TypedefLevelInfo.HasTypedef,
+                                       TypeIdx < TypedefLevelInfo.TypedefLevel);
+           ++It, TypeIdx++) {
+        const auto &V = *It;
+        ConstAtom *C = nullptr;
+        if (ConstAtom *CA = dyn_cast<ConstAtom>(V)) {
+            C = CA;
+        } else {
+            VarAtom *VA = dyn_cast<VarAtom>(V);
+            assert(VA != nullptr && "Constraint variable can "
+                                    "be either constant or VarAtom.");
+            C = CS.getVariables().at(VA).first;
+        }
+        assert(C != nullptr);
+
+        Atom::AtomKind K = C->getKind();
+
+        switch (K) {
+            case Atom::A_Tstruct:
+                getQualString(TypeIdx, Ss);
+
+                EmittedBase = false;
+                Ss << "Tstruct ";
+                break;
+            case Atom::A_struct:
+                getQualString(TypeIdx, Ss);
+
+                EmittedBase = false;
+                Ss << "Tstruct ";
+                break;
+            case Atom::A_DTstruct:
+                getQualString(TypeIdx, Ss);
+
+                EmittedBase = false;
+                Ss << "_Decoy Tstruct";
+                break;
+        }
+    }
+
+    return Ss.str();
 }
 
 void StructureVariableConstraint::constrainIdxTo(Constraints &CS, ConstAtom *C,

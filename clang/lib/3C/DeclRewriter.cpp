@@ -174,6 +174,16 @@ DeclRewriter::buildCheckedDecl(PVConstraint *Defn, DeclaratorDecl *Decl,
   return RewrittenDecl(Type, IType, SDecl);
 }
 
+RewrittenDecl
+DeclRewriter::buildTstructDecl(StructConstraint *Defn, RecordDecl *Decl,
+                               std::string UseName, ProgramInfo &Info) {
+  std::string DeclName;
+
+  std::string Type =
+          Defn->mkString(Info.getConstraints(), MKSTRING_OPTS(UseName = DeclName));
+  return RewrittenDecl(Type, "", "");
+}
+
 // This function is the public entry point for declaration rewriting.
 void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
                                 Rewriter &R) {
@@ -193,8 +203,8 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
   TRV = &TRV3C;
 #endif
   StructVariableInitializer SVI =
-      StructVariableInitializer(&Context, Info, RewriteThese);
-  for (const auto &D : Context.getTranslationUnitDecl()->decls()) {
+          StructVariableInitializer(&Context, Info, RewriteThese);
+  for (const auto &D: Context.getTranslationUnitDecl()->decls()) {
     TRV->TraverseDecl(D);
     SVI.TraverseDecl(D);
     const auto &TD = dyn_cast<TypedefDecl>(D);
@@ -211,11 +221,11 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
           const auto &Env = Info.getConstraints().getVariables();
           if (Var.anyChanges(Env)) {
             std::string NewTy =
-                getStorageQualifierString(D) +
-                Var.mkString(Info.getConstraints(),
-                             MKSTRING_OPTS(UnmaskTypedef = true));
+                    getStorageQualifierString(D) +
+                    Var.mkString(Info.getConstraints(),
+                                 MKSTRING_OPTS(UnmaskTypedef = true));
             RewriteThese.insert(
-                std::make_pair(TD, new MultiDeclMemberReplacement(TD, NewTy, {})));
+                    std::make_pair(TD, new MultiDeclMemberReplacement(TD, NewTy, {})));
           }
         }
       }
@@ -226,17 +236,17 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
   // Stmt, Decl, or Type.
   TranslationUnitDecl *TUD = Context.getTranslationUnitDecl();
   std::set<PersistentSourceLoc> Keys;
-  for (const auto &I : Info.getVarMap())
+  for (const auto &I: Info.getVarMap())
     Keys.insert(I.first);
   MappingVisitor MV(Keys, Context);
-  for (const auto &D : TUD->decls()) {
+  for (const auto &D: TUD->decls()) {
     MV.TraverseDecl(D);
   }
   SourceToDeclMapType PSLMap;
   PSLMap = MV.getResults();
 
   // Add declarations from this map into the rewriting set
-  for (const auto &V : Info.getVarMap()) {
+  for (const auto &V: Info.getVarMap()) {
     // PLoc specifies the location of the variable whose type it is to
     // re-write, but not where the actual type storage is. To get that, we
     // need to turn PLoc into a Decl and then get the SourceRange for the
@@ -249,8 +259,8 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
       ConstraintVariable *CV = V.second;
       PVConstraint *PV = dyn_cast<PVConstraint>(CV);
       bool PVChanged =
-          PV && (PV->anyChanges(Info.getConstraints().getVariables()) ||
-                 ABRewriter.hasNewBoundsString(PV, D));
+              PV && (PV->anyChanges(Info.getConstraints().getVariables()) ||
+                     ABRewriter.hasNewBoundsString(PV, D));
       if (PVChanged && !PV->isPartOfFunctionPrototype()) {
         // Rewrite a declaration, only if it is not part of function prototype.
         assert(!isa<ParmVarDecl>(D) &&
@@ -265,19 +275,24 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
         if (!RD.SupplementaryDecl.empty())
           SDecl.push_back(RD.SupplementaryDecl);
         RewriteThese.insert(std::make_pair(
-            MMD, new MultiDeclMemberReplacement(MMD, ReplacementText, SDecl)));
+                MMD, new MultiDeclMemberReplacement(MMD, ReplacementText, SDecl)));
+      } else if (StructConstraint *SV = (StructConstraint *) (CV)) {
+        // Rewrite a struct declaration
+        RewrittenDecl RRD = buildTstructDecl(SV, dyn_cast<RecordDecl>(D), "", Info);
+        RewriteThese.insert(std::make_pair(
+                D, new RecordDeclReplacement(dyn_cast<RecordDecl>(D), RRD.Type, {})));
       }
     }
+
+    // Do the declaration rewriting
+    DeclRewriter DeclR(R, Info, Context);
+    DeclR.rewrite(RewriteThese);
+
+    for (auto Pair: RewriteThese)
+      delete Pair.second;
+
+    DeclR.denestTagDecls();
   }
-
-  // Do the declaration rewriting
-  DeclRewriter DeclR(R, Info, Context);
-  DeclR.rewrite(RewriteThese);
-
-  for (auto Pair : RewriteThese)
-    delete Pair.second;
-
-  DeclR.denestTagDecls();
 }
 
 void DeclRewriter::rewrite(RSet &ToRewrite) {
@@ -644,6 +659,18 @@ SourceLocation DeclRewriter::getNextCommaOrSemicolon(SourceLocation L) {
   llvm_unreachable("Unable to find comma or semicolon at source location.");
 }
 
+bool FunctionDeclBuilder::VisitRecordDecl(RecordDecl* RD){
+    //get the struct constraint variable for the structure
+    auto structName = RD->getNameAsString();
+
+    SVarOption Sval = Info.getStructVariable(RD, Context);
+    StructureVariableConstraint* SV = (StructureVariableConstraint *) (&Sval.getValue());
+
+    this->buildTstructDecl(SV, RD,
+                           RD->getNameAsString(),
+                           RD->isTaintedStruct(), RD->isDecoyDecl());
+
+}
 // This function checks how to re-write a function declaration.
 bool FunctionDeclBuilder::VisitFunctionDecl(FunctionDecl *FD) {
 
@@ -892,6 +919,15 @@ FunctionDeclBuilder::buildCheckedDecl(PVConstraint *Defn, DeclaratorDecl *Decl,
 }
 
 RewrittenDecl
+FunctionDeclBuilder::buildTstructDecl(StructConstraint *Defn, RecordDecl *Decl, std::string UseName,
+                                      bool RewriteToTstructType,
+                                      bool RewriteToDecoyTstructType) {
+  RewrittenDecl RD = DeclRewriter::buildTstructDecl(Defn, Decl, UseName, Info);
+  return RD;
+}
+
+
+RewrittenDecl
 FunctionDeclBuilder::buildItypeDecl(PVConstraint *Defn, DeclaratorDecl *Decl,
                                     std::string UseName, bool &RewriteParm,
                                     bool &RewriteRet, bool GenerateSDecls,
@@ -963,6 +999,22 @@ FunctionDeclBuilder::buildDeclVar(const FVComponentVariable *CV,
   }
   IType = getExistingIType(CV->getExternal()) + BoundsStr;
   return RewrittenDecl(Type, IType, "");
+}
+
+RewrittenDecl
+FunctionDeclBuilder::buildStructVar(const StructureVariableConstraint *SV,
+                                  RecordDecl *Decl) {
+
+  bool hasTstruct = SV->hasTstruct(Info.getConstraints().getVariables(), -1);
+  bool hasDecoyTstruct = SV->hasDecoyedTstruct(
+      Info.getConstraints().getVariables(), -1);
+
+  if (hasTstruct ||
+      hasDecoyTstruct) {
+    return buildTstructDecl(const_cast<StructConstraint *>(SV),
+                            Decl, Decl->getNameAsString(), hasTstruct,
+                            hasDecoyTstruct);
+  }
 }
 
 std::string FunctionDeclBuilder::getExistingIType(ConstraintVariable *DeclC) {
