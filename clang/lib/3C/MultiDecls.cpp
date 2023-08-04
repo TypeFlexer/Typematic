@@ -30,6 +30,8 @@ MultiDeclMemberDecl *getAsMultiDeclMember(Decl *D) {
     return FD;
   if (TypedefDecl *TD = dyn_cast<TypedefDecl>(D))
     return TD;
+  if (RecordDecl *RD = dyn_cast<RecordDecl>(D))
+    return RD;
   return nullptr;
 }
 
