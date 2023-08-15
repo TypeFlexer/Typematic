@@ -939,7 +939,7 @@ public:
 // Represents an individual constraint on a pointer variable.
 // This could contain a reference to a FunctionVariableConstraint
 // in the case of a function pointer declaration.
-class StructureVariableConstraint : public StructureConstraintVariable {
+class StructureVariableConstraint : public ConstraintVariable {
 public:
     enum Qualification {
         DecoyQualification
@@ -999,7 +999,7 @@ private:
     // For the function parameters and returns,
     // this set contains the constraint variable of
     // the values used as arguments.
-    std::set<StructureConstraintVariable *> ArgumentConstraints;
+    std::set<ConstraintVariable *> ArgumentConstraints;
     // Get solution for the atom of a pointer.
     const ConstAtom *getSolution(const Atom *A, const EnvironmentMap &E) const;
 
@@ -1041,7 +1041,7 @@ private:
     // other fields are initialized to default values. This is used to construct
     // variables for non-pointer expressions.
     StructureVariableConstraint(std::string Name) :
-            StructureConstraintVariable(StructureVariable, "", Name, ""), FV(nullptr),
+            ConstraintVariable(StructureVariable, "", Name, ""), FV(nullptr),
             SrcHasItype(false), PartOfFuncPrototype(false), Parent(nullptr),
             SourceGenericIndex(-1), InferredGenericIndex(-1),
             IsZeroWidthArray(false), IsTypedef(false),
@@ -1061,8 +1061,8 @@ public:
     // itype was present in the original source code. Returns empty string
     // otherwise.
 
-    bool solutionEqualTo(Constraints &CS, const StructureConstraintVariable *CV,
-                         bool ComparePtyp = true) const;
+    bool solutionEqualTo(Constraints &CS, const ConstraintVariable *CV,
+                         bool ComparePtyp = true) const override;
 
     bool isOriginallyTainted() const {
         return llvm::any_of(Vars, [](Atom *A) { return isa<ConstAtom>(A); });
@@ -1114,11 +1114,13 @@ public:
 
     const CAtoms &getCvars() const { return Vars; }
 
+    void mergeDeclaration(ConstraintVariable *From, ProgramInfo &I,
+                          std::string &ReasonFailed) override;
     // Include new ConstAtoms, supplemental info, and merge function pointers
-    void mergeDeclaration(StructureConstraintVariable *From, ProgramInfo &I,
+    void mergeDeclaration(StructureVariableConstraint *From, ProgramInfo &I,
                           std::string &ReasonFailed) ;
 
-    static bool classof(const StructureConstraintVariable *S) {
+    static bool classof(const ConstraintVariable *S) {
         return S->getKind() == ConstraintVariable::StructureVariable;
     }
 
@@ -1131,7 +1133,7 @@ public:
 
     void print(llvm::raw_ostream &O) const override;
     void dump() const override { print(llvm::errs()); }
-    void dumpJson(llvm::raw_ostream &O) const;
+    void dumpJson(llvm::raw_ostream &O) const override;
 
     void constrainOuterTo(Constraints &CS, ConstAtom *C, const ReasonLoc &Rsn,
                           bool DoLB = false, bool Soft = false);
@@ -1142,7 +1144,7 @@ public:
     bool hasDecoyedTstruct(const EnvironmentMap &E, int AIdx = -1) const;
     bool hasTstruct(const EnvironmentMap &E, int AIdx = -1) const ;
 
-    void equateArgumentConstraints(ProgramInfo &I, ReasonLoc &Rsn);
+    void equateArgumentConstraints(ProgramInfo &I, ReasonLoc &Rsn) override;
 
     bool isPartOfFunctionPrototype() const { return PartOfFuncPrototype; }
     static std::string tryExtractBaseType(MultiDeclMemberDecl *MMD,
@@ -1155,7 +1157,7 @@ public:
     // Get the set of constraint variables corresponding to the arguments.
 //    const std::set<ConstraintVariable *> &getArgumentConstraints() const;
 
-    StructureVariableConstraint *getCopy(ReasonLoc &Rsn, Constraints &CS);
+    StructureVariableConstraint *getCopy(ReasonLoc &Rsn, Constraints &CS) override;
 
     // Retrieve the atom at the specified index. This function includes special
     // handling for generic constraint variables to create deeper pointers as
@@ -1164,9 +1166,27 @@ public:
 
     ~StructureVariableConstraint() override{};
 
-    bool srcHasItype() const;
+    bool srcHasItype() const override;
 
-    bool srcHasBounds() const;
+    bool srcHasBounds() const override;
+
+    bool isOriginallyChecked() const override;
+
+    bool isSolutionFullyChecked(const EnvironmentMap &E) const override;
+
+    bool hasWild(const EnvironmentMap &E, int AIdx) const override;
+
+    bool hasTainted(const EnvironmentMap &E, int AIdx) const override ;
+
+    void constrainToWild(Constraints &CS, const ReasonLoc &Rsn) const override;
+
+    bool isSolutionChecked(const EnvironmentMap &E) const override;
+
+    bool hasArr(const EnvironmentMap &E, int AIdx) const override;
+
+    void equateWithItype(ProgramInfo &I, const ReasonLoc &ReasonUnchangeable) override;
+
+    bool hasNtArr(const EnvironmentMap &E, int AIdx) const override;
 };
 
 class TaintedPointerVariableConstraint : public TaintedConstraintVariable {

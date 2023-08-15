@@ -31,8 +31,7 @@ public:
   // Discriminator for LLVM-style RTTI (dyn_cast<> et al.).
   enum DRKind {
     DRK_MultiDeclMember,
-    DRK_FunctionDecl,
-    DRK_RecordDecl, // New kind for Record Declaration
+    DRK_FunctionDecl
   };
 
   DRKind getKind() const { return Kind; }
@@ -105,8 +104,8 @@ protected:
 typedef DeclReplacementTempl<NamedDecl, DeclReplacement::DRK_MultiDeclMember>
     MultiDeclMemberReplacement;
 
-typedef DeclReplacementTempl<RecordDecl, DeclReplacement::DRK_RecordDecl>
-    RecordDeclReplacement;
+//typedef DeclReplacementTempl<RecordDecl, DeclReplacement::DRK_RecordDecl>
+//    RecordDeclReplacement;
 
 class FunctionDeclReplacement
     : public DeclReplacementTempl<FunctionDecl,

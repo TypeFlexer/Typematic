@@ -164,7 +164,7 @@ void ProgramInfo::printAggregateStats(const std::set<std::string> &F,
   TotP = TotNt = TotA = TotWi = TotTstruct = Totstrct = TotDTstruct = 0;
 
   CVarSet ArrPtrs, NtArrPtrs;
-  SVarSet Structs, Tstructs, DTstructs;
+  CVarSet Structs, Tstructs, DTstructs;
   ConstraintVariable *Tmp = nullptr;
 
   for (auto &I : Variables) {
@@ -677,7 +677,7 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
 
   ConstraintVariable *NewCV = nullptr;
   TaintedConstraintVariable *NewTV = nullptr;
-  StructureConstraintVariable *NewSV = nullptr;
+  StructConstraint *NewSV = nullptr;
 
   if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
     // Function Decls have FVConstraints.
@@ -852,7 +852,7 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
             auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
             NewSV->constrainToWild(CS, Rsn);
         }
-        StructureconstrainWildIfMacro(NewSV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
+        //StructureconstrainWildIfMacro(NewSV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
         Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewSV);
     }
 }
@@ -993,8 +993,7 @@ void ProgramInfo::TaintedconstrainWildIfMacro(TaintedConstraintVariable *TV,
 void ProgramInfo::StructureconstrainWildIfMacro(StructureConstraintVariable *SV,
                                               SourceLocation Location,
                                               const ReasonLoc &Rsn) {
-    if (!Rewriter::isRewritable(Location))
-        SV->constrainToWild(CS, Rsn);
+  assert(false);
 }
 
 //std::string ProgramInfo::getUniqueDeclKey(Decl *D, ASTContext *C) {

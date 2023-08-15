@@ -295,8 +295,8 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
 
 StructureVariableConstraint::StructureVariableConstraint(
         StructureVariableConstraint *Ot)
-        : StructureConstraintVariable(ConstraintVariableKind::StructureVariable, Ot->OriginalType,
-                                    Ot->Name, Ot->OriginalTypeWithName),
+        : ConstraintVariable(ConstraintVariable::StructureVariable, Ot->OriginalType,
+                             Ot->Name, Ot->OriginalTypeWithName),
           BaseType(Ot->BaseType), Vars(Ot->Vars), SrcVars(Ot->SrcVars), FV(Ot->FV),
           QualMap(Ot->QualMap), ArrSizes(Ot->ArrSizes), ArrSizeStrs(Ot->ArrSizeStrs),
           SrcHasItype(Ot->SrcHasItype), ItypeStr(Ot->ItypeStr),
@@ -416,10 +416,9 @@ private:
   bool HasTypedef = false;
 };
 
-//TODO: NEED to FILL THIS IN ?
-void StructureConstraintVariable::constrainToWild(Constraints &CS,
+void StructureVariableConstraint::constrainToWild(Constraints &CS,
                                                        const ReasonLoc &Rsn) const {
-
+    //TODO: need to work on this
 //    // Find the first VarAtom. All atoms before this are ConstAtoms, so
 //    // constraining them isn't useful;
 //    VarAtom *FirstVA = nullptr;
@@ -445,7 +444,7 @@ StructureVariableConstraint::StructureVariableConstraint(
         const ASTContext &C, std::string *InFunc, int ForceGenericIndex,
         bool PotentialGeneric,
         bool VarAtomForChecked, TypeSourceInfo *TSInfo, const QualType &ITypeT)
-        : StructureConstraintVariable(StructureVariable, QT, N),
+        : ConstraintVariable(StructureVariable, QT, N),
           FV(nullptr), SrcHasItype(false), PartOfFuncPrototype(InFunc != nullptr),
           Parent(nullptr) {
     PersistentSourceLoc PSL = PersistentSourceLoc::mkPSL(D, C);
@@ -2637,6 +2636,12 @@ bool FunctionVariableConstraint::isSolutionFullyChecked(
          });
 }
 
+bool StructureVariableConstraint::isSolutionFullyChecked(
+        const EnvironmentMap &E) const {
+        //TODO: need to check on this one
+        return false;
+}
+
 bool TaintedFunctionVariableConstraint::isSolutionFullyTainted(
         const TaintedEnvironmentMap &E) const {
   return ReturnVar.ExternalConstraint->isSolutionTainted(E) &&
@@ -2650,9 +2655,20 @@ bool FunctionVariableConstraint::hasWild(const EnvironmentMap &E,
   return ReturnVar.ExternalConstraint->hasWild(E, AIdx);
 }
 
+bool StructureVariableConstraint::hasWild(const EnvironmentMap &E,
+                                         int AIdx) const {
+    //TODO: Need to check on this one
+    return false;
+}
+
 bool FunctionVariableConstraint::hasTainted(const EnvironmentMap &E,
                                          int AIdx) const {
   return ReturnVar.ExternalConstraint->hasTainted(E, AIdx);
+}
+
+bool StructureVariableConstraint::hasTainted(const EnvironmentMap &E,
+                                            int AIdx) const {
+    return isTstruct;
 }
 
 bool FunctionVariableConstraint::hasArr(const EnvironmentMap &E,
@@ -2660,9 +2676,22 @@ bool FunctionVariableConstraint::hasArr(const EnvironmentMap &E,
   return ReturnVar.ExternalConstraint->hasArr(E, AIdx);
 }
 
+bool StructureVariableConstraint::hasArr(const EnvironmentMap &E,
+                                        int AIdx) const {
+    //TODO: need to work on this
+    assert(false);
+    return false;
+}
+
 bool FunctionVariableConstraint::hasNtArr(const EnvironmentMap &E,
                                           int AIdx) const {
   return ReturnVar.ExternalConstraint->hasNtArr(E, AIdx);
+}
+
+bool StructureVariableConstraint::hasNtArr(const EnvironmentMap &E,
+                                          int AIdx) const {
+    assert(false);
+    return false;
 }
 
 bool TaintedFunctionVariableConstraint::hasWild(const TaintedEnvironmentMap &E,
@@ -2727,12 +2756,8 @@ void StructConstraint::equateArgumentConstraints(ProgramInfo &Info, ReasonLoc &R
         return;
     }
     HasEqArgumentConstraints = true;
-    StructureconstrainConsVarGeq(this, this->ArgumentConstraints, Info.getConstraints(),
+    constrainConsVarGeq(this, this->ArgumentConstraints, Info.getConstraints(),
                         Rsn, Same_to_Same, true, &Info);
-
-    if (this->FV != nullptr) {
-        this->FV->equateArgumentConstraints(Info, Rsn);
-    }
 }
 
 void TPVConstraint::equateArgumentConstraints(ProgramInfo &Info, ReasonLoc &Rsn) {
@@ -2957,6 +2982,13 @@ bool PointerVariableConstraint::isSolutionChecked(
          llvm::any_of(Vars, [this, &E](Atom *A) {
            return !isa<WildAtom>(getSolution(A, E));
          });
+}
+
+bool StructureVariableConstraint::isSolutionChecked(
+        const EnvironmentMap &E) const {
+        //TODO: need to work on this
+        assert(false);
+        return false;
 }
 
 bool PointerVariableConstraint::isSolutionFullyChecked(
@@ -3634,7 +3666,7 @@ bool PointerVariableConstraint::solutionEqualTo(Constraints &CS,
 }
 
 bool StructureVariableConstraint::solutionEqualTo(Constraints &CS,
-                                                const StructureConstraintVariable *CV,
+                                                const ConstraintVariable *CV,
                                                 bool ComparePtyp) const {
     bool Ret = false;
     if (CV != nullptr) {
@@ -4680,8 +4712,7 @@ void PointerVariableConstraint::mergeDeclaration(ConstraintVariable *FromCV,
     }
   }
 }
-
-void StructureVariableConstraint::mergeDeclaration(StructureConstraintVariable *FromCV,
+void StructureVariableConstraint::mergeDeclaration(StructConstraint *FromCV,
                                                  ProgramInfo &Info,
                                                  std::string &ReasonFailed) {
     StructConstraint *From = dyn_cast<StructConstraint>(FromCV);
@@ -4832,6 +4863,12 @@ void PointerVariableConstraint::equateWithItype(
   }
 }
 
+void StructureVariableConstraint::equateWithItype(
+        ProgramInfo &I, const ReasonLoc &ReasonUnchangeable) {
+    assert(false);
+    return;
+}
+
 Atom *TaintedPointerVariableConstraint::getAtom(unsigned AtomIdx, Constraints &CS) {
   assert(AtomIdx < Vars.size());
   return Vars[AtomIdx];
@@ -4921,6 +4958,17 @@ void TaintedFunctionVariableConstraint::mergeDeclaration(TaintedConstraintVariab
 
 bool FunctionVariableConstraint::isOriginallyChecked() const {
   return ReturnVar.ExternalConstraint->isOriginallyChecked();
+}
+
+bool StructureVariableConstraint::isOriginallyChecked() const {
+    //TODO: Need to work on this
+    return false;
+}
+
+void
+StructureVariableConstraint::mergeDeclaration(ConstraintVariable *From, ProgramInfo &I, std::string &ReasonFailed) {
+    ///need to work on this
+    assert(false);
 }
 
 bool TaintedFunctionVariableConstraint::isOriginallyTainted() const {

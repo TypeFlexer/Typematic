@@ -193,6 +193,7 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
   // Collect function and record declarations that need to be rewritten in a set
   // as well as their rewriten types in a map.
   RSet RewriteThese;
+  RSet RewriteTheseStructures;
 
   FunctionDeclBuilder *TRV = nullptr;
 #ifdef FIVE_C
@@ -258,6 +259,7 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
     if (Decl *D = PSLMap[PLoc]) {
       ConstraintVariable *CV = V.second;
       PVConstraint *PV = dyn_cast<PVConstraint>(CV);
+      StructConstraint *SV = dyn_cast<StructConstraint>(CV);
       bool PVChanged =
               PV && (PV->anyChanges(Info.getConstraints().getVariables()) ||
                      ABRewriter.hasNewBoundsString(PV, D));
@@ -276,23 +278,22 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
           SDecl.push_back(RD.SupplementaryDecl);
         RewriteThese.insert(std::make_pair(
                 MMD, new MultiDeclMemberReplacement(MMD, ReplacementText, SDecl)));
-      } else if (StructConstraint *SV = (StructConstraint *) (CV)) {
+        // Do the declaration rewriting
+        DeclRewriter DeclR(R, Info, Context);
+        DeclR.rewrite(RewriteThese);
+        DeclR.denestTagDecls();
+      }
+      else if (SV) {
         // Rewrite a struct declaration
+        std::vector<std::string> SDecl;
         MultiDeclMemberDecl *MMD = getAsMultiDeclMember(D);
         RewrittenDecl RRD = buildTstructDecl(SV, dyn_cast<RecordDecl>(D), "", Info);
-        RewriteThese.insert(std::make_pair(
-                D, new MultiDeclMemberReplacement(MMD, RRD.Type, {})));
+        RewriteTheseStructures.insert(std::make_pair(
+                MMD, new MultiDeclMemberReplacement(MMD, RRD.Type, SDecl)));
+        DeclRewriter DeclRS(R, Info, Context);
+        DeclRS.rewrite(RewriteTheseStructures);
       }
     }
-
-    // Do the declaration rewriting
-    DeclRewriter DeclR(R, Info, Context);
-    DeclR.rewrite(RewriteThese);
-
-    for (auto Pair: RewriteThese)
-      delete Pair.second;
-
-    DeclR.denestTagDecls();
   }
 }
 
@@ -322,10 +323,6 @@ void DeclRewriter::rewrite(RSet &ToRewrite) {
         rewriteMultiDecl(*MDI, ToRewrite);
     } else if (auto *FR = dyn_cast<FunctionDeclReplacement>(N)) {
       rewriteFunctionDecl(FR);
-    } else if (auto *RR = dyn_cast<RecordDeclReplacement>(N)) {
-      MultiDeclInfo *MDI =
-              Info.TheMultiDeclsInfo.findContainingMultiDecl(RR->getDecl());
-      rewriteMultiDecl(*MDI, ToRewrite);
     }
     else {
       assert(false && "Unknown replacement type");
