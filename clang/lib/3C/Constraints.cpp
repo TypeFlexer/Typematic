@@ -290,6 +290,16 @@ doSolve(ConstraintsGraph &CG,
           WorkList.push_back(Neighbor);
         }
       } // ignore ConstAtoms for now; will confirm solution below
+      else {
+        if (CurrSol->isTainted() && !NeighborA->isTainted())
+        {
+          // we gotta fix this somehow
+          NeighborA->setKind(CurrSol->getKind());
+          bool Changed = true;
+          assert(Changed);
+          WorkList.push_back(NeighborA);
+        }
+      }
     }
   }
 

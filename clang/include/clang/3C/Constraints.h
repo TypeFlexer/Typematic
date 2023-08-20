@@ -59,7 +59,7 @@ public:
   enum AtomKind { A_Var, A_Ptr, A_Arr, A_NTArr, A_TPtr, A_TArr, A_TNTArr, A_Wild, A_Const, A_struct, A_Tstruct, A_DTstruct };
 
 private:
-  const AtomKind Kind;
+  AtomKind Kind;
 
 public:
   Atom(AtomKind K) : Kind(K) {}
@@ -67,8 +67,13 @@ public:
 
   AtomKind getKind() const { return Kind; }
 
+  void setKind(AtomKind aK) {
+      Kind = aK;
+  }
+
   bool isTainted() const {
-      return (Kind == A_TPtr || Kind == A_TArr || Kind == A_TNTArr);
+      return (Kind == A_TPtr || Kind == A_TArr || Kind == A_TNTArr
+      || Kind == A_Tstruct || Kind == A_DTstruct);
   }
 
   bool isStructure() const{

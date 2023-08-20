@@ -549,6 +549,33 @@ StructureVariableConstraint::StructureVariableConstraint(
                 NewAtom = CAtom;
             Vars.push_back(NewAtom);
             SrcVars.push_back(CAtom);
+            //all of the record's fields are neighbors to the record, such that, updating the record's type would
+            //necessitate visiting all the neighbor's fields as well
+            RecordDecl* RD = Ty->getAsRecordDecl();
+            //now iterate through all the fields of the RecordDecl* RD
+            for (FieldDecl* field : RD->fields()) {
+                // Now, for each field, you can access its properties.
+                QualType fieldType = field->getType();
+                StringRef fieldName = field->getName();
+                ASTContext *TmpCtx = const_cast<ASTContext *>(&C);
+                CVarOption cvar = I.getVariable(field, TmpCtx);
+                ConstAtom *CAtom = nullptr;
+
+                if (fieldType->isPointerType() && !fieldType->isTaintedPointerType())
+                {
+                    if (cvar.hasValue())
+                    {
+                        PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                        for (const auto &V : PV->getCvars())
+                            CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
+                                                          ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                    }
+                    else
+                    {
+                        assert(false);
+                    }
+                }
+            }
         }
         else
         {
@@ -563,6 +590,33 @@ StructureVariableConstraint::StructureVariableConstraint(
                 NewAtom = CAtom;
             Vars.push_back(NewAtom);
             SrcVars.push_back(CAtom);
+            //all of the record's fields are neighbors to the record, such that, updating the record's type would
+            //necessitate visiting all the neighbor's fields as well
+            RecordDecl* RD = Ty->getAsRecordDecl();
+            //now iterate through all the fields of the RecordDecl* RD
+            for (FieldDecl* field : RD->fields()) {
+                // Now, for each field, you can access its properties.
+                QualType fieldType = field->getType();
+                StringRef fieldName = field->getName();
+                ASTContext *TmpCtx = const_cast<ASTContext *>(&C);
+                CVarOption cvar = I.getVariable(field, TmpCtx);
+                ConstAtom *CAtom = nullptr;
+
+                if (fieldType->isPointerType())
+                {
+                    if (cvar.hasValue())
+                    {
+                        PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                        for (const auto &V : PV->getCvars())
+                            CS.addConstraint(CS.createGeq(NewAtom, V,
+                                                          ReasonLoc("Pointer within a Structure",PSL)));
+                    }
+                    else
+                    {
+                        assert(false);
+                    }
+                }
+            }
         }
 
         // Save here if QTy is qualified or not into a map that
@@ -1130,8 +1184,38 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
             StructureVariableConstraint *Tmp = (StructureVariableConstraint *)(&CV.getValue());
             Tmp->setTstruct(true);
             for (const auto &V : Tmp->getCvars())
-                  CS.addConstraint(CS.createGeq(V, CS.getTaintedStruct(),
-                                                ReasonLoc("Tainted Pointer to the Structure",PSL)));
+            {
+                CS.addConstraint(CS.createGeq(V, CS.getTaintedStruct(),
+                                              ReasonLoc("Tainted Pointer to the Structure",PSL)));
+            }
+            //now iterate through all the fields of the RecordDecl* RD
+            for (FieldDecl* field : RD->fields()) {
+              // Now, for each field, you can access its properties.
+              QualType fieldType = field->getType();
+              StringRef fieldName = field->getName();
+              CVarOption cvar = I.getVariable(field, TmpCtx);
+              ConstAtom *CAtom = nullptr;
+
+              if (fieldType->isPointerType() && !fieldType->isTaintedPointerType())
+              {
+                  if (cvar.hasValue())
+                  {
+                      PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                      for (const auto &V : PV->getCvars())
+                          CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
+                                                        ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                  }
+                  else
+                  {
+                        //create a VarAtom for the pointer
+                        VarAtom *VA = CS.getFreshTaintedVar(Npre + N + fieldName.str(), VK);
+                        Vars.push_back(VA);
+                        SrcVars.push_back(CS.getTaintedPtr());
+                        CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
+                                                      ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                  }
+              }
+            }
       }
     }
 
@@ -3241,7 +3325,7 @@ StructureVariableConstraint::mkString(Constraints &CS,
                 getQualString(TypeIdx, Ss);
 
                 EmittedBase = false;
-                Ss << "Tstruct ";
+                Ss << "struct ";
                 break;
             case Atom::A_DTstruct:
                 getQualString(TypeIdx, Ss);

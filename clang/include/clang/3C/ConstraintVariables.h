@@ -960,10 +960,20 @@ public:
     addAtomPVConstraint(StructureVariableConstraint *PVC, ConstAtom *PtrTyp,
                         ReasonLoc &Rsn, Constraints &CS);
 
+    void resetAndAddTaintedStruct(Constraints &CS) {
+        SrcVars.clear();  // Clear the vector.
+
+        ConstAtom *CAtom = CS.getTaintedStruct(); // Retrieve the tainted struct.
+        if (CAtom) {  // Check if CAtom is not nullptr.
+            CAtom->setExplicit(true);
+            SrcVars.push_back(CAtom);
+        }
+    }
 private:
     std::string BaseType;
     CAtoms Vars;
     bool isTstruct;
+    bool isDecoyTstructs;
     std::vector<ConstAtom *> SrcVars;
     FunctionVariableConstraint *FV;
     std::map<uint32_t, std::set<Qualification>> QualMap;
@@ -1054,6 +1064,8 @@ public:
     const StructureConstraintVariable *getTypedefVar() const;
     void setTypedef(StructureConstraintVariable *TDVar, std::string S);
     void setTstruct(bool T) { isTstruct = T; }
+    void setDecoyTstruct(bool T) { isDecoyTstructs = T; }
+    bool isDecoyTstruct() const { return isDecoyTstructs; }
     bool isTstructV() const { return isTstruct; }
     // Return true if this constraint had an itype in the original source code.
 
