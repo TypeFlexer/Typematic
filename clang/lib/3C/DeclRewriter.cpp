@@ -445,8 +445,14 @@ void DeclRewriter::rewriteMultiDecl(MultiDeclInfo &MDI, RSet &ToRewrite) {
       // `struct {` -> `struct T {`
       PersistentSourceLoc PSL = PersistentSourceLoc::mkPSL(TD, A);
       // This will assert if we can't find the new name. Is that what we want?
-      std::string NewTypeStr = *Info.TheMultiDeclsInfo.getTypeStrOverride(
+      auto newName = Info.TheMultiDeclsInfo.getTypeStrOverride(
           A.getTagDeclType(TD).getTypePtr(), A);
+      std::string NewTypeStr = "";
+      if (!newName.hasValue())
+      {
+        // If we can't find the new name, then we should just use the old name.
+        NewTypeStr = TD->getName().str();
+      }
       // This token should be the tag kind, e.g., `struct`.
       std::string ExistingToken =
           getSourceText(SourceRange(TD->getBeginLoc()), A);
@@ -586,11 +592,14 @@ void DeclRewriter::rewriteMultiDecl(MultiDeclInfo &MDI, RSet &ToRewrite) {
         SourceLocation AfterTerminator =
                 getLocationAfterToken(Terminator, A.getSourceManager(),
                                       A.getLangOpts());
-        R.InsertText(AfterTerminator, "\n");
-        // When rewriting the next member, start after the terminator. The
-        // Rewriter is smart enough not to mess with anything we already inserted
-        // at that location.
-        PrevEnd = AfterTerminator;
+        if (AfterTerminator.isValid())
+        {
+          R.InsertText(AfterTerminator, "\n");
+          // When rewriting the next member, start after the terminator. The
+          // Rewriter is smart enough not to mess with anything we already inserted
+          // at that location.
+          PrevEnd = AfterTerminator;
+        }
       }
     }
   }
@@ -670,7 +679,6 @@ SourceLocation DeclRewriter::getNextCommaOrSemicolon(SourceLocation L) {
     Tok = Lexer::findNextToken(Tok->getEndLoc(), A.getSourceManager(),
                                A.getLangOpts());
   }
-  llvm_unreachable("Unable to find comma or semicolon at source location.");
 }
 
 bool FunctionDeclBuilder::VisitRecordDecl(RecordDecl* RD){
@@ -678,6 +686,9 @@ bool FunctionDeclBuilder::VisitRecordDecl(RecordDecl* RD){
     auto structName = RD->getNameAsString();
 
     SVarOption Sval = Info.getStructVariable(RD, Context);
+    if (!Sval.hasValue())
+        return true;
+
     StructureVariableConstraint* SV = (StructureVariableConstraint *) (&Sval.getValue());
 
     this->buildTstructDecl(SV, RD,

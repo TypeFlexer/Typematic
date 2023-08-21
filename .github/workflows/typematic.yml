@@ -1,0 +1,32 @@
+name: 3c Compilation and Test Workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake binutils
+
+      - name: Compile 3c target
+        working-directory: ./llvm
+        run: |
+          cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1
+          ninja 3c
+
+      - name: Run 3c on all files and compare
+        run: |
+          for file in typematic-tests/input/*; do
+            filename=$(basename -- "$file")
+            base="${filename%.*}"
+            ./path_to_3c_binary/3c -addcr -alltypes -dump-stats "$file" -- > "typematic-tests/temp_output/${base}.c"
+            diff "typematic-tests/temp_output/${base}.c" "typematic-tests/output/${base}_op.c"
+          done

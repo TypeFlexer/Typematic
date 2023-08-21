@@ -545,10 +545,7 @@ public:
     // indicated by passing a non-default reason for the "root cause of wildness"
     // in ReasonUnchangeable. If the reason is DEFAULT_REASON, this is a sentinel
     // meaning that the caller is not requesting such a constraint. Other cases
-    // that need the constraint are detected within equateWithItype itself, and
-    // the appropriate reason is attached there.
-    //
-    // TODO: It looks like there may be some unusual cases in which
+    // that need the constraint are detected wit in which
     // equateWithType generates constraints using the reason from
     // ReasonUnchangeable even if it is the DEFAULT_REASON sentinel. Rethink the
     // equateWithItype design to figure out what reason should actually be used or

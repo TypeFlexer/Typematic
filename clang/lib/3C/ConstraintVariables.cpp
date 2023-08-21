@@ -325,7 +325,7 @@ StructureVariableConstraint::StructureVariableConstraint(DeclaratorDecl *D,
                                                      const ASTContext &C)
         : StructureVariableConstraint(D->getType(), D, std::string(D->getName()), I,
                                     C, nullptr, -1, false, false,
-                                    D->getTypeSourceInfo()) {}
+                                    NULL) {}
 
 TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(DeclaratorDecl *D,
                                                      ProgramInfo &I,
