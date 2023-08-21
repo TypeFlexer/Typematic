@@ -517,9 +517,9 @@ public:
                     SourceLocation loc = CE->getBeginLoc();
                     // Get the source manager from the context
                     SourceManager &SM = Context->getSourceManager();
-
+                    std::string FilePath = SM.getFilename(loc).str();
                     // Check if the location belongs to the main file
-                    if (SM.getFileID(loc) == SM.getMainFileID()) {
+                    if (SM.getFileID(loc) == SM.getMainFileID() && canWrite(FilePath)) {
                         // Modify the callee name
                         std::string newCalleeName = "t_" + funcName;
                         Writer.ReplaceText(loc, funcName.length(), newCalleeName);
