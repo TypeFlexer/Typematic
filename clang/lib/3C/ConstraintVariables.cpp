@@ -831,6 +831,10 @@ PointerVariableConstraint::PointerVariableConstraint(
       SrcVars.push_back(CAtom);
     }
 
+    if (strstr(Name.c_str(), "alias1") || strstr(Name.c_str(), "alias2") || strstr(Name.c_str(), "heapInt"))
+    {
+        int i = 10;
+    }
     if (Ty->isArrayType() || Ty->isIncompleteArrayType()) {
       // Boil off the typedefs in the array case.
       // TODO this will need to change to properly account for typedefs
@@ -4379,6 +4383,10 @@ void constrainConsVarGeq(ConstraintVariable *LHS, ConstraintVariable *RHS,
   }
 
   if (RHS->getKind() == LHS->getKind()) {
+      if (RHS->getName() == "heapInt" && LHS->getName() == "alias1") {
+            int i = 10;
+      }
+
     if (FVConstraint *FCLHS = dyn_cast<FVConstraint>(LHS)) {
       if (FVConstraint *FCRHS = dyn_cast<FVConstraint>(RHS)) {
 
@@ -4452,6 +4460,18 @@ void constrainConsVarGeq(ConstraintVariable *LHS, ConstraintVariable *RHS,
             for (unsigned N = 0; N < Min; N++) {
               Atom *IAtom = PCLHS->getAtom(N, CS);
               Atom *JAtom = PCRHS->getAtom(N, CS);
+              /*
+               * Adding this causes write to unallowed files as well -->
+               */
+//              if (JAtom->isTainted() && !IAtom->isTainted())
+//              {
+//                  IAtom->reflectToTaintedKind();
+//              }
+//              else if(!JAtom->isTainted() && IAtom->isTainted())
+//              {
+//                  JAtom->reflectToTaintedKind();
+//              }
+
               if (IAtom == nullptr || JAtom == nullptr)
                 break;
 

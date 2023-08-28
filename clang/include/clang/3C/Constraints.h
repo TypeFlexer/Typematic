@@ -71,6 +71,26 @@ public:
       Kind = aK;
   }
 
+  void reflectToTaintedKind()
+  {
+        switch (Kind) {
+            case A_Ptr:
+                Kind = A_TPtr;
+                break;
+            case A_Arr:
+                Kind = A_TArr;
+                break;
+            case A_NTArr:
+                Kind = A_TNTArr;
+                break;
+            case A_struct:
+                Kind = A_Tstruct;
+                break;
+            default:
+                break;
+        }
+  }
+
   bool isTainted() const {
       return (Kind == A_TPtr || Kind == A_TArr || Kind == A_TNTArr
       || Kind == A_Tstruct || Kind == A_DTstruct);

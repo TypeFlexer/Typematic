@@ -48,9 +48,15 @@ RewrittenDecl mkStringForPVDecl(MultiDeclMemberDecl *MMD, PVConstraint *PVC,
                                       PVC->getName(), Info, ABRewriter, true,
                                       true);
   } else {
-    RD = DeclRewriter::buildCheckedDecl(PVC, cast<DeclaratorDecl>(MMD),
-                                        PVC->getName(), Info, ABRewriter,
-                                        true);
+      if(!MMD->getNameAsString().empty())
+      {
+          //sometimes this happens in very famous structures like --> #define __FSID_T_TYPE		struct { int __val[2]; } --> in ttypesizes.h
+        RD = DeclRewriter::buildCheckedDecl(PVC, cast<DeclaratorDecl>(MMD),
+                                            PVC->getName(), Info, ABRewriter,
+                                            true);
+      }
+      else
+        return  RD;
   }
   RD.Type = getStorageQualifierString(MMD) + RD.Type;
 

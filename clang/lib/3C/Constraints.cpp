@@ -454,7 +454,7 @@ bool Constraints::graphBasedSolve() {
   bool Res = doSolve(SolChkCG, Env, this, true, nullptr, Conflicts);
 
   // Now solve PtrType constraints
-  if (Res && _3COpts.AllTypes) {
+  if (_3COpts.AllTypes) {
     Env.doCheckedSolve(false);
     bool RegularSolve = !(_3COpts.OnlyGreatestSol || _3COpts.OnlyLeastSol);
 
@@ -915,6 +915,14 @@ VarAtom *ConstraintsEnv::getTaintedVar(ConstraintKey V) const {
 
 ConstAtom *ConstraintsEnv::getAssignment(Atom *A) {
   if (VarAtom *VA = dyn_cast<VarAtom>(A)) {
+    //first check if either of them have a tainted solution
+    if (UseChecked && Environment[VA].second->isTainted()) {
+      return Environment[VA].first->reflectToTainted();
+    }
+    else if (Environment[VA].first->isTainted()) {
+      return Environment[VA].second->reflectToTainted();
+    }
+
     if (UseChecked) {
       return Environment[VA].first;
     }
