@@ -1,0 +1,27 @@
+struct foo {
+  int * * items ;
+  int cnt;
+};
+int *bar(void);
+int *foo(int x, int y);
+void f(int *n, struct foo *p) {
+  int *x = _Assume_bounds_cast<int *>(n, bounds(n, n + 5));
+  int *x1 = _Assume_bounds_cast<int *>(bar());
+  int *x2 = _Assume_bounds_cast<int *>(foo(1, 2));
+  int *y = _Assume_bounds_cast<int *>(n);
+  void *z = _Dynamic_bounds_cast<int * *>(
+      p->items, byte_count(p->cnt * sizeof(int *)));
+}
+struct foo {
+  int * * items ;
+  int cnt;
+};
+int *bar(void);
+int *foo(int x, int y);
+void f(int *n, struct foo *p) {
+  int *x = (int *)n;
+  int *x1 = (int *)bar ();
+  int *x2 = (int *)foo (1,2);
+  int *y = (int *)n;
+  void *z = (int * *)p ->items;
+}
