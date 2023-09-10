@@ -143,7 +143,7 @@ bool ConversionFixItGenerator::tryToFixConversion(const Expr *FullExpr,
       return false;
 
     // Type mismatch is allowed to TLIB annotated functions only, as we eventually convert the address to a full address
-    if ((FDecl && !FDecl->getAsFunction()->isTLIB()) && (((ToTy->isTaintedPointerType()) && (!FromTy->isTaintedPointerType())) ||
+    if ((((ToTy->isTaintedPointerType()) && (!FromTy->isTaintedPointerType())) ||
        ((!ToTy->isTaintedPointerType()) && (FromTy->isTaintedPointerType()))))
     {
       Hints.push_back(FixItHint::CreateInsertion(Begin,
