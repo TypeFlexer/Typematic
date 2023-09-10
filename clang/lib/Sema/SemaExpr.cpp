@@ -9441,7 +9441,6 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType, clan
        // checked pointers is always compatible.
        if (isTaintedPointerKind(lhkind) || isTaintedPointerKind(rhkind))
          return Sema::Compatible;
-
        return S.getLangOpts()._3C ? Sema::Compatible :
                                     Sema::Incompatible;
      }

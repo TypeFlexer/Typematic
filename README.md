@@ -131,7 +131,7 @@ Step 6: Now you are all set to build the target
 Execute any of the following command (based on your requirement) in the build directory 
 ```
 ninja clang //this command will only build the compiler
-ninja check-TypeFlexer // This command will run all the sanity test cases for TypeFlexer project 
+ninja checkcbox-headers // This command will run all the sanity test cases for TypeFlexer project 
 ```
 
 Step 5 (Optional) Sanitizers --> 
@@ -144,6 +144,15 @@ export ASAN_SYMBOLIZER_PATH=<pathToLLVMSymbolizer> // For meaningful ASAN backtr
 ```
 ## Testing Playground for TypeFlexer
 
+```
+cd <WORK_DIR>/Typeflexer-Clang/tests
+```
+
+## Sandbox Libraries
+
+```
+cd <WORK_DIR>/Typeflexer-Clang/sandboxLib
+```
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [contributors-shield]: https://img.shields.io/github/contributors/arunkumarbhattar/TypeFlexer_Compiler
