@@ -7943,7 +7943,8 @@ ExprResult InitializationSequence::Perform(Sema &S,
                                            const InitializedEntity &Entity,
                                            const InitializationKind &Kind,
                                            MultiExprArg Args,
-                                           QualType *ResultType) {
+                                           QualType *ResultType,
+                                           clang::FunctionDecl * FDecl) {
   if (Failed()) {
     Diagnose(S, Entity, Kind, Args);
     return ExprError();
@@ -8565,7 +8566,7 @@ ExprResult InitializationSequence::Perform(Sema &S,
       Sema::AssignConvertType ConvTy =
         S.CheckSingleAssignmentConstraints(LHSType, Result, true,
            Entity.getKind() == InitializedEntity::EK_Parameter_CF_Audited,
-                                           true, LHSInteropType);
+                                           true, LHSInteropType, FDecl);
 
       /*
        * In the case of Tainted Functions itypes
@@ -8638,7 +8639,7 @@ ExprResult InitializationSequence::Perform(Sema &S,
                                      Step->Type, SourceType,
                                      InitialCurInit.get(),
                                      getAssignmentAction(Entity, true),
-                                     &Complained)) {
+                                     &Complained, FDecl)) {
         PrintInitLocationNote(S, Entity);
         return ExprError();
       } else if (Complained)
@@ -9913,7 +9914,8 @@ Sema::PerformCopyInitialization(const InitializedEntity &Entity,
                                 SourceLocation EqualLoc,
                                 ExprResult Init,
                                 bool TopLevelOfInitList,
-                                bool AllowExplicit) {
+                                bool AllowExplicit,
+                                clang::FunctionDecl * FDecl) {
   if (Init.isInvalid())
     return ExprError();
 
@@ -9962,7 +9964,7 @@ Sema::PerformCopyInitialization(const InitializedEntity &Entity,
     CurrentParameterCopyTypes.push_back(Entity.getType());
   }
 
-  ExprResult Result = Seq.Perform(*this, Entity, Kind, InitE);
+  ExprResult Result = Seq.Perform(*this, Entity, Kind, InitE, nullptr, FDecl);
 
   if (ShouldTrackCopy)
     CurrentParameterCopyTypes.pop_back();

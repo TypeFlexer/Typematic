@@ -50,7 +50,7 @@ bool ConversionFixItGenerator::compareTypesSimple(CanQualType From,
 bool ConversionFixItGenerator::tryToFixConversion(const Expr *FullExpr,
                                                   const QualType FromTy,
                                                   const QualType ToTy,
-                                                  Sema &S) {
+                                                  Sema &S, clang::FunctionDecl *FDecl) {
   if (!FullExpr)
     return false;
 
@@ -142,8 +142,9 @@ bool ConversionFixItGenerator::tryToFixConversion(const Expr *FullExpr,
     if (!Expr->isLValue() || Expr->getObjectKind() != OK_Ordinary)
       return false;
 
-    if (((ToTy->isTaintedPointerType()) && (!FromTy->isTaintedPointerType())) ||
-       ((!ToTy->isTaintedPointerType()) && (FromTy->isTaintedPointerType())))
+    // Type mismatch is allowed to TLIB annotated functions only, as we eventually convert the address to a full address
+    if ((FDecl && !FDecl->getAsFunction()->isTLIB()) && (((ToTy->isTaintedPointerType()) && (!FromTy->isTaintedPointerType())) ||
+       ((!ToTy->isTaintedPointerType()) && (FromTy->isTaintedPointerType()))))
     {
       Hints.push_back(FixItHint::CreateInsertion(Begin,
      "Only Tainted Pointers (RHS) can be assigned to Tainted pointers (LHS)"));
