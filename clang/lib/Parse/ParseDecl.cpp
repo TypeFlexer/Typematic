@@ -2484,7 +2484,7 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
   // (if any) and set the bounds expression.  Function declarators are ignored
   // here because return bounds expressions are parsed as part of function
   // declarators already.
-  if (getLangOpts().CheckedC && isa<VarDecl>(ThisDecl)) {
+  if (getLangOpts().CheckedC && ThisDecl && isa<VarDecl>(ThisDecl)) {
     VarDecl *ThisVarDecl = dyn_cast<VarDecl>(ThisDecl);
     BoundsAnnotations Annots;
     // The optional Checked C bounds expression or interop type annotation.
