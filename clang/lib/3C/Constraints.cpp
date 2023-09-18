@@ -276,16 +276,24 @@ doSolve(ConstraintsGraph &CG,
     std::set<Atom *> Neighbors;
     CG.getNeighbors(Curr, Neighbors, DoLeastSolution);
     // update each successor's solution.
+    //do not assign tainted to neighbors that are allocators or other whitelisted neighbors
+
     for (auto *NeighborA : Neighbors) {
       if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
         ConstAtom *NghSol = Env.getAssignment(Neighbor);
+
         // update solution if doing so would change it
         // checked? --- if sol(Neighbor) <> (sol(Neighbor) JOIN Cur)
         //   else   --- if sol(Neighbor) <> (sol(Neighbor) MEET Cur)
         if ((DoLeastSolution && *NghSol < *CurrSol) ||
             (!DoLeastSolution && *CurrSol < *NghSol)) {
           // ---- set sol(k) := (sol(k) JOIN/MEET Q)
-          bool Changed = Env.assign(Neighbor, CurrSol);
+          bool Changed = false;
+          // give preference to the finegrained solution type and reflect it to the tainted type
+          if ((NghSol->getKind() == Atom::A_Arr || NghSol->getKind() == Atom::A_NTArr) && (CurrSol->isTainted()))
+            Changed = Env.assign(Neighbor, NghSol->reflectToTainted());
+          else
+            Changed = Env.assign(Neighbor, CurrSol);
           assert(Changed);
           WorkList.push_back(Neighbor);
         }
@@ -323,10 +331,12 @@ doSolve(ConstraintsGraph &CG,
             if (Csol->isTainted())
             {
               Env.assign(VA, Cbound->reflectToTainted());
+              Conflicts.insert({E, Cbound->reflectToTainted()});
             }
             else
             {
               Env.assign(VA, Csol->reflectToTainted());
+              Conflicts.insert({E, Csol->reflectToTainted()});
             }
           }
           else{
@@ -563,28 +573,14 @@ bool Constraints::graphBasedSolve() {
             }
           }
         }
-        if(ConflictResolve->isTainted())
-        {
-          auto Rsn = ReasonLoc("Inferred conflicting types",
-                               PersistentSourceLoc());
-          Geq *ConflictConstraint = createGeq(ConflictAtom, ConflictResolve, Rsn);
-          ConflictConstraint->addReason(Rsn1);
-          ConflictConstraint->addReason(Rsn2);
-          addConstraint(ConflictConstraint);
-          SolChkCG.addConstraint(ConflictConstraint, *this);
-          Rest.insert(cast<VarAtom>(ConflictAtom));
-        }
-        else
-        {
-          auto Rsn = ReasonLoc("Inferred conflicting types",
-                               PersistentSourceLoc());
-          Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
-          ConflictConstraint->addReason(Rsn1);
-          ConflictConstraint->addReason(Rsn2);
-          addConstraint(ConflictConstraint);
-          SolChkCG.addConstraint(ConflictConstraint, *this);
-          Rest.insert(cast<VarAtom>(ConflictAtom));
-        }
+        auto Rsn = ReasonLoc("Inferred conflicting types",
+                             PersistentSourceLoc());
+        Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
+        ConflictConstraint->addReason(Rsn1);
+        ConflictConstraint->addReason(Rsn2);
+        addConstraint(ConflictConstraint);
+        SolChkCG.addConstraint(ConflictConstraint, *this);
+        Rest.insert(cast<VarAtom>(ConflictAtom));
       }
       Conflicts.clear();
       /* FIXME: Should we propagate the old res? */
@@ -715,7 +711,9 @@ VarAtom *Constraints::createFreshTGEQ(std::string Name, VarAtom::VarKind VK,
   return VA;
 }
 PtrAtom *Constraints::getPtr() const { return PrebuiltPtr; }
-ArrAtom *Constraints::getArr() const { return PrebuiltArr; }
+ArrAtom *Constraints::getArr() const {
+  return PrebuiltArr;
+}
 TaintedArrAtom* Constraints::getTaintedArr() const { return PrebuiltTaintedArr; }
 NTArrAtom *Constraints::getNTArr() const { return PrebuiltNTArr; }
 TNTArrAtom* Constraints::getTaintedNTArr() const { return PrebuiltTNTArr; }
@@ -749,6 +747,7 @@ Geq *Constraints::createGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
       Rsn.Location = PersistentSourceLoc();
   }
   assert("Shouldn't be constraining WILD >= VAR" && Lhs != getWild());
+
   return new Geq(Lhs, Rhs, Rsn, IsCheckedConstraint, Soft);
 }
 
@@ -954,6 +953,10 @@ bool ConstraintsEnv::checkTaintedAssignment(TaintedVarSolTy Sol) {
 }
 
 bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
+    if (!V->isTainted() && C->isTainted())
+    {
+        int a = 10; //wtf
+    }
   auto VI = Environment.find(V);
   if (UseChecked && VI->second.first->isTainted() && !C->isTainted())
   {

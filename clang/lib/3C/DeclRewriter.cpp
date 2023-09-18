@@ -264,7 +264,7 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
               PV && (PV->anyChanges(Info.getConstraints().getVariables()) ||
                      ABRewriter.hasNewBoundsString(PV, D));
       SourceManager &SM = Context.getSourceManager();
-      if (PVChanged && !PV->isPartOfFunctionPrototype()) {
+      if (PVChanged && !PV->isPartOfFunctionPrototype() && canWrite(SM.getFilename(D->getLocation()).str())) {
         // Rewrite a declaration, only if it is not part of function prototype.
         assert(!isa<ParmVarDecl>(D) &&
                "Got a PVConstraint for a ParmVarDecl where "

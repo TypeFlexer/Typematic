@@ -164,8 +164,13 @@ void rewriteSourceRange(Rewriter &R, const CharSourceRange &Range,
   // Attempt to rewrite the source range. First use the source range directly
   // from the parameter.
   bool RewriteSuccess = false;
-  if (canRewrite(R, Range))
+  // Fetch the full path of the file where the Start location is
+  std::string filePath = R.getSourceMgr().getFilename(Range.getBegin()).str();
+  if (canRewrite(R, Range) && canWrite(filePath))
     RewriteSuccess = !replaceTextWorkaround(R, Range, NewText);
+
+  if (!canWrite(filePath))
+    RewriteSuccess = true;
 
   // If initial rewriting attempt failed (either because canRewrite returned
   // false or because ReplaceText failed (returning true), try rewriting again
@@ -494,8 +499,11 @@ public:
           // Get the source manager from the context
           SourceManager &SM = Context->getSourceManager();
 
+          std::string filePath = Writer.getSourceMgr().getFilename(loc).str();
+
+
           // Check if the location belongs to the main file
-          if (SM.getFileID(loc) == SM.getMainFileID()) {
+          if (SM.getFileID(loc) == SM.getMainFileID() && canWrite(filePath)) {
             // Modify the callee name
             std::string newCalleeName = "t_" + funcName;
             Writer.ReplaceText(loc, funcName.length(), newCalleeName);
@@ -515,7 +523,14 @@ public:
                 // For "free", this will be the only argument
                 Expr *arg = CE->getArg(0)->IgnoreImpCasts();
                 auto *DRE = llvm::dyn_cast<DeclRefExpr>(arg);
-                ValueDecl *VD = DRE->getDecl();
+                ValueDecl* VD = nullptr;
+                Decl* D = nullptr;
+                if (DRE == nullptr)
+                {
+                  VD = dyn_cast<ValueDecl>(arg->getReferencedDeclOfCallee());
+                }
+                else
+                  VD = DRE->getDecl();
 
                 auto VarDInfo = Info.getVariable(VD, Context);
                 if (VarDInfo.hasValue()
@@ -525,7 +540,7 @@ public:
                     SourceManager &SM = Context->getSourceManager();
                     std::string FilePath = SM.getFilename(loc).str();
                     // Check if the location belongs to the main file
-                    if (SM.getFileID(loc) == SM.getMainFileID() && canWrite(FilePath)) {
+                    if ((SM.getFileID(loc) == SM.getMainFileID()) && canWrite(FilePath)) {
                         // Modify the callee name
                         std::string newCalleeName = "t_" + funcName;
                         Writer.ReplaceText(loc, funcName.length(), newCalleeName);
@@ -568,8 +583,9 @@ public:
         TypeParamString.pop_back();
 
         // don't rewrite to malloc<void>(...), etc, just do malloc(...)
-        if (!AllInconsistent) {
-          SourceLocation TypeParamLoc = getTypeArgLocation(CE);
+        SourceLocation TypeParamLoc = getTypeArgLocation(CE);
+        std::string FilePath = Writer.getSourceMgr().getFilename(TypeParamLoc).str();
+        if (!AllInconsistent && canWrite(FilePath)) {
           Writer.InsertTextAfter(TypeParamLoc, "<" + TypeParamString + ">");
         }
       }

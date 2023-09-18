@@ -2993,8 +2993,8 @@ void PointerVariableConstraint::constrainIdxTo(Constraints &CS, ConstAtom *C,
     if (VarAtom *VA = dyn_cast<VarAtom>(A)) {
       if (DoLB)
         CS.addConstraint(CS.createGeq(VA, C, Rsn, false, Soft));
-      else
-        CS.addConstraint(CS.createGeq(C, VA, Rsn, false, Soft));
+//      else
+//        CS.addConstraint(CS.createGeq(C, VA, Rsn, false, Soft));
     } else if (ConstAtom *CA = dyn_cast<ConstAtom>(A)) {
       if (DoLB) {
         if (*CA < *C) {

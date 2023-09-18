@@ -48,6 +48,8 @@ bool CheckedRegionAdder::VisitCompoundStmt(CompoundStmt *S) {
 
   auto &PState = Info.getPerfStats();
   S->Profile(Id, *Context, true);
+  std::string FilePath = Writer.getSourceMgr().getFilename(S->getBeginLoc()).str();
+
   switch (Map[Id]) {
   case IS_UNCHECKED:
     if (isParentChecked(DTN) && getFunctionDeclOfBody(Context, S) == nullptr) {

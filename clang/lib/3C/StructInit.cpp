@@ -64,7 +64,9 @@ bool StructVariableInitializer::VisitVarDecl(VarDecl *VD) {
       hasCheckedMembers(VD)) {
     // Create replacement declaration text with an initializer.
     std::string ToReplace = mkStringForDeclWithUnchangedType(VD, I) + " = {}";
-    RewriteThese.insert(
+    std::string FilePath = Context->getSourceManager().getFilename(VD->getBeginLoc()).str();
+    if (canWrite(FilePath))
+      RewriteThese.insert(
         std::make_pair(VD, new MultiDeclMemberReplacement(VD, ToReplace, {})));
   }
   return true;

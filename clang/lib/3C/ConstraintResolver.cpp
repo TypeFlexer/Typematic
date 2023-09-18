@@ -231,7 +231,7 @@ CSetBkeyPair ConstraintResolver::getExprConstraintVars(Expr *E) {
 
     CSetBkeyPair Ret = EmptyCSBKeySet;
     // Implicit cast, e.g., T* from T[] or int (*)(int) from int (int),
-    // but also weird int->int * conversions (and back).
+    // but also weird int->int * conversions Visit(and back).
     if (ImplicitCastExpr *IE = dyn_cast<ImplicitCastExpr>(E)) {
       // ImplicitCastExpr is a compiler generated AST node, so we would not
       // typically want to depend on its source location being unique, but
