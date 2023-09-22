@@ -1037,8 +1037,6 @@ void ConstraintsEnv::mergePtrTypes() {
       if (!OAssign->isExplicit() && CAssign->isTainted()) {
         // OAssign is the checked-c type solution. We would simply reflect that into a tainted solution
         assign(VA, OAssign->reflectToTainted());
-        //furthermore OAssign should be modified to the tainted solution as well
-        OAssign = OAssign->reflectToTainted();
       } else {
         assign(VA, OAssign);
       }

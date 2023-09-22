@@ -264,25 +264,36 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
               PV && (PV->anyChanges(Info.getConstraints().getVariables()) ||
                      ABRewriter.hasNewBoundsString(PV, D));
       SourceManager &SM = Context.getSourceManager();
-      if (PVChanged && !PV->isPartOfFunctionPrototype() && canWrite(SM.getFilename(D->getLocation()).str())) {
-        // Rewrite a declaration, only if it is not part of function prototype.
-        assert(!isa<ParmVarDecl>(D) &&
-               "Got a PVConstraint for a ParmVarDecl where "
-               "isPartOfFunctionPrototype returns false?");
-        MultiDeclMemberDecl *MMD = getAsMultiDeclMember(D);
-        assert(MMD && "Unrecognized declaration type.");
+      if (PVChanged && canWrite(SM.getFilename(D->getLocation()).str())) {
+        if (!PV->isPartOfFunctionPrototype())
+        {
+          // Rewrite a declaration, only if it is not part of function prototype.
+          assert(!isa<ParmVarDecl>(D) &&
+                 "Got a PVConstraint for a ParmVarDecl where "
+                 "isPartOfFunctionPrototype returns false?");
+          MultiDeclMemberDecl *MMD = getAsMultiDeclMember(D);
+          assert(MMD && "Unrecognized declaration type.");
 
-        RewrittenDecl RD = mkStringForPVDecl(MMD, PV, Info);
-        std::string ReplacementText = RD.Type + RD.IType;
-        std::vector<std::string> SDecl;
-        if (!RD.SupplementaryDecl.empty())
-          SDecl.push_back(RD.SupplementaryDecl);
-        RewriteThese.insert(std::make_pair(
-                MMD, new MultiDeclMemberReplacement(MMD, ReplacementText, SDecl)));
-        // Do the declaration rewriting
-        DeclRewriter DeclR(R, Info, Context);
-        DeclR.rewrite(RewriteThese);
-        DeclR.denestTagDecls();
+          RewrittenDecl RD = mkStringForPVDecl(MMD, PV, Info);
+          std::string ReplacementText = RD.Type + RD.IType;
+          std::vector<std::string> SDecl;
+          if (!RD.SupplementaryDecl.empty())
+            SDecl.push_back(RD.SupplementaryDecl);
+          RewriteThese.insert(std::make_pair(
+                  MMD, new MultiDeclMemberReplacement(MMD, ReplacementText, SDecl)));
+          // Do the declaration rewriting
+          DeclRewriter DeclR(R, Info, Context);
+          DeclR.rewrite(RewriteThese);
+          DeclR.denestTagDecls();
+        }
+        else if (!RewriteThese.empty())
+        {
+          // Do the declaration rewriting
+          DeclRewriter DeclR(R, Info, Context);
+          DeclR.rewrite(RewriteThese);
+          DeclR.denestTagDecls();
+          RewriteThese.clear();
+        }
       }
       else if (SV && canWrite(SM.getFilename(D->getLocation()).str())) {
         // Rewrite a struct declaration
