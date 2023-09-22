@@ -74,7 +74,7 @@ struct ConversionFixItGenerator {
   /// If possible, generates and stores a fix for the given conversion.
   bool tryToFixConversion(const Expr *FromExpr,
                           const QualType FromQTy, const QualType ToQTy,
-                          Sema &S);
+                          Sema &S, clang::FunctionDecl *FDecl = NULL);
 
   void clear() {
     Hints.clear();

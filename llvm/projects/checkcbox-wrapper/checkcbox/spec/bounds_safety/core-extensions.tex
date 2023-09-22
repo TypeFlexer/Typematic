@@ -1,0 +1,1584 @@
+% !Tex root = checkedc.tex
+
+\chapter{Extensions to existing C concepts}
+\label{chapter:core-extensions}
+
+This chapter describes extensions to existing C concepts.
+It covers new kinds of pointer types and array types, their meaning,
+and the operations  on them.   It introduces two
+new program scopes: \lstinline+checked+ and \lstinline+unchecked+
+blocks. It covers a generalization of assertions to
+dynamic checks that are never  removed (unless a compiler
+proves them redundant) because bounds safety depends upon them.
+Finally, it describes changes to
+undefined behavior needed for bounds safety.
+
+\section{New keywords}
+Some of the extensions use new keywords.   Introducing new keywords
+for C can cause conflicts with identifier names in existing C programs.
+Fortunately, C provides a backward-compatible way to introduce new
+keywords.  Identifiers that begin with an underscore followed by a
+capital letter are reserved for system use, as are identifiers that
+begin with two underscores \cite[Section 7.1.3]{ISO2011}. The following
+new keywords are introduced:
+\begin{lstlisting}
+_And  _Array_ptr  _Checked  _Dynamic_check  _For_any _Itype_for_any _Nt_array_ptr  _Nt_checked
+_Opaque _Ptr _Reveal _Where  _Unchecked
+\end{lstlisting}
+
+It is desirable to have all-lowercase versions of the
+identifiers for readability and ease of typing. The C
+preprocessor is used to provide these. A standard header
+file \keyword{stdchecked.h} is provided that has macros
+that map the lowercase versions of keywords to the actual keywords.
+Programs that do not have identifiers that conflict with the
+lowercase versions of the keywords can include it.
+Note that to allow header files to be included by programmers in any order,
+the implementations of standard header files need to be modified to
+not use identifiers that conflict with these keywords.
+The all-lowercase versions of the keywords are:
+\begin{lstlisting}
+and  array_ptr  checked  dynamic_check  for_any nt_array_ptr  nt_checked
+opaque ptr reveal where  unchecked
+\end{lstlisting}
+
+The pattern of using an identifier reserved for system use coupled with
+a header file was used before to introduce the boolean type. The keyword
+name is \lstinline+_Bool+.  The standard header file \keyword{stdbool.h}
+has a macro that maps \lstinline+bool+ to \lstinline+_Bool+.
+
+Throughout this document, we use the shorter and easier-to-read
+lowercase versions of the keywords.  It is assumed
+that \keyword{stdchecked.h} is included before examples.
+
+Checked C also has some new keywords such as \lstinline+count+ that are
+recognized only in Checked-C-specific syntactic positions and thus
+cannot conflict with existing C code. These keywords are accepted in
+lowercase only.
+
+\section{New kinds of pointer types}
+Three new checked pointer types are added to C. Each pointer type can be
+used in place of `\code{*}':
+\begin{enumerate}
+\item
+  \ptrT: this points to
+  a value of type \textit{T}. Pointer arithmetic is not allowed on these
+  kinds of pointers. The expectation is that many pointers are not
+  involved in pointer arithmetic and can be given this type. When
+  values of this pointer type are used to read or write memory, they
+  must be non-null. The non-nullness is checked at runtime if necessary.
+  The name \ptr\ is chosen for these kinds of pointers because these
+  are expected to be the most common type of pointer. \ptr\
+  is a short succinct name.
+\item
+  \arrayptrT: this is
+  a pointer to an element of an array of type \var{T} values. A
+  variable of type \arrayptr\ that is used to access memory
+  must have an associated declaration of the valid bounds for the
+  variable. When values of this pointer type are used to read or write
+  memory, they must be non-null and in bounds. The non-nullness and
+  bounds are checked at runtime if necessary. Pointer arithmetic can be
+  done on these pointer types. The resulting pointers do not need to be
+  in bounds.
+\item
+ \ntarrayptrT: this is a variant of \arrayptrT\ for null-terminated
+ arrays.  It is described in Section~\ref{section:nullterm-types}.
+\end{enumerate}
+
+Unchecked C pointer types that use `\code{*}' and are unchecked in their
+ranges continue to exist. Pointer arithmetic is not forbidden on unchecked
+pointer types because it would break existing C code. C compilers will
+have an error or warning mode that flags unexpected uses of `\code{*}'.
+
+The same syntax as C++ template instantiations is used for building
+instances of these types because this syntax is well-known and
+understood.  The new pointer types are added to the syntax for {\it type specifiers}
+\cite[Section 6.7.2]{ISO2011}. The parameters to these type constructors
+must be types, which are described syntactically by {\it type names}
+\cite[Section 6.7.7]{ISO2011}.  If Checked C is extended to C++,
+in the C++ extension these new types will be template types that have special meaning.
+
+Checked pointers provide checking that memory accesses are in bounds.  They
+do not provide checking that memory for objects is being managed
+properly. For example, they can still be used to access memory for objects after
+the objects have been deallocated.
+
+Here are  examples of declarations using pointer types.   These declare variables that
+are all pointers to integers:
+\begin{lstlisting}
+int *p;
+ptr<int> q;
+array_ptr<int> s;
+\end{lstlisting}
+
+The new checked pointer types can have \keyword{const} and \keyword{volatile}
+modifiers, just like unchecked pointer types.   They can be applied to the type
+of the object to which the pointers points or to the pointer itself.  Here are examples
+of pointers to constant integers:
+\begin{lstlisting}
+const int *p;
+ptr<const int> q;
+array_ptr<const int> r;
+\end{lstlisting}
+A pointer to a constant integer cannot be used to modify the value of
+the integer.
+
+Here are examples of constant pointers to modifiable integers:
+\begin{lstlisting}
+int x;
+int *const p = &x;
+const ptr<int> q = &x;
+const array_ptr<int> r = &x;
+\end{lstlisting}
+In this case, the pointers cannot be modified after they are defined, but
+the integer that they point to can be modified.   The checked pointer declarations
+have simpler syntax than the unchecked pointer declaration, where \keyword{const}
+must be placed after the \lstinline+*+.   The checked pointer declarations are all analogous
+to \lstinline+const double y = 5.0;+ declaring a  variable \lstinline+y+ that is \keyword{const}.
+In the declaration of \keyword{y}, \keyword{double} specifies a type.
+The \keyword{const} keyword is placed before it to declare that
+the variable in the declaration is \keyword{const}.  In the examples, \ptrint\ %
+and \arrayptrint\ all specify types too.
+
+The checked pointer types follow the same rules that apply to modifiers for
+unchecked pointer types.  For example, a variable that is a pointer to a
+\keyword{const} value can be assigned a pointer to a non-const value.
+The reverse is not allowed.
+
+Array pointers (\arrayptr) of function types are not allowed. Functions have
+no size associated with them, so bounds checking pointers to them does not
+make sense.  Programmers should use \ptr\ instead:
+\begin{lstlisting}
+typedef array_ptr<int (int x, int y)> callback_fn; // illegal
+typedef ptr<int (int x, int y)> callback_ptr;      // legal
+typedef array_ptr<callback_ptr> callback_arr;      // legal
+\end{lstlisting}
+
+\section{New kinds of array types}
+
+A new checked array type is added to C. Just as there are checked pointer
+types, there are checked array types. They are declared by placing the
+modifier \keyword{checked} before the declaration of the bound of the
+array\footnote{We can just as easily adopt the syntax that the checked
+annotation is postfix and propagates from the inner most array to the
+ outermost array. We have chosen the prefix syntax because the notation
+ can be read easily from left to right ``this is a checked array of
+ 10x10 elements''.}:
+\begin{lstlisting}
+int a checked[10];
+\end{lstlisting}
+
+All array references to checked array types are bounds checked. C has
+the rule that an ``array of \var{T}'' is converted implicitly to a
+``pointer to \var{T}'' in a number of situations. This rule is extended
+to convert a ``checked array of \var{T}'' to an ``\arrayptr\
+to \var{T}''.
+
+In C, array types may be complete or incomplete. A complete array type
+specifies the bound of each dimension of the array using constant
+expressions. An incomplete array type does not specify the bound of the
+first dimension of the array. Examples of complete array types are
+\lstinline+int[10]+ and \lstinline+int[10][10]+. Examples of
+incomplete array types are \lstinline+int[]+ and \lstinline+int[][10]+.
+
+If a checked array type is incomplete, there must be an associated
+declaration of the valid bounds for the first dimension of the array.
+For a complete array type, the bounds declared by the type are used to
+bounds check array references. For example, given a declaration
+\lstinline{int a[10]} and a use \lstinline{a[i]}, the bounds check is
+that \lstinline{i >= 0} and \lstinline{i < 10}.
+
+Array references to multi-dimensional arrays must be uniformly bounds
+checked or not bounds checked. If any dimension is bounds checked, all
+dimensions must be checked. A programmer can simply declare that
+the outer dimension of an array is checked.  The checked property will be
+propagated to the inner dimensions:
+
+\begin{lstlisting}
+int b checked[10][10];
+\end{lstlisting}
+
+In C, multidimensional arrays are arrays of arrays,
+where the nested array types have known dimensions at compile-time. A
+2-dimensional array is an array of array of \var{T}, a 3-dimensional array is
+an array of array of array of \var{T}. The checked property is propagated from the
+outer array to the nested array types.
+
+\subsection{An example}
+
+It is easy to convert a function that operates only on complete array
+types to one where array accesses are bounds checked: just add the
+\keyword{checked} keyword to the declarations of the variables with complete array
+types. Consider a method that adds 2x2 integer arrays \lstinline+a+ and
+\lstinline+b+ so that \lstinline+a+ = \lstinline+a+ + \lstinline+b+:
+
+\begin{lstlisting}
+void add(int a checked[2][2], int b checked[2][2]) {
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      a[i][j] += b[i][j];
+    }
+  }
+}
+\end{lstlisting}
+
+\subsection{Propagation of checked property to nested array types}
+The checked property of an array type is propagated to a nested array type as follows.
+A declaration of a variable has the form \var{T} \var{D},
+where \var{T} is a type and \var{D} is a declarator. The declarator
+can be as simple as an identifier \lstinline+x+:
+\begin{lstlisting}
+int x;
+\end{lstlisting}
+It can be a more complex form that declares an identifier and modifies \var{T}
+to produce a new type for the identifier. An example is \lstinline+x[5]+:
+\begin{lstlisting}
+int x[5];
+\end{lstlisting}
+
+Given a declaration \var{T} \var{D}, if \var{D} is an array
+declarator, it will have the form
+\var{D1}\lstinline|[|\var{constant-expression\textsubscript{opt}}\lstinline|]|
+where \var{D1} is another declarator. The type of the identifier in the
+declaration \var{T D1} will be determined first. The type can be some
+constructed type of the form \var{type-modifier} of \var{T}, where
+\var{type-modifier} is a sequence of array, checked array, or pointer
+type modifiers. If the first element in the \var{type-modifier}
+sequence is an array or pointer, the type of the identifier will be
+\var{type-modifier} ``array of  \var{T}''. If the first element in the
+\var{type-modifier} sequence is a checked array, the type of the
+identifier will be \var{type-modifier} ``checked array of \var{T}.''
+
+For example, in parsing the declaration of \lstinline+b+, \var{D1}
+will be \lstinline+int b checked[10]+. The type of \lstinline+b+ in
+\var{D1} is ``checked array of int''. The type of \lstinline+b+ in
+\lstinline+int b checked[10][10]+ will be ``checked array of
+checked array of int''.
+
+\subsection{Propagation and type definitions}
+
+A \keyword{typedef} declaration defines a name for a type. This name
+can be used to declare multi-dimensional arrays:
+\begin{lstlisting}
+typedef int arr_ty[10];
+arr_ty x[10];
+\end{lstlisting}
+The checked property is propagated only to array declarators that are
+nested directly within other array declarators.   It is not propagated to
+the bodies of type definitions.  It is an error if an array type and a nested
+array type from the use of a type name have different checked properties.
+
+Here are examples of correct and incorrect declarations:
+\begin{lstlisting}
+typedef int t1 checked[10];
+t1 x checked[10];  // correct: checked properties match
+
+typedef int t2[10];
+t2 x checked[10];  // error: mismatched checked properties
+\end{lstlisting}
+
+\section{New types for null-terminated arrays}
+\label{section:nullterm-types}
+
+C programmers are familiar with the concept of
+a null-terminated array.  This is a sequence of elements
+in memory that ends with a null terminator value.  We add a new type
+\ntarrayptrT\
+to represent pointers to these kinds of arrays.  We divide
+these arrays into two parts: a prefix with bounds and
+a sequence of additional elements that ends
+with a null terminator.  The initial elements of the
+sequence can be read, provided that preceding elements
+are not the null terminator.  The bounds can be
+{\em widened} based on the number of elements read.
+
+A programmer may declare bounds for an \ntarrayptr\ variable.  If bounds
+are declared, they are used to check that accesses to memory are in range
+at runtime.
+
+If no bounds are declared, the bounds are inferred.  At variable declarations,
+the declared bounds are for arrays with a prefix of 0 elements.
+At variable uses,
+the bounds are determined using a program analysis that widens
+bounds based on control-flow.
+The bounds are then used to check memory accesses.
+A problem with using an analysis to determine bounds
+is that the bounds are not written down in the program.
+This may lead to unexpected failures if the bounds are narrower
+than expected and it may make it difficult to understand
+failures.
+To avoid these problems, we require that memory accesses
+using inferred bounds be provably in-range at compile time.
+At a minimum, the proof system should support local
+reasoning about widened bounds involving pointer
+variables with constant offsets.
+This is enough to handle simple cases such as:
+\begin{lstlisting}
+nt_array_ptr<char> p = ...
+if (*p == 'a')
+ if (*(p + 1) == 'b')
+   if (*(p + 2) == 'c')
+\end{lstlisting}
+
+The element type \var{T} of an \ntarrayptrT\ must be
+an integral or pointer type.   \ntarrayptrT\ extends \arrayptrT: the
+prefix with bounds is treated the same as if an \arrayptrT\ pointed
+to it. An \ntarrayptrT\ value can be converted to an \arrayptrT\ value
+with the same bounds.
+
+Here is a declaration of a function that takes a null-terminated
+array of characters and counts its length:
+\begin{lstlisting}
+int compute_length(nt_array_ptr<char> s);
+\end{lstlisting}
+
+% We haven't introduced checked scopes yet - need to put this somehwere
+% else.
+%Conversion of \arrayptrT\ values to \ntarrayptrT\ values is
+%not allowed in checked code because it may be possible
+%to overwrite the null terminator value via the \arrayptrT\ value
+% or another \arrayptrT\ value.
+
+Modifiers can be applied to the reference type of
+an \ntarrayptr, in the same way that they can be applied to the
+referent type of an \arrayptr.
+The function \lstinline+compute_length+
+should not modify the contents of a string. Here
+is a version that uses \lstinline+const+ to declare that:
+\begin{lstlisting}
+int compute_length(nt_array_ptr<const char> s);
+\end{lstlisting}
+
+Just as there are new checked array types for \arrayptr s,
+there are new checked null-terminated array types for \ntarrayptr s.
+These are useful for declaring  checked types for string constants.
+Null-terminated array types are declared using the
+\keyword{nt\_checked} keyword before the array dimensions,
+instead of the \keyword{checked} keyword:
+\begin{lstlisting}
+int arr nt_checked[10];
+\end{lstlisting}
+\lstinline+nt_checked+ declares an array whose
+last element is a null terminator.  The size of the
+array includes the null terminator element.
+Here is an example of a declaration of a checked null-terminated
+array type for a string constant:
+\begin{lstlisting}
+char s nt_checked[6] = "hello";
+\end{lstlisting}
+
+An \keyword{nt\_checked} array with size \var{d} converts
+to an \ntarrayptr\ with a count of \var{d - 1} elements.
+This is the number of elements in the prefix array.   This means that
+programs can still read an array element containing a null terminator.
+However, attempting to overwrite the null terminator with a non-null
+value is a runtime error.
+
+\subsection{\ntarrayptr\ usually follows the rules for \arrayptr}
+Because \ntarrayptr\ extends \arrayptr, the discussion and rules for
+\arrayptr\ in the rest of the specification usually apply to \ntarrayptr\
+too.  Most mentions of \arrayptr\ can usually be read as
+``\arrayptr\ or \ntarrayptr.''.  We discuss \ntarrayptr\ only when
+there is a difference between it and \arrayptr.
+
+\section{Operations involving pointer types}
+
+The following operations involving pointer-typed values are allowed:
+
+\begin{itemize}
+\item
+  Indirection: the \code{*} operator can be applied to a value of type
+  \var{T} \code{*}, \ptrT, or \arrayptrT. It produces a value of type \var{T}.
+\item
+  Array reference: the \code{[]} operator can be applied to a
+  value of type \var{T} \code{*} or \arrayptrT. It
+  cannot be applied to a value of type \ptrT.
+  \var{e1}\lstinline|[|\var{e2}\lstinline|]| is equivalent to
+  \lstinline|*(|\var{e1} \lstinline|+| \var{e2}\lstinline|)|.
+\item
+  Assignment: two pointers of the same type can be assigned.
+\item
+  Adding or subtracting a pointer type and an integer. This is allowed
+  for \var{T} \code{*} and \arrayptrT\ types.
+\item
+  Pointers to objects of the same type can be compared for equality or
+  inequality. The pointers do not have to be the same kind of pointer.
+  To support reasoning about program behavior, the result of comparing
+  pointers to different objects must be defined.  Checked pointers can also
+  be compared for equality or inequality with \code{0} and \void\ pointers,
+  just like unchecked pointers.
+\item
+  Pointers to objects of the same type can be compared relationally. Relational comparisons are the
+  \lstinline|<|, \lstinline|<=|, \lstinline|>|, \lstinline|>=| operators. The pointers do not have
+  to be
+  the same kind of pointer. For example, an \uncheckedptrT\ can be compared with an
+  \arrayptrT . To support bounds checking and reasoning about program behavior, the
+  result of comparing pointers to different objects must be defined.
+  Section~\ref{section:changes-to-undefined-behavior} describes this requirement in detail.
+\item
+  Pointers to objects of the same type can be subtracted. The pointers do not have to be
+  the same kind of
+  pointer. The result of subtracting pointers to different objects of
+  the same type must be defined. Section~\ref{section:changes-to-undefined-behavior}
+  describes this requirement in detail.
+\end{itemize}
+
+A value of one pointer type may be converted to a value of another
+pointer type. For casts to or from checked pointer types where
+bounds-safety can be checked at compile-time, a cast operator can be
+used. If bounds safety cannot be checked at compile-time, bounds cast
+operators must be used. There are two kinds of bounds cast operators:
+\lstinline+dynamic_bounds_cast+, which does runtime checks of any
+conditions required to enforce bounds safety and
+\lstinline+assume_bounds_cast+, which does no runtime checking and
+trusts the programmer. The rules for pointer casting and the bounds cast
+operators are described in Section~\ref{section:pointer-casting}.
+
+\subsection{Rules for the address-of operator}
+
+If an address-of operator (\code{&}) is applied to an lvalue expression
+of type \var{T}, the following rules apply:
+
+\begin{itemize}
+\item
+  If the operator occurs in a checked block, the address-of operator
+  produces a value of type \arrayptrT.
+\item
+  Otherwise, the address-of operator produces a value of type \var{T}
+  \code{*}.
+\end{itemize}
+
+\subsection{Rules for conversion of checked array types to pointer types}
+\label{section:array-to-pointer-conversion}
+
+If the type of an expression is ``checked array of
+\var{T}'', the type of the expression is altered to be
+\arrayptrT.  If the type of an expression is ``checked null-terminated
+array of \var{T}'', the type of the expression is altered to
+be \ntarrayptrT.
+
+Following existing C language rules, this alteration does not happen if
+the expression is an operand of an address-of operator, \code{++},
+\code{--}, \code{sizeof}, or the left operand of an assignment
+operator or the `\code{.}' operator. The prohibition against this
+conversion occurring for operands of the address-of operator gives the
+results of the operator a more precise type. For \code{sizeof}, it also results
+in a more precise answer. The prohibitions against it for \code{++}, and
+\code{--} operands and the left operand of an assignment operator keeps array
+variables from being modifiable.
+
+\section{Variable and member initialization}
+
+Variables that have checked pointer types and that may be used to access memory
+must be initialized when they are declared.   This includes variables that have \ptr\ or
+\ntarrayptr\ type and variables that have \arrayptr\ type and declared bounds.
+Variables with \arrayptr\ type that have no declared bounds do not have to be initialized
+because they cannot be used to access memory.   In addition, variables that have members
+or elements with checked pointer types and that may be used to access memory must be
+initialized when they are declared.
+
+Static variables and their members or elements are zero-initialized at program
+start-up time, if no initializer is declared.  Programmers do not need to do anything to
+initialize them.  Zero is a valid value for a checked pointer.
+Automatic variables are indeterminately initialized when they are created.
+Programmers must initialize these variables explicitly using C's initializer syntax
+when they are declared.
+
+Initializing an automatic variable with a checked pointer type is simple: a programmer adds
+\lstinline+= 0+ or \lstinline+x = NULL+ to the variable declarator. C's initializer syntax
+allows compact initializers for structure variables and array variables.
+A list of initialization values is specified using a brace-enclosed list of expressions.
+The initializer list can be partial list that describes
+only some of the initialization value  The remaining data will be initialized to default values
+for types (0 for pointer types). It suffices to have an initializer for the first member
+of a structure or element of an array. The initializer list \lstinline+{ 0 }+ can be used.
+
+Here are examples of variable declarations with initializers:
+\begin{lstlisting}
+ptr<int> p = 0;                   // initializer required.
+array_ptr<int> q : count(5) = 0;  // has bounds; initializer required.
+array_ptr<int> lower, upper;      // no bounds; initializer not required.
+lower = q;
+upper = q + 5;
+
+struct VariableBuffer {
+  array_ptr<int> buf : count(len);
+  int len;
+};
+
+struct Range {
+  array_ptr<int> lower;
+  array_ptr<int> upper;
+};
+
+struct VariableBuffer buf = { 0 };  // initializer for struct required.
+struct Range pair;                  // no bounds on members; initializer not required.
+ptr<int> data checked[10] = { 0 };  // initializer for array required.
+struct VariableBuffer stack checked[10] = { 0 }; // initializer for array required.
+\end{lstlisting}
+
+For heap-allocated data that contains checked pointers that may be used to access memory, the
+data must be zero-initialized by the programmer.  We recommend that programmers use
+\lstinline+calloc+ instead of \lstinline+malloc+ for heap-allocating data containing checked pointers.
+
+\section{Program scopes for checked pointer types}
+
+To improve program reliability and to simplify understanding programs,
+it is desirable to limit code to using only checked pointers. To support
+this, we introduce checked program scopes. The \keyword{checked} keyword
+can be attached to blocks and function definitions. In checked program
+scopes, the declared types of variables are allowed to be or use
+checked pointer types or checked array types; unchecked pointer types
+and unchecked array types are not allowed.  Similarly, for functions,
+return types and parameter types are allowed to be or use checked pointer
+types or checked array types.
+
+On the other hand,  declarations in checked scopes can use unchecked pointer
+types and unchecked array types, provided that the declarations provide a
+bounds-safe interface.   These are described in
+Section~\ref{section:function-bounds-safe-interfaces}.
+Variables and functions used in checked scopes are
+allowed to have or use checked pointer types, checked array types, or
+unchecked pointer types and unchecked array types with bounds declarations.
+
+A new pragma directive \lstinline|CHECKED_SCOPE| is introduced to control whether
+the top-level scope is a checked scope:
+\begin{lstlisting}[escapechar=\|]
+#pragma CHECKED_SCOPE |\textit{on-off-switch}|
+\end{lstlisting}
+
+Where \textit{on-off-switch} is one of \lstinline|ON OFF DEFAULT|
+
+By default, function definitions are not checked. A block inherits the
+checking properties of its parent. This preserves the meaning of
+existing C code.
+
+A checked block is introduced by placing  \keyword{checked} before a
+compound block:
+\begin{lstlisting}
+checked
+{
+    int a = 5;
+    ptr<int> pa = &a;
+
+    int b checked[5][5];
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            // all references are bounds checked
+            b[i][j] = -1;
+        }
+    }
+}
+\end{lstlisting}
+
+It is rarer for a programmer to need to introduce an unchecked scope. It
+is needed usually to allow the use of unchecked pointers within a checked
+block. The \keyword{unchecked} keyword can be used in all the places where the
+checked keyword can be used. This example shows the use of an unchecked
+block:
+
+\begin{lstlisting}
+checked
+{
+    int a = 5;
+    unchecked
+    {
+        int *upa = &a;
+        int b[5][5];
+        for (int i = 0; i < 5; i++) {
+            for (int j = 0; j < 5; j++) {
+                // not bounds checked
+                b[i][j] = -1;
+            }
+        }
+    }
+ ...
+}
+\end{lstlisting}
+
+In a checked function definition, the body of the function is a
+checked  block. A checked function definition is declared by placing the
+\keyword{checked} keyword before the definition. Here are examples of checked and
+unchecked function definitions:
+
+\begin{lstlisting}
+// checked at the function level: no unchecked pointers can appear in
+// argument types, the return type, or the body of the function.
+checked int f(ptr<int> p)
+{
+    int a = 5;
+    ptr<int> pa = &a;
+    ...
+}
+
+// unchecked at the function level: checked and unchecked pointer types
+// can occur in argument types, the return type, or the body of the
+// function.
+unchecked int f(int *p, ptr<int> r)
+{
+    int a = 5;
+    int *pa = &a;
+    ...
+}
+
+// f is unchecked by default
+int f(int *p, ptr<int> r)
+{
+    int a = 5;
+    int *pa = &a;
+    ...
+}
+\end{lstlisting}
+
+When a function call occurs in a checked block, the function being
+called does not have to be declared as checked. The notion of whether a
+scope is checked or not checked is lexical and the function definition
+is a separate lexical scope.
+
+C allows declarations of functions without prototypes\footnote{These are sometimes
+referred to as K\&R-style function declarations because this is the only way
+functions were  declared in the first edition of the C Programming Language book
+by Brian Kernigan and Dennis Ritchie. The second edition incorporated changes from the
+C ANSI Standard and introduced function prototypes.}, where the types
+of the arguments to functions are not specified.  These
+functions are dangerous to use because there can be mismatches
+between argument types and parameter types at function
+calls.  This can corrupt data or the call stack.  In checked scopes,
+the use or declaration of  functions without prototypes is not allowed.
+
+As we add different notions of checking to Checked C, we will use the
+checked and unchecked keywords for all the different notions of
+checking. We may introduce additional keywords to control specific kinds
+of checking.
+
+\section{String literals, compound literals, and initializer expressions}
+
+C programs can declare string literals and compound literals.  Examples
+of string literals are expressions such as \keyword{"hello"} and \keyword{L"hello"}
+(in the latter case, the modifier `L' changes the type of the characters in the string).
+A compound literal is an expression that declares an array literal or an object literal.
+It consists of a parenthesized type name followed by list of initializers in braces.
+A compound literal has static storage if it is at the top level of a file and automatic
+storage if it occurs within a block.  Here are examples of compound literals:
+\begin{lstlisting}
+int *arr = (int []) { 0, 1, 2 };
+struct Point {
+  int x;
+  int y;
+};
+struct Point *zero_coord = &((struct Point) { 0, 0 });
+\end{lstlisting}
+
+A string literal has an array type with an element type that is one of \keyword{char},
+\lstinline+wchar_t+,  \lstinline+char16_t+, or \lstinline+char32_t+.   For Checked C, there is a question
+about whether the array type should be an unchecked or checked array.
+The type of a string literal with an element type \var{T} depends on whether the literal occurs
+in a checked scope or an unchecked scope:
+\begin{itemize}
+\item In a checked scope, the type is ``null-terminated checked array of \var{T}''
+\item In an unchecked scope, the type is ``unchecked array of \var{T}''.
+\end{itemize}
+
+This creates an issue in unchecked scopes when a string literal is used where
+a null-terminated checked pointer type is expected.  It makes sense to allow
+this because string literals have known bounds.  However, a string
+literal would have the type ``unchecked array of \var{T}'', which
+would convert to ``unchecked pointer to \var{T}''.
+There is no conversion from the unchecked pointer type to
+``unchecked null-terminated pointer to \var{T}''.
+To allow this, we alter the rule for implicit conversion of array types to pointer types:
+\begin{itemize}
+\item If the type of a string literal or compound literal expression with type
+``array of \var{T}'' has been altered to be ``\var{T} \keyword{*}'', and the expression
+appears in a context where a checked pointer type is expected, the type of the expression
+is further altered to be ``checked pointer to \var{T}''.  The kind of the checked
+pointer shall match the kind of the expected pointer type. The contexts where this
+is allowed are the right-hand side of an assignment, an argument to a function call, or in
+an initializer.
+\item The string literal or compound literal may be possibly parenthesized.
+\item The type ``checked pointer to \var{T}'' must be a valid type.  Null-terminated array pointers
+to non-scalar and non-integer types are not allowed.
+\end{itemize}
+This rule is not strictly necessary for compound array literals.  The type name in the
+compound array literal could be modified, of course.  We allow this rule anyway to reduce
+the amount of code changes required to modify code to be checked.
+
+Note that some C compilers use the same memory to represent different
+occurrences of string literals that have the same characters
+sequence.  The meaning of modifying a string literal is implementation-dependent.
+For bounds safety, an implementation should either
+\begin{itemize}
+\item not do this for string literals whose modified pointer types differ in whether they are null-terminated, or
+\item make string literals read-only.
+\end{itemize}
+
+\subsection{Examples}
+\begin{lstlisting}
+checked void f(void) {
+  // "hello" has type char nt_checked[6]. The type is altered during type
+  // checking to nt_array_ptr<char>.
+  nt_array_ptr<char> p = "hello";
+
+  // "goodbye" has type char nt_checked[8]. The type is altered during
+  // type checking to the pointer type array_ptr.
+  array_ptr<char> r = "goodbye";
+
+  // Use compound array literals instead.
+  p = (char nt_checked[6]) { 'h', 'e', 'l', 'l', 'o', '\0' };
+  r = (char checked[8]) { 'g', 'o', 'o', 'd', 'b', 'y', 'e', '\0' };
+}
+
+checked char lookup(int i) {
+  // "abcdef" has type char nt_checked[7]. The type is altered during type
+  // checking to nt_array_ptr<char>. The subscript operation will be
+  // bounds checked.
+  return "abcdef"[i];
+}
+
+unchecked char unsafe_lookup(int i) {
+  // "abcdef" has type char[7]. The type is altered during type checking
+  // to char *. The subscript operation will not be bounds checked.
+  return "abcdef"[i];
+}
+
+// find pattern in str
+extern int find(nt_array_ptr<char> pattern, nt_array_ptr<char> str);
+
+int g(void) {
+  // "brown" has type char[6]. The type is altered during type checking
+  // to the type char *. It is then further altered to have the type
+  // nt_array_ptr<char>, matching the argument type for pattern.
+  // A similar alteration happens for the second argument string literal.
+
+  int r = find("brown", "the brown fox jumped over the fence");
+  return r;
+}
+
+// Declare a string with a count.
+struct string_with_count {
+  nt_array_ptr<char> buf;
+  int len;
+};
+
+ptr<struct string_with_count> S =
+   &((struct string_with_count) { "hello world", 11 });
+\end{lstlisting}
+
+\subsection{Initializers}
+C allows declared variables to be initialized using initializers.  An initializer
+is either an expression or a brace-enclosed list of initialization values.
+The brace-enclosed list may be a partial list and specify values only for
+part of an object or array.  In that case, the remaining part of the
+array or object is initialized with default values (0 for integers or
+pointers).
+
+For Checked C, no modifications are needed to initializers.
+the value of the initializer is interpreted based on the type of the
+declared variable and its members.  A checked array or pointer is initialized
+the same way that an unchecked array or pointer is initialized.  For
+null-terminated checked arrays, we require that the last element in the
+array be initialized to a null terminator.\footnote{There does not need to
+be a full list of initialization values. An initializer with a partial list of
+initialization values will still meet this requirement.   The default for integers
+and pointers is 0,  which is the null terminator for those values.}
+
+A variety of interesting and complex initialized checked data structures can be
+declared:
+\begin{lstlisting}
+// Initialize a checked pointer to the null pointer.
+ptr<int> p = 0;
+
+// Initialize a checked array.
+int arr1 checked[5] = { 0, 1, 2, 3, 4 };
+int arr2 checked[3] = { 0, 1, 2 };
+
+// Initialize pointers to checked arrays
+array_ptr<int> ap1 = arr1;
+array_ptr<int> ap2 = (int checked[4]) { 0, 0, 0, 0 };
+
+// Initialize a multi-dimensional checked array
+float unit_transform checked[2][2] = { { 1.0f, 0.0f}, { 0.0f, 1.0f }};
+
+// A ragged 2-dimensional array, where the inner dimension size varies.
+struct inner_array {
+  int len;
+  array_ptr<double> elems; // bounds declaration missing because we
+                           // haven't described them yet.
+};
+
+typedef struct inner_array ragged_2d_arr[];
+
+ragged_2d_arr data =
+  { { 3, (double checked[]) { 1.0, 0.0, 0.0 } },
+    { 1, (double checked[]) { 5.0 } },
+    { 0, 0 },
+    { 2, (double checked[]) { 6.0, 7.0 } }
+  };
+
+struct BufferPair {
+  int len1;
+  array_ptr<int> buf1;
+  int len2;
+  array_ptr<int> buf2;
+};
+
+// Initialize all members.
+struct BufferPair p1 = { 5, arr1, 3, arr2 };
+
+// Declare a partial initializer.
+// len2 and buf2 are initialized to 0.
+struct BufferPair p2 =  { 0, arr1 };
+
+// Strings and initialized arrays of characters.
+
+nt_array_ptr<char> red = "red";
+char green checked[] = "green";
+char blue nt_checked[] = "blue";
+char purple nt_checked[7] = "purple";
+
+// Checked arrays of checked strings
+nt_array_ptr<char> colors checked[] = { "red", "green", "blue",
+                                        "purple" };
+
+// Null-terminated arrays of checked strings
+nt_array_ptr<char> more_colors nt_checked[] = { "white", "black",
+                                                "grey", 0 };
+
+// A null-terminated array of pointers to null-terminated arrays
+// of strings.
+nt_array_ptr<nt_array_ptr<char>> sentences nt_checked[4] =
+  {  (nt_array_ptr<char> nt_checked[]) { "this", "is", "the", "first",
+                                         "sentence", 0 },
+     (nt_array_ptr<char> nt_checked[]) { "here", "is", "another", 0 },
+     (nt_array_ptr<char> nt_checked[]) { "this", "is", "the", "last",
+                                         "one", 0 },
+     0
+   };
+\end{lstlisting}
+
+\section{Relative alignment of \arrayptr\ values}
+\label{section:relative-alignment}
+
+\arrayptrT\ pointers provide
+pointer arithmetic on arrays. The bounds for these pointers usually
+describe a range of memory that is exactly the size of some array of \var{T}.
+The pointers point to an element of the array. In other words, the lower
+bound, the upper bound, and pointer are  relatively aligned to the type
+\var{T}. Given a lower bound \var{lb}, an upper bound \var{ub}, and a
+pointer \var{p}, there should exist some integer \var{count} such that
+\var{ub} = \var{lb} + \var{count}. In addition, there is either some
+integer \var{index} such that \var{p} = \var{lb} + \var{index},
+where addition is C pointer arithmetic, or \var{p} is null.
+
+The type to which a pointer and its bounds are relatively aligned is
+called the relative alignment type. By default, the relative alignment
+type for a pointer and its bounds is the referent type. However, the
+relative alignment type can be overridden by specifying it explicitly as
+part of the bounds.  This is described in
+Section~\ref{section:representing-relative-alignment}.
+This can be used for bounds for the results of pointers casts and
+for  \arrayptrvoid\ pointers. The type
+\void\ has no defined size, so the default relative alignment is
+undefined for \void.
+
+We considered removing the entire concept of relative alignment from the
+design to simplify the design.  We decided against that because it would
+increase the cost of bounds checking throughout the program.
+Section~\ref{section:design-alternatives:always-unaligned} explains
+this choice in more detail.
+
+\section{Pointer arithmetic error conditions}
+\label{section:pointer-arithmetic-errors}
+
+For existing unchecked C pointers, the definition of pointer arithmetic is
+described in terms of addresses of elements of an array object. The C
+Standard \cite{ISO2011} states, that given a pointer p that points to some element i of
+an array object, p + j points to the (i+j)th element of that object.
+Pointer arithmetic is defined only for pointers to elements of the array
+object or one past the last element of the array object.
+
+We take an alternative approach to defining the meaning of pointer
+arithmetic and the error conditions for pointer arithmetic. Pointer
+arithmetic is allowed to go out-of-bounds and has a well-defined
+semantics. Section~\ref{section:new-pointer-types-semantics}
+defines the semantics of the new pointer types
+directly in terms of byte addresses, instead of with respect to
+addresses of elements of an array. Pointer arithmetic that overflows or
+involves a null pointer is defined to produce a runtime error.
+
+The new pointer types allow pointer arithmetic that produces
+out-of-bounds values. The C definition leaves pointer arithmetic that
+produces out-of-bounds values undefined because it is not clear what the
+meaning of should be when the pointers are dereferenced. The new pointer
+types prevent out-of-bounds pointers from being dereferenced, and solve
+this problem another way. In addition, in practice C implementations
+often allow pointer arithmetic to produce out-of-bounds values and C
+programs end up relying on this implementation-specific behavior. There
+is no reason to cause existing code that computes out-of-bounds pointers
+but does not dereference them to break when it is converted to use the
+new pointer types.
+
+When pointer arithmetic overflows or involves a null pointer, the
+resulting value of the expression cannot be used and program execution
+stops. If a system provides for error handling, an error handling
+mechanism may be invoked to redirect program execution to a new point of
+execution that does not use the value of the expression.
+
+Defining pointer arithmetic this way simplifies reasoning about the new
+pointer types. Expected identities such as \code{p + 1 > p} now hold
+because, if \code{p + 1} overflows, the value cannot be
+used. This allows programmers to narrow the bounds for
+\arrayptr\ values by incrementing the lower bound or
+decrementing the upper bound, even in situations where the bounds are at
+the ends of the address space. Later sections describe places where
+allowing an undefined value to be used would complicate reasoning about
+programs.
+
+If a compiler cannot prove that a new pointer type value is non-null
+before a pointer arithmetic operation, it must insert a check.
+Similarly, if a compiler cannot prove that a pointer arithmetic
+expression for a new pointer type cannot overflow, it must insert a
+check. This may slow a typical program down by a slight amount.
+
+\subsection{Semantics of pointer arithmetic for new pointer types}
+\label{section:new-pointer-types-semantics}
+
+This section defines the semantics of pointer arithmetic and explains
+when overflow occurs in pointer arithmetic. It is assumed that memory is
+addressable at the byte level. The order of bits within a byte is not
+specified. The order of bytes within built-in types larger than a byte,
+such as integers and floating-point numbers, is also not specified.
+Pointers shall be treated as addresses of locations of bytes in memory.
+The addresses shall be unsigned integers with a defined range of 0 to
+\code{UINTPTR_MAX}. The maximum value of a signed integer that can be
+added to an address shall be given by \code{INTPTR_MAX} and the
+minimum value of a signed integer that can be added to an address shall
+be given by \code{INTPTR_MIN}.
+
+For the new
+\arrayptrT\ pointer
+types, there are distinct operations for addition and subtraction of
+pointers by signed and unsigned integers. The operations behave
+similarly, but have different overflow conditions for scaling because
+the ranges of signed integers and unsigned integers are different.
+
+\begin{itemize}
+\item
+  First scaling an integer by \sizeof{\var{T}} is
+  defined. To scale an integer \var{i}, \var{i} shall be multiplied by
+  \sizeof{\var{T}}, producing an integer \var{j}. If
+  \var{i} is a signed integer, the scaled result shall be treated as a
+  signed integer. If \var{i} is an unsigned integer, the scaled result
+  shall be treated as an unsigned integer. For a signed integer, the
+  minimum and maximum range for \var{j} shall be \code{INTPTR_MIN} and
+  \code{INTPTR_MAX}. For an unsigned integer, the minimum and maximum
+  range for \var{j} shall be 0 and \code{UINTPTR_MAX}. If \var{j} is
+  outside its valid range, the operation doing the scaling operation
+  shall produce a runtime error.
+\item
+  \var{p} \code{+} \var{i}, where \var{p} is an
+  \arrayptrT\ pointer
+  and \var{i} is an integer. The integer \var{i} shall be scaled by
+  \sizeof{\var{T}}, producing an integer \var{j}. The
+  pointer \var{p} will be interpreted as an unsigned integer. The mathematical
+  value \var{p} + \var{j} shall be the result of the operation. If
+  \var{p} + \var{j} is out of range for a pointer, the operation shall
+  produce a runtime error.
+\item
+  \var{i} \code{+} \var{p}, where \var{p} is an
+  \arrayptrT\ pointer
+  and \var{i} is an integer, shall be defined as \var{p} \code{+}
+  \var{i}.
+\item
+  \var{p} \code{-} \var{i}, where \var{p} is an
+  \arrayptrT\ pointer
+  and \var{i} is an integer. The integer \var{i} shall be scaled by
+  \sizeof{\var{T}}, producing an integer \var{j}. The
+  pointer \var{p} will be interpreted as an unsigned integer. The
+  mathematical value \var{p} - \var{j} shall be the result of the
+  operation. If \var{p -} \var{j} is out of range for a pointer, the
+  operation shall produce a runtime error.
+\item
+  \var{p} \code{-} \var{q}, where \var{p} and \var{q} are
+  \arrayptrT\
+  pointers. The two pointers will be interpreted as unsigned integers
+  and the mathematical value \var{p} - \var{q} shall be computed,
+  producing an integer \var{j}. If \var{j} is out of range for signed
+  integer that can be added to an address, the operation shall produce a
+  runtime error. If \var{j} is a multiple of
+  \sizeof{\var{T}}, the result shall be
+  \var{j}/\sizeof{\var{T}}. If \var{j} is not a
+  multiple of \sizeof{\var{T}}, then the value shall
+  be determined as follows:
+
+  \begin{itemize}
+  \item
+    If \var{j} is non-negative,
+    \var{j}/\sizeof{\var{T}} shall round toward 0.
+  \item
+    If \var{j} is negative, it shall be implementation-defined whether
+    \var{j}/\sizeof{\var{T}} rounds toward 0 or away
+    from 0.
+  \end{itemize}
+\end{itemize}
+
+An important implication of these definitions is that they put a maximum
+limit on the number of elements in an array of type \var{T}. It is
+\code{UINTPTR_MAX/}\sizeof{\var{T}}. They also put
+maximum limits on the number of elements that can be accessed in an
+array by a signed integer or an unsigned integer. That leads to limits
+on the size of arrays that can be described by some bounds. A signed
+integer that must be non-negative can describe an array of
+\code{INTPTR_MAX/}\sizeof{var{T}} elements.
+
+\subsection{Expressing pointer arithmetic as integer arithmetic}
+\label{section:pointers-as-integers}
+
+During static checking, pointer arithmetic operations will be converted
+to use integer arithmetic. This is necessary in C because at times
+programmers do explicit size computations that follow the same rules as
+pointer arithmetic.
+
+To support this expansion, integer arithmetic operators are extended
+with the operators \plusovf, \minusovf, and \mulovf. The
+operators interpret pointers as unsigned integers in some range 0 to
+\code{UINTPTR_MAX}. An operator produces a runtime error if the value
+of its result cannot be represented by the result type:
+
+\begin{itemize}
+\item
+  \plusovf\ takes an unsigned integer \var{i} and an
+  integer \var{j} and produces an unsigned integer in the range 0 to
+  \code{UINTPTR_MAX}. Its result is the mathematical value \var{i} + \var{j}.
+\item
+  For subtraction, there are two forms:
+
+  \begin{itemize}
+  \item
+    \minusovf\ takes an unsigned integer \var{i} and an
+    integer \var{j} as an argument and computes \var{i} - \var{j}, producing an unsigned
+    integer in the range 0 to \code{UINTPTR_MAX}. Its result is the
+    mathematical value \var{i} - \var{j}.
+  \item
+    \lstinline|-|\textsubscript{ovf\_diff } takes two unsigned integers \var{i}
+    and \var{j} and computes \var{i} - \var{j}, producing a signed integer of type
+    \code{ptrdiff_t}. Its result is the mathematical value \var{i} - \var{j}.
+  \end{itemize}
+\item
+  \mulovf\ takes two integers \var{i} and \var{j} (both either
+  signed or unsigned) as arguments. It produces an integer whose type is
+  the same as the input argument types. Its result is the mathematical
+  value \var{i} * \var{j}.
+\end{itemize}
+
+Given an expression \code{e1} with a pointer type and an expression
+\code{e2} with an integer type, the expansion of \code{e1 + e2} from
+pointer arithmetic to integer arithmetic depends on the type of
+\code{e2}. The number of bytes to added must be the same kind of
+signed or unsigned integer as \code{e2}.
+
+\begin{itemize}
+\item
+  If \code{e2} is an unsigned integer, \code{e1 + e2} expands to
+  \code{e1} \plusovf\ \sizeof{\var{T}} \mulovf\ \code{e2}.
+\item
+  If \code{e2} is a signed integer, the expansion of \code{e1 + e2}
+  must cast \sizeof{\var{T}} to a signed integer. We introduce a
+  signed integer type \code{signed_size_t} that is large enough for
+  this cast. \code{e1 + e2} expands to \code{e1} \plusovf\
+  \code{((signed_size_t)} \sizeof{\var{T}}\code{)} \mulovf\ \code{e2}. This cast is
+  necessary because in C, multiplying a signed integer by an unsigned
+  integer implicitly converts the signed integer to be an unsigned
+  integer.
+\end{itemize}
+
+\subsection{Runtime performance implications}
+
+There will be concerns about the effect of overflow checks on the speed
+of pointer arithmetic using the new pointer types. These concerns are an
+empirical question to be settled after implementing and using the new
+pointer types. It is unclear what the actual cost will be. First, there
+will be sometimes additional conditions on expressions used in
+pointer arithmetic that prevent overflow from occurring. Second,
+compiler optimizations often can remove the checks. Third, programmers
+can use lightweight invariants to show statically that checks are not
+necessary.
+
+In our experience working on an operating system written in managed code
+that required these checks, the slowdown was a few percent, even when
+\emph{all} arithmetic instructions were checked for overflow too. The
+cost of checks was low because it is often the case that checks are
+redundant or can be combined into adjacent machine instructions. For
+example, in the code \lstinline|t = *p; p += 1;| the first dereference of
+\lstinline+p+ implies that \lstinline+p+ is non-null before the increment.
+Otherwise, in a typical C environment, the program would fault at
+\lstinline+*p+. In the code \lstinline|if (p < hi) { p += 1; }|
+the check \lstinline+p < hi+ implies that the increment cannot
+overflow. The checks are also inexpensive on superscalar processors:
+they can be placed so that they are statically predicted by
+processors to never fail.
+
+\section{Programmer-inserted dynamic checks}
+\label{section:programmer-dynamic-checks}
+
+A bounds check generates a runtime error if it fails. The ability to
+generate a runtime error is not limited to the C implementation. A
+programmer can check a Boolean condition and generate a runtime error
+using the expression \code{dynamic_check(}\var{e1}\code{)}, where
+\var{e1} is an integral valued expression. At runtime, \var{e1} is
+evaluated. If the result is \code{0} (false), a runtime error occurs.
+If the result is non-zero (true), no runtime error occurs. Just as with
+a bounds check, if a runtime error occurs and a C implementation
+provides an error-handling facility, the error-handling facility may be
+invoked.  \var{e1} must be a non-modifying expression that does not modify
+program state (see Section~\ref{section:non-modifying-expressions}).
+
+The \code{dynamic_check} expression is similar to an assertion, but
+unlike an assertion, it is expected to be used in production or release
+versions of software. The \code{dynamic_check} expression is useful
+for these reasons:
+
+\begin{itemize}
+\item
+  It provides an escape hatch for limits of static checking. If a
+  programmer knows a condition is true at runtime, yet the static
+  checking cannot prove the fact, the programmer can use
+  \code{dynamic_check} to show that the condition is true.
+\item
+  It maintains programmer control: programmers can use unchecked pointers
+  and \code{dynamic_check} to write the same code that the compiler
+  would generate for checked pointers.
+\item
+  It gives programmers more control over bounds checks. A programmer can
+  place a pre-condition before a loop that ensures that the loop is free
+  from dynamic bounds checks, without having to restructure the
+  control-flow of the program.
+\end{itemize}
+
+The expression being checked must be non-modifying because
+\code{dynamic_check} checks if an invariant holds.  An invariant
+should not modify program state.
+
+The following example illustrates why having an escape hatch from static
+checking is useful. Suppose a decoder from a compressed representation
+to an uncompressed representation is being converted to use checked
+pointers. This example is based on code patterns seen in the Abstract
+Syntax Notation (ASN1) parsing code of OpenSSL \cite{OpenSSL2015}.
+
+\begin{lstlisting}
+void decode(char *output_buffer, char *input_buffer, size_t input_len)
+{
+  char *src = input_buffer;
+  char *src_bound = src + input_len;
+  char *dst = out_buffer;
+
+  while (src < src_bound) {
+    switch (*current++) {
+      case UNCOMPRESSED_BYTES: {
+        // just copy bytes; compression wasn't useful here.
+        size_t len = src[0] + src[1]*256;
+        src += 2;
+        memcpy(dst, src, len);
+        src += len;
+        dst += len;
+        break;
+      }
+      case COMPRESSED_INT64: {
+         ...
+         break;
+      }
+    ...
+  }
+}
+\end{lstlisting}
+
+The caller knows that the destination buffer will be large enough and
+that the contents of the source buffer are well-formed. However, these
+invariants cannot be expressed using lightweight invariants. These are
+complicated high-level invariants that require the use of techniques for
+proving functional correctness.
+
+To use checked pointers, the size of the destination buffer must be passed
+in and there must be a check before the memcpy that the destination
+buffer and source buffer have enough room. We ignore the details of how
+the bounds are described for now.    The new code for checked pointers is italicized
+and highlighted in yellow:
+\begin{lstlisting}[escapechar=\|]
+void decode(array_ptr<char> output_buffer, array_ptr<char> input_buffer,
+            size_t input_len|\hl{\textit{, size\_t output\_len}}|)
+{
+  array_ptr<char> src = input_buffer;
+  array_ptr<char> src_bound = src + input_len;
+  array_ptr<char> dst = out_buffer;
+  |\hl{\textit{array\_ptr<char> dst\_bound = out\_buffer + output\_len;}}|
+
+  while (src < src_bound) {
+    switch (*current++) {
+      case UNCOMPRESSED_BYTES: {
+        size_t len = src[0] + src[1]*256;
+        src += 2;
+        |\hl{\textit{// need check that dst and src have at least len bytes of space}}|
+        memcpy(dst, src, len);
+        src += len;
+        dst += len;
+        break;
+      }
+      case COMPRESSED_INT64: {
+        ...
+        break;
+      }
+    ...
+  }
+}
+\end{lstlisting}
+
+How should that check be written? One approach is to change the
+control-flow by inserting if-statements into the program. Something must
+be done if the check fails, though. One possibility is to just ignore a
+failure. This is a bad programming practice because now the program might
+fail silently:
+
+\begin{lstlisting}[escapechar=\@]
+void decode(array_ptr<char> output_buffer, array_ptr<char> input_buffer,
+            size_t input_len, size_t output_len)
+{
+  ...
+      case UNCOMPRESSED_BYTES: {
+         size_t len = src[0] + src[1]*256;
+         src += 2;
+         @\hl{\textit{// check that dst and src have at least len bytes of}}@
+         @\hl{\textit{// space}}@
+         @\hl{\textit{if (dst + len >= dst\_bound || src + len >= src\_bound) \{}}@
+         @\hl{\textit{\ \ goto failure;}}@
+         @\hl{\textit{\}}}@
+         memcpy(dst, src, len);
+         src += len;
+         dst += len;
+         break;
+      }
+   ...
+   @\hl{\textit{failure:}}@
+   @\hl{\textit{\ \ return;}}@
+}
+\end{lstlisting}
+
+This could be fixed by having \lstinline+decode+ return a status code
+indicating success or failure. That just pushes the problem upward to
+the caller and leaves a testing problem. The program should never fail,
+so there is no way to test the path.
+
+\begin{lstlisting}[escapechar=\|]
+|\hl{\textit{int}}| decode(array_ptr<char> output_buffer, array_ptr<char> input_buffer,
+            size_t input_len|\textit{, size\_t output\_len}|)
+{
+   ...
+   |\hl{\textit{failure:}}|
+   |\hl{\textit{\ \ return 1;}}|
+}
+\end{lstlisting}
+
+The problems with requiring functions that validate buffer lengths to
+return status codes for errors are analyzed by O'Donell and Sebor\cite{ODonell2015}.
+Annex K of the C Standard \cite{ISO2011} introduced a new set of standard library functions to replace
+functions that provide no way to validate their arguments. These
+functions return status codes to indicate success or failure. A classic
+example of a function prone to misuse is
+\lstinline+strcpy(char *dst, const char *src)+.
+It copies all bytes in \lstinline+src+ to \lstinline+dst+ until
+it hits a null byte. If \lstinline+src+ is missing the null byte or
+\lstinline+dst+ is too small, this causes a buffer overrun. The new
+function \lstinline+strcpy_s+ takes an additional size parameter for
+\lstinline+dst+ and has the signature
+\lstinline+errno_t strcpy_s(char *dst, size_t dest_len, const char *src)+.
+O'Donell and Sebor explain how
+using these functions is awkward, leading to more complicated and less
+efficient code.
+
+In contrast, \lstinline+dynamic_check+ allows the checking to be localized
+and not propagate upward in the call chain. If the programmer is
+correct, the check never fails. If the programmer is incorrect, the
+check might fail and invoke error-handling code:
+
+\begin{lstlisting}[escapechar=\|]
+void decode(array_ptr<char> output_buffer, array_ptr<char> input_buffer,
+            size_t input_len|\textit{, size\_t output\_len}|)
+{
+  ...
+      case UNCOMPRESSED_BYTES: {
+        size_t len = src[0] + src[1]*256;
+        src += 2;
+        |\hl{\textit{dynamic\_check(dst + len < dst\_bound \&\& src + len < src\_bound);}}|
+        memcpy(dst, src, len);
+        src += len;
+        dst += len;
+        break;
+      }
+   ...
+}
+\end{lstlisting}
+
+One can argue that it is a problem to have a dynamic point of failure
+that leads to error-handling code being invoked. This is the same way
+systems treat null pointer dereferences, though, which are a possibility
+throughout C code. The alternative of having a program with undefined
+behavior is worse.
+
+The following example uses \lstinline+dynamic_check+ to eliminate bounds
+checks in a loop. It is based on experience hand-optimizing C\# and Java
+programs. This kind of example is typically found during a performance
+tuning phase of program development. In the example,
+the \lstinline|: count(|\var{exp}\lstinline|)| notation indicates that \var{exp} is the
+length of the buffer.
+
+\begin{lstlisting}
+void append(array_ptr<char> dst : count(dst_count),
+            array_ptr<char> src : count(src_count),
+            size_t dst_count, size_t src_count)
+{
+    for (size_t i = 0; i < src_count; i++) {
+        if (src[i] == marker) {
+           break;
+        }
+        dst[i] = src[i];
+    }
+}
+\end{lstlisting}
+
+The italicized expressions are bounds checked:
+\begin{lstlisting}[escapechar=\|]
+void append(array_ptr<char> dst : count(dest_count),
+            array_ptr<char> src : count(src_count),
+            size_t dst_count, size_t src_count)
+{
+  for (size_t i = 0; i < src_count; i++) {
+    if (|\hl{\textit{src[i]}}| == marker) {
+      break;
+    }
+    |\hl{\textit{dst[i]}} = \hl{\textit{src[i]}}|;
+  }
+}
+\end{lstlisting}
+
+It is clear that the accesses to \lstinline+src+ are in-bounds based on
+just information from the for-loop, so a compiler will eliminate those
+bounds checks. It is not clear that assignments through \lstinline+dst+ are
+always in bounds, so the check there must remain. It can be eliminated
+by adding a \lstinline+dynamic_check+:
+
+\begin{lstlisting}[escapechar=\|]
+void append(array_ptr<char> dst : count(dest_count),
+            array_ptr<char> src : count(src_count),
+            size_t dst_count, size_t src_count)
+{
+  |\hl{\textit{dynamic\_check(src\_count <= dst\_count);}}|
+  for (size_t i = 0; i < src_count; i++) {
+    if (src[i] == marker) {
+      break;
+    }
+    dst[i] = src[i];
+  }
+}
+\end{lstlisting}
+
+The compiler now knows that \lstinline+i < src_count <= dst_count+,
+so it can eliminate the check.
+
+A compiler would not introduce this dynamic\_check because it would
+alter the behavior of \lstinline+append+. The bounds check on \lstinline+dst+
+in the original code is done only if a marker is not found in
+\lstinline+src+ and \lstinline+src_count > 0+. A compiler could
+try to deduce a precondition for the loop
+that prevents the bounds check from failing, but this is
+not possible because the precondition depends on the contents of
+\lstinline+src+. A compiler would have to clone code to maintain the same
+behavior. This increases code size, so production compilers do not do this
+sort of transformation or do it sparingly. Programmer control produces
+better results.   Here is the code a compiler might generate with cloning.
+
+\begin{lstlisting}[escapechar=\|]
+void append(array_ptr<char> dst : count(dest_count),
+            array_ptr<char> src : count(src_count),
+            size_t dst_count, size_t src_count)
+{
+  if (src_count <= dst_count) {
+    for (size_t i = 0; i < src_count; i++) {
+      if (src[i] == marker) {
+        break;
+      }
+      dst[i] = src[i];  // no bounds check needed
+    }
+  } else {
+    for (size_t i = 0; i < src_count; i++) {
+      if (src[i] == marker) {
+        break;
+      }
+      |\hl{\textit{dst[i]}}| = src[i];  // bounds check needed
+    }
+  }
+}
+\end{lstlisting}
+
+\section{Changes to undefined behavior}
+\label{section:changes-to-undefined-behavior}
+
+C has situations where an expression has undefined behavior or the
+meaning of an expression is undefined:
+
+\begin{itemize}
+\item
+  Pointer arithmetic for unchecked pointer types only has defined behavior when
+  the resulting pointer points to the same object as the original pointer, or one
+  element past the object.
+\item
+  Pointer comparison for unchecked pointer types only has defined behavior when comparing
+  pointers to the same object (where one or both pointers may point one
+  element past the same object).
+\item
+  Pointer subtraction for unchecked pointer types only has defined behavior when subtracting
+  pointers to the same object (where one or both pointers may point one
+  element past the object).
+\item
+  Arithmetic expression behavior is undefined on signed integer overflow
+  and integer division by 0.
+\item
+  Expressions may have nested assignments within them. The evaluation
+  order of side-effects in subexpressions is defined only in specific
+  circumstances; otherwise it is undefined. This leads to expressions
+  with undefined meaning. There can be multiple assignments to the same
+  variable that have no defined evaluation order with respect to each
+  other or an assignment and a use of a variable that have no defined
+  evaluation order.
+\item
+  Initializers may have nested assignments within them. These can have
+  undefined meanings as well for the same reasons as expressions.
+\end{itemize}
+
+Undefined behavior is different from unspecified behavior, where one of
+a number of choices may be made. Unspecified behavior in C includes:
+
+\begin{itemize}
+\item
+  The order of evaluation of side-effects in expressions (so long as the
+  expression does not have undefined behavior).
+\item
+  The order of evaluation of side-effects in initializers.
+\end{itemize}
+
+C also has implementation-defined behavior, which includes:
+
+\begin{itemize}
+\item
+  The ranges of values for integer, floating-point, and pointer types.
+\item
+  Data layout, including the sizes of types, padding, and alignment of
+  data.
+\item
+  Some aspects of pointer conversion.
+\end{itemize}
+
+It is difficult to reason about the correctness of programs that have
+expressions with undefined behavior. One has to make sure that a program
+never arrives at a point where behavior is undefined. In practice, this
+would mean proving that signed integer overflow can never occur, for
+example. For unspecified behavior, one has to reason about all possible
+behaviors, such as all possible orders of evaluation. For
+implementation-defined behavior, one has to reason about the
+implementation-specific behavior or have reasoning that is independent
+of the details.
+
+A careful reading of the rules for unchecked pointer comparison implies
+that it is impossible to detect an out-of-bounds unchecked pointer in C,
+for example. If an unchecked pointer \var{p} is not in the valid range for an
+object, the pointer comparison is undefined.
+
+To provide for pointer bounds safety, we require that C implementations
+provide defined behaviors for unchecked pointer arithmetic operations and
+signed integer overflow:
+
+\begin{itemize}
+\item
+  Unchecked pointers shall be treated as addresses of locations in memory,
+  just as checked pointers are treated as addresses. The addresses shall
+  be unsigned integers with a defined range of 0 to
+  \code{UINTPTR_MAX}:
+
+  \begin{itemize}
+  \item
+    Comparison of pointers for all different kinds of pointers shall be
+    defined as the corresponding integer comparison.
+  \item
+    Subtraction \var{p} \code{-} \var{r} of two pointers \var{p} and \var{r}
+    of type \var{T} where one
+    pointer is a checked pointer and the other is an unchecked pointer shall
+    be done following the rules for subtraction of checked pointers,
+    treating the unchecked pointer as a checked pointer in those rules.
+  \end{itemize}
+\end{itemize}
+
+\begin{itemize}
+\item
+  To be able to maintain pointer bounds safety, it is important that
+  signed integer overflow produce a defined value. When a signed integer
+  expression produces an out-of-range value, either (1) the operation
+  must convert that value to an in-range integer value or (2) the
+  expression shall produce a runtime error. The conversion must be a
+  function of only the input values of the expression.
+\item
+  Integer division by 0 shall also produce a runtime error or produce a
+  defined value.
+\end{itemize}
+
+In the case of a runtime error, program execution cannot continue in a
+way that uses the value of the expression that produced the error.
+
+For programs with expressions and initializers with undefined meanings,
+those programs must be rejected at translation-time.
+Section~\ref{section:avoiding-undefinedness}
+describes this in detail.
+
+Of course, there are other ways in which C expressions may have
+undefined behavior:
+
+\begin{enumerate}
+\item
+  By reading or writing memory through an out-of-bounds pointer.
+\item
+  By storing a value of one type and accessing the value as a different
+  type later, when the value is not valid for the different type. A
+  program might write bit patterns that do not correspond to valid
+  values for a type or write an integer and use it as a pointer later,
+  even though the pointer is not within the range of memory for a valid
+  object.
+\item
+  By accessing memory that has been deallocated.
+\item
+  By using variables or functions with inconsistent declarations across
+  different translation units. This can cause the type of a variable or
+  a function to be different at the definition and the use. This can be
+  addressed with suitable link-time checking.
+\end{enumerate}
+
+The aim is to be able to show partial correctness of programs for the
+first item (avoiding out-of-bounds pointer accesses). A
+partial correctness guarantee has the form ``assuming X holds, then Y is
+true''. Informally, one might say ``assuming that memory allocation and
+type casts are correct and that unchecked code never reads or writes through
+out-of-bounds pointers, then checked code never reads or writes through
+out-of-bounds pointers.'' These assumptions can be turned into formal
+statements about program behavior at runtime. Given those assumptions,
+we might then prove that at runtime checked code never reads or writes
+through out-of-bounds pointers.
+
+\section{Notes on temporal memory safety}
+\label{section:notes-on-temporal-memory-safety}
+
+Checked C does not protect against temporal memory safety violations like
+use-after-free.
+
+The usage of the C standard library function $realloc$ illustrates a subtle
+way which creates a temporal memory safety violation that Checked C will not
+detect. Consider a reallocation of memory like $q = realloc(p, ...)$.
+According to the POSIX manpages, $realloc$ should always be considered to
+free the memory associated with its argument. By that interpretation,
+any dereference of $p$ after the call $realloc(p,...)$ is a temporal safety
+violation.

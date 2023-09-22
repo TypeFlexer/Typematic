@@ -4951,7 +4951,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
         // simple experiment
         llvm::Value *TaintedPtrFromOffset = NULL;
         if (CGM.getCodeGenOpts().wasmsbx) {
-          if ((FD != NULL) && (FD->isTLIB()) && (!isNotTaintedForSure)) {
+          if ((FD != NULL) && (FD->isTLIB()) && (!isNotTaintedForSure) && (V->getType()->isPointerTy())) {
             auto CharUnitsSz = CharUnits::Four();
             // check if -m32 flag is set
             if (CGM.getDataLayout().getPointerSizeInBits() == 32) {

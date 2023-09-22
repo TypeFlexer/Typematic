@@ -6135,8 +6135,9 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc, FunctionDecl *FDecl,
 
       if (FDecl && (FDecl->isTLIB()) && (!FDecl->getParamDecl(i)->getInteropType().isNull()))
         Entity.setInterOpSymbioteType(FDecl->getParamDecl(i)->getType());
+      //We will need to propagate FDecl as it contains function information that would appear critical
       ExprResult ArgE = PerformCopyInitialization(
-           Entity, SourceLocation(), Arg, IsListInitialization, AllowExplicit);
+           Entity, SourceLocation(), Arg, IsListInitialization, AllowExplicit, FDecl);
       if (ArgE.isInvalid())
         return true;
 
@@ -9211,26 +9212,31 @@ static bool IsInvalidCmseNSCallConversion(Sema &S, QualType FromType,
  * Rule 1: Tainted pointers cannot be assigned to Un-Tainted pointers
  * Rule 2: Un-Tainted pointers cannot be assigned to Tainted pointers
  */
-bool isTaintedAssignmentValid(CheckCBox_PointerKind &lhkind, CheckCBox_PointerKind &rhkind)
+
+bool isTaintedPointerKind(CheckCBox_PointerKind &ptrkind)
 {
-  if((lhkind == CheckCBox_PointerKind::t_nt_array
-      || lhkind == CheckCBox_PointerKind::t_array
-      || lhkind == CheckCBox_PointerKind::t_ptr)
-      && (rhkind != CheckCBox_PointerKind::t_nt_array
-          && rhkind != CheckCBox_PointerKind::t_array
-          && rhkind != CheckCBox_PointerKind::t_ptr))
+  if(ptrkind == CheckCBox_PointerKind::t_nt_array
+     || ptrkind == CheckCBox_PointerKind::t_array
+     || ptrkind == CheckCBox_PointerKind::t_ptr)
   {
+    return true;
+  }
+  return false;
+}
+
+bool isTaintedAssignmentValid(CheckCBox_PointerKind &lhkind, CheckCBox_PointerKind &rhkind, clang::FunctionDecl *FDecl)
+{
+    if(isTaintedPointerKind(lhkind) && !isTaintedPointerKind(rhkind))
+    {
       return false;
-  }
-  else if((lhkind == CheckCBox_PointerKind::Ptr
-            || lhkind == CheckCBox_PointerKind::Array
-            || lhkind == CheckCBox_PointerKind::NtArray)
-           && (rhkind == CheckCBox_PointerKind::t_nt_array
-               || rhkind == CheckCBox_PointerKind::t_array
-               || rhkind == CheckCBox_PointerKind::t_ptr))
-  {
-    return false;
-  }
+    }
+    else if (!isTaintedPointerKind(lhkind) && isTaintedPointerKind(rhkind))
+    {
+      if (FDecl->getAsFunction()->isTLIB())
+        return true;
+      else
+        return false;
+    }
 
   return true;
 }
@@ -9240,7 +9246,7 @@ bool isTaintedAssignmentValid(CheckCBox_PointerKind &lhkind, CheckCBox_PointerKi
 // This circumvents the usual type rules specified in 6.2.7p1 & 6.7.5.[1-3].
 // FIXME: add a couple examples in this comment.
 static Sema::AssignConvertType
-checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
+checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType, clang::FunctionDecl *FDecl) {
   assert(LHSType.isCanonical() && "LHS not canonicalized!");
   assert(RHSType.isCanonical() && "RHS not canonicalized!");
 
@@ -9267,7 +9273,7 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
  *
  */
 
-  if (!S.getLangOpts().drymatic && !isTaintedAssignmentValid(lhkind, rhkind)) {
+  if (!S.getLangOpts().drymatic && !isTaintedAssignmentValid(lhkind, rhkind, FDecl)) {
   return Sema::IncompatibleTaintedAssignment;
   }
 
@@ -9398,7 +9404,7 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
 
   // We are done handling pointers to void. Now apply restrictions for
   // checked pointers.
-  // - Disallow conversons from checked pointers to unchecked pointers.  This
+  // - Disallow conversions from checked pointers to unchecked pointers.  This
   //   would allow silent subverison of bounds.
   // - Disallow conversions from another pointer types to Nt_array_ptr.
   //   The source may not be null-terminated.
@@ -9406,7 +9412,8 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
   //   or _Array_ptr
 
   if (!S.getLangOpts()._3C) {
-    if (rhkind != CheckCBox_PointerKind::Unchecked &&
+    if ((rhkind == CheckCBox_PointerKind::Array || rhkind == CheckCBox_PointerKind::NtArray
+    || rhkind == CheckCBox_PointerKind::Ptr) &&
         lhkind == CheckCBox_PointerKind::Unchecked)
       return Sema::Incompatible;
 
@@ -9416,10 +9423,6 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
   }
 
   if (!S.getLangOpts()._3C) {
-    if (rhkind != CheckCBox_PointerKind::Unchecked &&
-        lhkind == CheckCBox_PointerKind::Unchecked)
-      return Sema::Incompatible;
-
     if (lhkind == CheckCBox_PointerKind::t_nt_array &&
         rhkind != CheckCBox_PointerKind::t_nt_array)
       return Sema::Incompatible;
@@ -9435,6 +9438,8 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
          RHSType->isOrContainsCheckedOrTaintedType()) {
        // If ignoring checked pointers are enabled then assignments containing
        // checked pointers is always compatible.
+       if (isTaintedPointerKind(lhkind) || isTaintedPointerKind(rhkind))
+         return Sema::Compatible;
        return S.getLangOpts()._3C ? Sema::Compatible :
                                     Sema::Incompatible;
      }
@@ -9594,7 +9599,7 @@ checkObjCPointerTypesForAssignment(Sema &S, QualType LHSType,
 
 Sema::AssignConvertType
 Sema::CheckAssignmentConstraints(SourceLocation Loc,
-                                 QualType LHSType, QualType RHSType) {
+                                 QualType LHSType, QualType RHSType, clang::FunctionDecl *FDecl) {
   // Fake up an opaque expression.  We don't actually care about what
   // cast operations are required, so if CheckAssignmentConstraints
   // adds casts to this they'll be wasted, but fortunately that doesn't
@@ -9633,7 +9638,7 @@ static bool isVector(QualType QT, QualType ElementType) {
 /// Sets 'Kind' for any result kind except Incompatible.
 Sema::AssignConvertType
 Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
-                                 CastKind &Kind, bool ConvertRHS) {
+                                 CastKind &Kind, bool ConvertRHS, clang::FunctionDecl *FDecl) {
   QualType RHSType = RHS.get()->getType();
   QualType OrigLHSType = LHSType;
 
@@ -9778,7 +9783,7 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
         Kind = CK_NoOp;
       else
         Kind = CK_BitCast;
-      return checkPointerTypesForAssignment(*this, LHSType, RHSType);
+      return checkPointerTypesForAssignment(*this, LHSType, RHSType, FDecl);
     }
 
     // int -> T*
@@ -10083,7 +10088,8 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
                                        bool Diagnose,
                                        bool DiagnoseCFAudited,
                                        bool ConvertRHS,
-                                       QualType LHSInteropType) {
+                                       QualType LHSInteropType,
+                                       clang::FunctionDecl *FDecl) {
   // We need to be able to tell the caller whether we diagnosed a problem, if
   // they ask us to issue diagnostics.
   assert((ConvertRHS || !Diagnose) && "can't indicate whether we diagnosed");
@@ -10198,7 +10204,7 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
  
   CastKind Kind;
   Sema::AssignConvertType result =
-    CheckAssignmentConstraints(LHSType, RHS, Kind, ConvertRHS);
+    CheckAssignmentConstraints(LHSType, RHS, Kind, ConvertRHS, FDecl);
 
   // C99 6.5.16.1p2: The value of the right operand is converted to the
   // type of the assignment expression.
@@ -17185,7 +17191,8 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
                                     SourceLocation Loc,
                                     QualType DstType, QualType SrcType,
                                     Expr *SrcExpr, AssignmentAction Action,
-                                    bool *Complained) {
+                                    bool *Complained,
+                                    clang::FunctionDecl *FDecl) {
   if (Complained)
     *Complained = false;
 
@@ -17397,7 +17404,7 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
     }
 
     DiagKind = diag::err_typecheck_convert_incompatible;
-    ConvHints.tryToFixConversion(SrcExpr, SrcType, DstType, *this);
+    ConvHints.tryToFixConversion(SrcExpr, SrcType, DstType, *this, FDecl);
     MayHaveConvFixit = true;
     isInvalid = true;
     MayHaveFunctionDiff = true;

@@ -1220,7 +1220,8 @@ public:
                      const InitializedEntity &Entity,
                      const InitializationKind &Kind,
                      MultiExprArg Args,
-                     QualType *ResultType = nullptr);
+                     QualType *ResultType = nullptr,
+                     clang::FunctionDecl * FDecl = nullptr);
 
   /// Diagnose an potentially-invalid initialization sequence.
   ///
