@@ -1,0 +1,119 @@
+//#include <stdio.h>
+#include <stdlib.h>
+
+////#include <stdnoreturn.h>
+
+#include <stdio_tainted.h>
+#include <stdlib_tainted.h>
+#include <_builtin_stdio_tainted.h>
+//#pragma CHECKED ON
+//// Function to sort the numbers using poin
+////_Tainted _TPtr<int> tainted_sort (int n, _TArray_ptr<int> ptr);
+
+struct twin_turbo{
+    int turbo_1;
+    int turbo_2;
+    char * engine ;
+    struct twin_turbo another;
+};
+
+struct Foo  {
+	   T *x;
+  };
+
+struct tainted_twin_turbo{
+    int turbo_1;
+    int turbo_2;
+    int a;
+    int b;
+    int c;
+    int d;
+    int * checked_pointer;
+};
+
+int * t48 [3][2] = {0};
+int * *t47 [10][15];
+
+void checked_local_types(void) {
+
+int * t11 = 0;
+}
+
+int sample (int a, ...);
+ int g_tainted_sort(int n, int *ptr, struct twin_turbo tb);
+ int * tainted_sort(int n,  int * ptr, struct twin_turbo * tb){
+
+	print("hello Forbidden Fruit\n");
+	return NULL;
+}
+int a = 10;
+int b = 10;
+
+void client_register() {
+    b = a+201;
+return;
+}
+
+// Driver code
+ int main(void)
+{
+	int n = 6;
+    int *temp = (int *)malloc(10*sizeof(int));
+    // Fill whole array with 0.
+    
+    {
+        //t_memset <int>(temp, 2, 10 * sizeof(int));
+
+    }
+    char buffer[50];
+    char * tainted_buffer = (char *)malloc(50*sizeof(char));
+    int a = 10, b = 20, c;
+    c = a + b;
+    char * tainted_format = (char *)malloc(50*sizeof(char));
+    t_strcpy(tainted_format, "Sum of %d and %d is %d");
+    printf("hey yall %s", tainted_format);
+    __sprintf_chkcbx (tainted_buffer, 10,10,tainted_format, a, b, c);
+    client_register();
+    temp[0]  = 0;
+    temp[1]  = 23;
+    temp[2]  = 14;
+    temp[3]  = 39;
+    temp[4]  = 12;
+    temp[5]  = 9;
+
+    int* host_pointer = (int*)malloc(10*sizeof(int));
+    host_pointer[0] = 0;
+    if(!c_isPointerToTaintedMem((void*)host_pointer))
+    {
+        printf("\nPointer belongs to Host memory and has data %d", host_pointer[0]);
+    }
+
+
+    struct twin_turbo tb2;
+    tb2.turbo_1 = 10;
+    tb2.turbo_2 = 20;
+    // Yeah, this sort of works -->
+    int * r34 = NULL;
+    int *leaked_pointer = (int*) malloc(10*sizeof(int));
+    struct twin_turbo *tb = (struct twin_turbo *)malloc(sizeof(struct twin_turbo));
+    *tb = tb2;
+    tb->engine = (char *)malloc(102* sizeof(char));
+    char * engine_check  = (char *)malloc(102*sizeof(char));
+    char * very = (char*) malloc(20*sizeof(char));
+    strcpy(very, "Guten Tag!, Wie bist du?");
+    
+    {
+        t_strcpy(tb->engine, very);
+    }
+    int * r34 = tainted_sort(n, temp, tb);
+    printf("value is %d ", *r34);
+    /*printf(" %d", r34[0]);
+    printf(" %d", r34[1]);
+    printf(" %d", r34[2]);
+    printf(" %d", r34[3]);
+    printf(" %d", r34[4]);
+    printf(" %d", r34[5]);
+*/
+    return 0;
+}
+

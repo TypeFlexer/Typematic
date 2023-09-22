@@ -1,0 +1,1534 @@
+% !Tex root = checkedc.tex
+
+\newcommand{\dynamicboundscast}{\lstinline|dynamic_bounds_cast|}
+\newcommand{\dynamicboundscastinst}[2]{\lstinline|dynamic_bounds_cast<|#1\lstinline|>|#2}
+\newcommand{\assumeboundscast}{\lstinline|assume_bounds_cast|}
+\newcommand{\assumeboundscastinst}[2]{\lstinline|assume_bounds_cast<|#1\lstinline|>|#2}
+
+\chapter{Interoperation}
+\label{chapter:interoperation}
+
+Code that uses checked pointer types must be able to interoperate with
+code that uses unchecked pointer types.  This chapter describes support
+for this.  Section~\ref{section:pointer-casting} starts with
+conversion operations: how different kinds of pointers can
+be converted to other kinds of pointers.  
+Section~\ref{section:function-bounds-safe-interfaces}
+describes how existing code that uses unchecked pointers can be modified
+to present a safe interface.  The key insight is that
+the interface must be both checked and unchecked, depending on context.
+For existing code that uses unchecked pointers, the interface is descriptive,
+but correctness is not enforced by the language.  For code that uses checked
+pointers, proper usage of the interface is checked and enforced.
+Code that uses a mix of checked and unchecked pointers within assignment
+expressions or function calls is discouraged. If such expressions do exist,
+the compiler will check and enforce the proper usage of the interface in
+those expressions.
+
+\section{Conversions between pointers to objects of different types}
+\label{section:pointer-casting}
+
+Conversions from a pointer to one type to a pointer to a different type
+introduce two issues. First, there is type safety. Given a pointer to S
+that has been converted to be a pointer to T, is it valid to treat the
+memory pointed to by the pointer as being an object of type T instead of
+type S? Second, there is bounds safety. Given the pointer, what range of
+memory can be accessed validly using that pointer? This section focuses on
+bounds safety.
+
+Type safety is not addressed by this technical report. Of course, violating
+type safety can lead to violations of bounds safety. This can happen
+when there is a conversion between a checked pointer to an object of
+structure type that contains a bounds-checked member and a pointer
+to an object of another type. A programmer can use the pointer to the
+other type to modify the bounds-checked member or its bounds in an
+inconsistent fashion. For now, it is the programmer's responsibility to
+update bounds-checked members and their bounds properly when using a
+checked pointer that results from such a conversion. Conversions between
+checked pointers to integral types, floating-point types, or structures that
+contain only integral types or floating-point types cannot lead to
+violations of bounds safety by themselves.
+
+\subsection{Cast operators}
+This section describes casts to pointer types.
+A conversion of a value from one checked pointer type to a value of another checked
+pointer type is valid when the following rules hold:
+\begin{itemize}
+\item If the destination pointer is a \ptrT\ type, the range of 
+memory that can be accessed beginning at the source pointer is
+large enough to hold a value of type \var{T}.
+\item If the destination pointer is an \arrayptrT\ type,
+the bounds for the destination pointer are equal to or within the range of
+the memory accessible through the source pointer.
+\end{itemize}
+
+Casts between checked pointer types should preserve bounds safety
+by default.  The cases where it does not should be the unusual cases.
+For this reason, C cast operations to checked pointer types are
+required to be provably correct with respect to bounds at compile-time.   It
+is straightforward to check casts between checked pointers to constant-sized
+objects.   The rules that are used to check bounds and lightweight
+invariants are used to check casts as well.   For cases where static
+checking cannot prove bounds safety of casts, we add two new operators. 
+Table~\ref{table:cast-operators}
+describes the operators.
+
+\begin{table}
+\begin{tabular}{p{1.5in}p{4in}}
+\toprule
+Operator & Description \\
+\lstinline|(|\var{T} \lstinline|*)|  & The C cast operator.  Additional static checking rules
+ensure pointer casts to checked pointer types are correct with respect to bounds.\\
+\dynamicboundscast\ & Does dynamic checks to ensure bounds
+safety.  It produces a runtime error if the checks fail.\\
+\assumeboundscast\ & Declares new bounds for the value that are trusted without verification.  
+Because it is unchecked, it is not allowed in \keyword{checked} blocks.\\
+\bottomrule
+\end{tabular}
+\caption{Cast operators for pointer types}
+\label{table:cast-operators}
+\end{table}
+
+The syntax of the new operators is similar to the syntax of C++ type
+conversion operators, where the destination pointer type is specified by
+placing a type argument \lstinline|<|\var{T}\lstinline|>| after the operator: \dynamicboundscastinst{\var{T}}{}
+and \assumeboundscastinst{\var{T}}{}.   A relative alignment type or constant can be
+specified using an optional second argument:  
+\dynamicboundscastinst{\var{T}, \var{A}}{} or \assumeboundscastinst{\var{T, \var{A}}}{}.
+Of course, macro-like syntax could be used as well.
+
+For C cast operations from checked pointer types to unchecked pointer types,
+it is not possible to prove that the uses of the resulting unchecked pointers
+are correct at compile-time.   At the same
+time, it is desirable to  catch the programming error of converting an out-of-range
+checked pointer to an unchecked pointer and then trying to use the unchecked
+pointer to access memory.  For this reason, we take the stance that if the
+destination pointer is a \uncheckedptrT\ type, the range of memory that can be accessed
+beginning at the checked pointer should be provably large enough at compile time
+to hold a value of type \var{T}.
+
+C does allow an unchecked pointer to point one element past the end of an array.
+However, it is illegal to dereference that pointer.  This case mainly arises
+from loops that stride through an array and end up creating a pointer one past
+an element of an array.  It would be unusual for a programmer to
+convert a checked pointer to an unchecked pointer and then stride downwards through an array,
+predecrementing the pointer.  Because of that, C cast operations from checked pointer
+types to unchecked pointer types that would create a pointer one element past
+the end of the array pointed to by the checked pointer are rejected at compile time.
+A programmer may use an \assumeboundscast\ operation do this instead.
+
+\subsection{Description of cast operators}
+\label{subsection:cast-operator-description}
+
+This section describes each of the cast operators and the static
+and runtime checking that is done for each operator.   
+
+For C cast operators, the checking is only static.
+Here are the rules for cast operators of the form \cast{\var{D}}{\var{e}},
+where \var{e} has source type \var{S}.  The rules are applied in addition
+to any existing C typing rules that apply to the cast.
+\begin{itemize}
+\item If \var{D} and \var{S} are compatible types or \var{D} and \var{S} are unchecked
+pointer types, checking succeeds.
+\item Otherwise, if \var{D} is not a function pointer type and \var{D} is
+\begin{itemize}
+\item \ptrT: the bounds of \var{e} are computed using the rules
+in Section~\ref{section:checking-complex-expressions}.
+\begin{itemize}
+\item If the bounds are \boundsunknown, checking fails with a compile-time
+error.
+\item Otherwise, if the bounds are \boundsany, checking 
+succeeds.
+\item Otherwise, the bounds must be \bounds{\var{lb}}{\var{ub}} (or convertible
+to that form).  It must be provable statically that \var{e} \code{>=} \var{lb}
+and that {\texttt{(\cast{char *}{\var{ub}} - \cast{char *}{\var{e}}) >= sizeof(\var{T})}}.
+If \sizeof{\var{T}} is not defined because \var{T} is \void, \code{1} is
+used instead.
+\end{itemize}
+\item \arrayptrT: No new rules are needed.   The rules in
+Chapter~\ref{chapter:checking-bounds} already cover this case.
+\item \var{T} \code{*}: If the source type \var{S} is
+\begin{itemize}
+\item \ptrT, the checking succeeds. This handles the case where \var{T}
+is an incomplete type.
+\item Otherwise, the rules for \ptrT\ are followed.
+\end{itemize}
+\end{itemize}
+
+\item Otherwise, if \var{D} is a function pointer type,
+\begin{itemize}
+\item If \var{e} is a null pointer, checking succeeds.
+\item Function names with unchecked function pointer types can be cast to have corresponding checked
+pointer types.  If \var{D} is \ptrT, \var{S} is \uncheckedptrinst{U}, and \var{T} and \var{U} are
+compatible types, and one of the following, then checking succeeds:
+\begin{itemize}
+\item \var{e} is a function name.
+\item \var{e} has the form \code{*}\var{e1}, such that the \code{*} operator does not change the value of \var{e1},
+and checking succeeds for \cast{\var{D}}{\var{e1}} (this requires that \var{e1} has function pointer type).
+\item \var{e} has the form \code{&}\var{e1}, such that the \code{&} operator does not change the value of \var{e1},
+and checking succeeds for \cast{\var{D}}{\var{e1}} (This requires that \var{e1} has function type).
+\item \var{e} is a cast that does not change the value of the cast operand, and checking succeeds for the cast
+operand.
+\end{itemize}
+\item Otherwise, checking fails with a compile-time error.
+\end{itemize}
+\end{itemize}
+
+These rules allow casts that could cause type safety violations even in code
+that uses only checked pointer types.  They allow casts between pointers to unrelated types
+and to and from void pointer types.  We are working on an extension that will provide
+a type-safe replacement for casts between checked void pointers.  When this is complete, we
+will disallow these casts. We also plan to revisit casts between pointers to
+unrelated types.
+
+The \dynamicboundscast\ operator takes a type argument \var{D} and 1 or 2 expressions
+as arguments:
+\begin{itemize}
+\item
+  \dynamicboundscastinst{\var{D}}{(\var{e1})}
+  converts \var{e1} to either a \ptr\ or \code{*} type.  \var{D} is the target \ptr\
+  or \code{*} type.  \var{D} cannot be a function pointer type.
+\item
+  \dynamicboundscastinst{\var{D}}{(\var{e1},
+  \var{bounds-exp})} converts \var{e1} to an \arrayptr\ type with
+  bounds \var{bounds-exp}.  \var{D} is the target \arrayptr\ type.
+\end{itemize}
+
+The bounds of \var{e1} are computed
+using the rules in Section~\ref{section:checking-complex-expressions}.
+If the bounds of \var{e1} are \boundsunknown, it is a compile-time error. 
+If the bounds of \var{e1} are \boundsany, no runtime checks are needed.
+Otherwise the bounds must be \bounds{\var{lb}}{\var{ub}} (or convertible to that form).
+The following runtime checks are done:
+\begin{itemize}
+\item Check whether \var{e1} is \code{0}.  If so, no further runtime checking
+is needed.
+\item Otherwise, if the operator has the form:
+\begin{itemize}
+\item
+  \dynamicboundscastinst{\var{D}}{(\var{e1})}: \var{D} is pointer to some type \var{T}.
+  Check that there is room for at least one element of \var{T} by doing
+  the check for \dynamicboundscastinst{\arrayptrinst{\var{T}}}{(e1, \boundscount{\code{1}})}
+\item
+  \dynamicboundscastinst{\var{D}}{(\var{e1}, \var{bounds-exp})}:
+   Expand \var{bounds-exp} to the standard
+   form \boundsrelval{\var{target-lb}}{\var{target-ub}}{\var{v}}.
+   Check that \var{lb}  \code{<=} \var{target-lb} \code{&&} \var{target-ub} \code{<=} \var{ub}.
+   Also check that \var{e1}, \var{target-lb}, and \var{target-lb} are relatively aligned 
+   with respect to \var{v}.
+\end{itemize}
+\end{itemize}
+The \dynamicboundscast\ operator is not strictly needed.
+Programmers could write checks by hand. It is convenient to have, though,
+because it avoids programmers having to write down the bounds of the source expression.
+
+The operator \assumeboundscastinst{\var{D}}{} declares bounds that are trusted
+without verification:
+\begin{itemize}
+\item
+  \assumeboundscastinst{\var{D}}{(\var{e1})}
+  converts \var{e1} to a \ptr\ or \code{*} type. \var{D} is the target \ptr\ or \code{*} type.
+\item
+  \assumeboundscastinst{\var{D}}{(\var{e1}, \var{bounds-exp})}
+  converts \var{e1} to an \arrayptr\ type with bounds \var{bounds-exp}.  \var{D} is the
+  target \arrayptr\ type.
+\end{itemize}
+For the second form, the relative alignment must be statically
+provable: expand \var{bounds-exp} to the standard form
+\boundsrelval{\var{target-lb}}{\var{target-ub}}{\var{v}} and check
+that \var{e1}, \var{target-lb} and \var{target-ub} are relatively aligned to \var{v}.
+
+If any rule requires knowing the size of an incomplete type,
+the cast operation that uses the rule shall fail to check at compile-time.
+
+A subtle point about the C cast operator and \dynamicboundscast\
+are that they allow {\em bounds-safe casts} of an expression
+\var{e} of unchecked pointer type to an
+\arrayptr\ type. This is provided that the bounds for \var{e}
+can be determined. Only a few kinds of expressions with unchecked pointer
+types have bounds that can be determined: address-of expressions
+involving variables and uses of array variables.
+
+\subsection{Examples}
+\label{section:pointer-cast-examples}
+
+Here are examples of uses of C cast operators to cast unchecked
+pointers to checked pointers.  The static checking rules are straightforward
+to apply.  The examples assume that integers are
+4 bytes in size:
+\begin{lstlisting}
+int x = 0;
+ptr<int> px = (ptr<int>) &x;
+array_ptr<char> pax : count(4) = (array_ptr<char>) px;
+array_ptr<char> odd_pax : count(3) = (array_ptr<char>) px;
+
+char data[12];
+ptr<int> pfirst = (ptr<int>) data; // pointed to 1st element as an integer
+array_ptr<int> pdata : count(3) = (array_ptr<int>) data;
+
+void swizzle(ptr<int> p) {
+   array_ptr<char> bytes : count(4) = (array_ptr<char>) p;
+   char t0 = bytes[0], t1 = bytes[1], t2 = bytes[2]; t3 = bytes[3];
+   bytes[0] = t3, bytes[1] = t2, bytes[2] = t1, bytes[3] = t0;
+}
+\end{lstlisting}
+The \dynamicboundscast\ operator is used typically when converting
+code to Checked C.  The existing code may make assumptions
+about buffers being large enough that are potentially wrong.
+It would be better to check for errors directly, but the code may not
+be structured to handle errors:
+\begin{lstlisting}
+void f(array_ptr<char> buf : count(len), int len) {
+  // We expect buf to have enough space for at least 12 integers.
+  array_ptr<int> intbuf : count(12) =
+    dynamic_bounds_cast<array_ptr<int>>(buf, count(12));
+...
+}
+
+extern void copy(array_ptr<char> dest : count(n),
+                 array_ptr<char> src : count(n),
+                 size_t n);
+
+void fill_buffer(array_ptr<char> dest : count(destlen),
+                 size_t destlen,
+                 array_ptr<char> src : count(srclen),
+                 size_t srclen) {
+  // Existing code just assumed that dest was large enough; let's add a
+  // dynamic_bounds_cast to be sure.
+  array_ptr<char> target : count(srclen) =
+     dynamic_bounds_cast<array_ptr<char>>(dest, count(srclen));
+  copy(target, src, srclen);
+}
+\end{lstlisting}
+Here are examples of using the \assumeboundscast\ operator:
+\begin{lstlisting}
+// Memory-mapped hardware location where an integer can be written.
+ptr<int> output_loc = assume_bounds_cast<ptr<int>>(0x5055);
+// Memory-mapped hardware buffer starting at 0x6000 that stores 128
+// integers.
+array_ptr<int> output_buf : count(128) =
+  assume_bounds_cast<array_ptr<int>>(0x6000, count(128));
+\end{lstlisting}
+\subsection{Non-examples}
+
+Here are examples of incorrect uses of C cast operators to cast unchecked
+pointers to checked pointers.  These examples are rejected because the
+source bounds are not large enough to justify the destination bounds or
+there are no source bounds.
+In this example, \lstinline|&x| points to only one integer:
+\begin{lstlisting}
+int x = 0;
+// fails to check: source not large enough
+array_ptr<int> pax : count(5) = (array_ptr<int>) &x;
+\end{lstlisting}
+In this example, the result of \code{random()} has no bounds:
+\begin{lstlisting}
+char *random(void);
+
+void f(void) {
+    // fails to check: random() has no bounds
+    array_ptr<char> sp : count(1) = random();
+}
+\end{lstlisting}
+
+\section{Implicit conversions involving checked pointer types}
+\label{section:implicit-conversions}
+
+C allows implicit conversions at assignments, function call arguments,
+and conditional expressions. This makes programs shorter and easier to
+read.  Implicit conversions describe when an expression of type
+\var{S} is allowed where an expression of type \var{T} is expected,
+allowing additional programs to typecheck.
+This section defines implicit conversions that are allowed for checked
+pointer types.
+
+One kind of pointer type can be converted to another kind of pointer type provided
+that bounds safety is maintained.  Figure~\ref{fig:implicit-type-conversion} shows the
+kind conversions that are allowed.  Any kind can be converted to another
+kind that is reachable following arrows. For example, it makes sense to allow an unchecked
+pointer type to be converted to an \arrayptr\ or \ptr.
+
+\begin{figure}
+\begin{center}
+\begin{tikzpicture}[sibling distance=0.5in]
+\node (ptr) {\ptr};
+\node (arrayptr)   [above=of ptr]      {\arrayptr}    edge[<->, thick] (ptr);
+\node (ntarrayptr) [right=of arrayptr] {\ntarrayptr}  edge[->, thick] (arrayptr);
+\node (unchecked)  [above=of arrayptr] {\texttt{*}} edge[->, thick] (arrayptr);
+\end{tikzpicture}
+\end{center}
+\caption{Implicit conversions between different kinds of pointers}
+\label{fig:implicit-type-conversion}
+\end{figure}
+
+Each pointer type has a referent type (the type to which the pointer refers).
+For example, \arrayptrT\ points to \var{T}.   For an implicit conversion, the
+source referent type and the destination referent type must be the same type or
+be {\em assignment compatible}.  Informally, the destination referent type must
+be at least as checked as the source referent typing.  Losing checking is not allowed.
+
+A destination referent type \var{D} is assignment compatible with a source referent
+type \var{S} if
+\begin{itemize}
+\item \var{D} and \var{S} are compatible types, or
+\item \var{D} is \void\ and \var{S} is not a function type, or
+\item \var{S} is \void\ and \var{D} is not a function type, or
+\item \var{D} is an array of \var{E} and \var{S} is an array of \var{T}
+and:
+\begin{itemize}
+\item \var{D} and \var{S} are both checked arrays, both unchecked arrays, or
+\var{D} is a checked array and \var{S} is an unchecked array, and
+\item \var{D} and \var{S} have the same number of elements, and
+\item \var{E} is assignment compatible with \var{T}.
+\end{itemize}
+\end{itemize}
+
+There are several important points about these conversions:
+\begin{itemize}
+\item  While an implicit conversion may allow typechecking to succeed,
+       checking of bounds declarations may still fail.  Implicit
+       conversions are treated as though they are explicit C cast
+       operations during the checking of bounds declarations.
+\item  Implicit conversions from checked pointer types to
+      unchecked pointer types are not allowed because that would cause a loss of bounds safety.
+      There is an important exception: they are allowed at bounds-safe interfaces,
+      where an lvalue is treated as having both an unchecked
+      and checked type (Section~\ref{section:function-bounds-safe-interfaces}).
+\item The rules for assignment compatibility allow conversions to and from checked void pointers,
+      provided that bounds safety is maintained.  These rules subsume the existing C rule for
+      void pointers.  As mentioned in Section~\ref{subsection:cast-operator-description}, we plan
+      to disallow conversions between checked void pointers eventually.
+\item We do not allow implicit conversions to \ntarrayptrT\ because of the possibility
+      of null terminators being overwritten via pointer aliases.  If we had a way of controlling
+      aliasing of pointers, we could allow those conversions.
+\end{itemize}
+
+\subsection{Assignments and calls}
+
+An expression that occurs as the right-hand side of an assignment or as
+a call argument may be implicitly converted to another type, provided
+that the rules just discussed are met.
+The type of the left-hand side of the assignment or the corresponding
+parameter is the destination type for the conversion.
+
+\subsection{Conditional expressions}
+
+For a conditional expression with the form \var{e1} \code{?} \var{e2}
+\code{:} \var{e3}, the arms of the conditional expression may be implicitly
+converted so that their types  match.  The concept of source and destination types
+does not make sense here because the arms should be treated symmetrically.
+
+We take a different approach.  Given two arms with different pointer types, we try
+to choose a pointer type that meets the restrictions of both arms.  For example, if
+an arm has \ptr\ type, pointer arithmetic should not be possible on the result
+of the conditional expression.   We order pointer types by restrictiveness
+and choose the ``greatest lower bound'' of the pointer types of the arms (if one exists).
+% Informally, The ``greatest lower bound'' is as restrictive as the type of either arm,
+% but not more restrictive than necessary.
+
+First, the greatest lower bound of the pointer kinds is determined.
+Figure~\ref{fig:pointer-kind-ordering} shows an ordering  of pointer kinds by
+restrictiveness and allowed conversions.   A kind at the destination of an arrow is below a kind
+at the source of an arrow.  We choose the highest such kind that is at or beneath the
+kinds of both arms.   For example, the greatest lower bound
+kind of \ptr\ and \uncheckedptr\ is \ptr. The greatest lower bound kind
+of \uncheckedptr\ and \ntarrayptr\ is \arrayptr.
+\begin{figure}
+\begin{center}
+\begin{tikzpicture}[sibling distance=0.5in]
+\node (ptr) {\ptr};
+\node (arrayptr)   [above=of ptr]      {\arrayptr}    edge[->, thick] (ptr);
+\node (unchecked)  [above=of arrayptr] {\texttt{*}} edge[->, thick] (arrayptr);
+\node (ntarrayptr) [right=of unchecked] {\ntarrayptr}  edge[->, thick] (arrayptr);
+\end{tikzpicture}
+\end{center}
+\caption{Ordering of pointer kinds by restrictiveness of operations and allowed conversions.}
+\label{fig:pointer-kind-ordering}
+\end{figure}
+
+Second, the greatest lower bound of the pointer referent types for the arms is computed.
+If the pointer referent types are the same type, that type is the greatest lower bound.
+Otherwise, the greatest lower bound is the referent type that is at least as checked as the
+other referent type and is otherwise compatible.  Given referent types \var{S} and \var{R},
+we check assignment compatibility using each type as the destination.  We
+choose the referent type for which assignment compatibility is valid.
+If assignment compatibilty is not valid for either type, no greatest lower
+bound exists and the implicit conversion is not allowed.
+
+Void referent types are treated specially. They are considered to be lower than
+corresponding non-void referent types because fewer operations are allowed on
+void referent types. We require that the source referent
+type in the assignment compatibility test not be the void type.
+This matches the existing C rules for conditional expressions.  Those
+rules state that if one arm has void pointer type, the other
+arm must be implicitly cast to void pointer type.  Implicit casts from void pointers to other
+pointer types are not allowed for conditional expression arms.
+
+Here are some examples of greatest lower bounds:
+\begin{itemize}
+\item  For arms with the types \arrayptrint\ and \ptrint, it is \ptrint.
+\item  For arms with the types \arrayptrvoid\ and \uncheckedptrinst{\keyword{int}},
+it is \arrayptrvoid.
+\item In contrast, for arms with the types \arrayptrinst{\keyword{float}} and \arrayptrinst{\keyword{int}}, none exists:
+\keyword{float} is not assignment-compatible with \keyword{int}.
+\end{itemize}
+
+\subsection{Between checked pointers and integers}
+
+The null pointer (\code{0}) can be converted implicitly to any checked pointer type.
+A checked pointer can be converted implicitly to the \code{_Bool} type.
+
+Some C compilers extend C by allowing implicit conversions between pointers
+and integers or between pointers to incompatible types.  Implicit conversions
+from integers to checked pointers are typically not useful in Checked C because
+the checking of bounds declarations fails or the resulting pointer cannot
+be used to access memory.   The rules for checking bounds declarations only
+allow the target type to be \arrayptr\ type and the bounds of the expression to be
+\boundsunknown.
+
+\subsection{Examples}
+
+The following code shows examples of implicit conversions.  In these examples,
+the right-hand sides of assignments have the type ``unchecked pointer to
+\var{T}'', while the left-hand sides have the type ``checked pointer to
+\var{T}''.  Implicit conversions are done at those assignments.
+\begin{lstlisting}
+int x = 0;
+ptr<int> px = &x;
+array_ptr<int> pax : count(1) = &x;
+
+int a[5] = { 0, 1, 2, 3, 4};
+ptr<int> pa = a;
+array_ptr<int> apa : count(5) = a;
+array_ptr<int> middle : bounds(a, a + 5) =  a + 2;
+\end{lstlisting}
+
+An unchecked multidimensional array can be passed to a function expecting
+a checked multi-dimensional array:
+\begin{lstlisting}
+int b[3][3] = { { 0, 1, 2}, { 3, 4, 5}, { 6, 7, 8}};
+extern void f(int arg checked[3][3]);
+f(b);
+\end{lstlisting}
+
+The mechanics behind this are somewhat complicated.  Parameters with type
+``array of \var{T}'' are actually treated as having type ``pointer to \var{T}''.
+Parameters with the type ``checked array of \var{T}'' are treated as ``checked
+pointer to \var{T}''.  The actual type of the parameter of \code{f} is
+\begin{lstlisting}
+extern void f(array_ptr<int checked[3]> arg);
+\end{lstlisting}
+Local variables with type ``array of \var{T}'' are treated as having
+type ``unchecked pointer to \var{T}'' when they are used.  The type of
+\code{b} at \code{f(b)} is ``unchecked pointer to an array of 3 integers''.
+At the call to  \code{f(b)}, there is an implicit conversion from an
+``unchecked pointer to an unchecked array of 3 integers'' to a ``checked pointer
+to a checked array of 3 integers'':
+\begin{lstlisting}
+int (*pb)[3] = b;
+array_ptr<int checked[3]> param : count(3) = pb;
+\end{lstlisting}
+This implicit conversion is allowed because \lstinline|int checked[3]| is assignment
+compatible with \lstinline|int[3]|.  Assignment compatibility allows other
+interesting implicit conversions:
+\begin{lstlisting}
+array_ptr<int[3]> t1 : bounds(b, b + 3)  = b;
+array_ptr<int> t2 : bounds(b, b + 3) = t1[1];
+array_ptr<int> t3 : bounds(b, b + 3) = b[1];
+\end{lstlisting}
+
+\subsection{Non-examples}
+
+Implicit conversions must still pass the bounds rules for the corresponding explicit
+C cast operation.  Implicit conversions where the source bounds are not large
+enough will be rejected during bounds declaration checking:
+\begin{lstlisting}
+int x = 0;
+// fails to check: source not large enough
+array_ptr<int> pax : count(5) : &x;
+\end{lstlisting}
+
+Implicit conversions of unchecked pointers with no bounds to checked pointers
+will also be rejected:
+\begin{lstlisting}
+char *random(void);
+
+void f(void) {
+    // fails to check: random() has no bounds
+    array_ptr<char> sp : count(1) = random(); 
+}
+\end{lstlisting}
+
+\section{Bounds-safe interfaces to existing unchecked functions and variables}
+\label{section:function-bounds-safe-interfaces}
+
+The new pointer types capture specific properties of pointers. We would like to update
+existing C code to use the new pointer types. This would be problematic for library and operating
+system APIs that have backward  compatibility constraints, however.   Consider what would happen
+if the signature for \code{memcpy} were changed to use \arrayptr. The function
+
+\begin{lstlisting}
+void *memcpy(void *dest, const void *src, size_t count);
+\end{lstlisting}
+
+would become
+
+\begin{lstlisting}
+void *memcpy(array_ptr<void> dest, array_ptr<const void> src,
+                      size_t count);
+\end{lstlisting}
+
+This would break existing code that uses \code{memcpy}.  The code would no
+longer type check.  The reverse problem also exists: suppose the signature for
+\code{memcpy} is not updated.  Then every checked method that calls
+\code{memcpy} would need to cast the arguments to unchecked pointer types.
+
+Given that changing the types of existing APIs is problematic, we take an approach
+that does not change types, yet enables new checked code to be written easily
+and that maintains the checking of the new code.  We allow programmers to
+declare {\em bounds-safe interfaces} that extend existing declarations with
+additional bounds information.  
+
+Bounds-safe interfaces can be 
+specified for declarations of functions, global variables, and
+data structures.  They can also be specified for function types.
+The interfaces describe the expected behavior and the assumptions
+of existing code about bounds. The types remain the same.
+It is assumed but not verified that existing code
+meets the specified interfaces.  A bounds-safe interface allows
+checked code to use existing unchecked code safely with respect
+to bounds, assuming that the interface and existing code are
+correct.
+
+Type checking is modified to insert implicit conversions between
+checked types and unchecked types at bounds-safe interfaces.
+The additional bounds information is used during checking
+of bounds declarations to ensure that checked code is
+using existing declarations properly.  It is also used to insert
+bounds checks in checked code.  This allows new checked code to
+use existing unchecked code, once a bounds-safe interface has
+been added to the existing code.
+\begin{enumerate}
+\item
+  In checked scopes, code is limited to using pointer types that are 
+  checked pointer types or unchecked pointer types with bounds-safe interfaces.
+  This makes the code in checked scopes straightforward to understand:
+  the unchecked pointer types are regarded as checked pointer types, all memory
+  accesses are bounds checked or in bounds, and bounds-safe interfaces are trusted
+  and respected.
+\item
+  In unchecked scopes, checked and unchecked pointer types can be
+  be intermixed within expressions.  When that happens, the bounds-safe
+  interfaces are used during checking of bounds declarations to determine
+  bounds of expressions and the required bounds for assignments and function calls. 
+  Section~\ref{section:implicit-conversions} already
+  explained when implicit conversions from unchecked pointer types to checked pointer
+  types may be inserted.   Implicit conversions of expressions 
+  from checked pointer types to unchecked pointer types are inserted when
+  necessary at bounds-safe interfaces.
+\end{enumerate}
+
+The sections on bounds-safe interfaces are organized as
+follows.  Section~\ref{section:bounds-safe-interface-specifying} describes
+how to specify bounds-safe interfaces.
+Section~\ref{section:bounds-safe-interface-examples}
+has examples that show the use of bounds-safe interfaces.
+Section~\ref{section:bounds-safe-interface-redeclaration} explains
+how existing functions and variables can be redeclared with bounds-safe
+interfaces.  Section~\ref{section:bounds-safe-interface-type-checking}
+and ~\ref{section:checking-bounds-interfaces} cover technical details
+about type checking and checking bounds declarations that are interesting
+to language designers and compiler writers.  Programmers interested
+in using the Checked C extension can skip those sections.
+
+\subsection{Specifying bounds-safe interfaces}
+\label{section:bounds-safe-interface-specifying}
+Bounds-safe interfaces for declarations are specified by adding bounds
+declarations or type annotations to declarations.  They can be added to
+function declarations, function types, globally-scoped variables, and
+declarations of members of structure and union types.
+A declaration can have both a bounds declaration and a type annotation,
+although it is less common to need both.
+
+We describe adding bounds declarations first and then  describe adding type
+annotations.  Functions that have parameters with unchecked pointer
+or array types or that return values with unchecked pointer types can have bounds
+or type annotations declared for the parameters and return values.  At calls to
+these functions, implicit conversions from checked types to unchecked
+pointer types are inserted for the corresponding argument expressions.
+  
+Here is a bounds-safe interface for \code{memcpy}:
+\begin{lstlisting}
+void *memcpy(void *dest : byte_count(len),
+             const void *src : byte_count(len), 
+             size_t len) 
+             where return_value : bounds((char *) dest,
+                                         (char *) dest + count);
+\end{lstlisting}
+The correctness of bounds information is enforced at compile-time when
+\code{memcpy} is passed checked pointer arguments. It is not enforced when 
+\code{memcpy} is passed unchecked pointer arguments.
+
+Variables at external scope with unchecked pointer or array types
+can have bounds or type annotations declared for them.
+The declarations must follow the
+rules in Section~\ref{section:external-scope-variables}.
+
+For data structures, members with unchecked pointer type or array types
+can have bounds or type annotations declared for them.   Implicit conversions from
+\arrayptr\ type to unchecked pointer type are inserted at assignments to unchecked
+pointer type members.
+
+% Comment out because this isn't what the implementations does and it
+% isn't clear these requireements are needed.
+%
+% Bounds-safe interfaces for functions and members must be
+% declared on an ``all-or-nothing'' basis.
+% For a function, if any parameter (or the return value) has an unchecked pointer
+% or array type and has a bounds declaration or type annotation, all the
+% the other parameters (or the return value) that have unchecked
+% pointer or array types must also have bounds declarations or type
+% annotations.  Similarly, for a structure or union type,
+% if any member with unchecked pointer or array type
+% has a bounds declaration or type annotation, all other members
+% that have unchecked pointer types must also have bounds declarations
+% or type annotations.
+
+Here are the bounds for a structure that is a counted buffer of
+characters.
+\begin{lstlisting}
+struct S {
+  char *arr : count(len);
+  int len;
+}
+\end{lstlisting}
+
+It is important to understand that the \emph{semantics of unchecked
+pointers and arrays do not change in unchecked scopes even when bounds
+or type annotations are declared for the pointers and arrays}.
+Unchecked pointer dereferences do not have bounds checks added to them.
+Similarly, uses of unchecked arrays still convert to
+unchecked pointer types. A function that has a bounds-safe
+interface and whose body does not use checked pointer or array
+types is compiled as though the bounds-safe interface has been
+stripped from its source code. If the function body contains an expression
+that mixes checked and unchecked pointer types, then the compiler uses
+any declared bounds or interface type annotations on the unchecked pointer
+types to infer and validate bounds. The example at the end of
+Section~\ref{section:checking-bounds-interfaces} illustrates this point.
+
+A type annotation describes an alternate checked type to use in checked code
+in place of an unchecked type. It is used, for example, when a variable with
+an unchecked pointer type should be treated as having
+a \code{ptr} type.  Syntactically, a bounds declaration can have
+a bounds expression, a type annotation, or both a bounds expression
+and a type annotation.
+
+A type annotation is specified using the following syntax:
+
+\begin{tabbing}
+\var{type-}\=\var{annotation:} \\
+\>\code{itype (}\var{type name}\code{)}\\
+\\
+The keyword \code{itype} is short for bounds-safe  interface type.
+\\
+\\
+The syntax for an inline bounds specifier is extended to
+allow a type annotation or a bounds\\
+expression and a type annotation:
+\\
+\\
+\var{inline-bounds-specifier:}\\
+\> \lstinline|:| \var{bounds-exp} \\
+\>\code{:} \var{type-annotation} \\
+\>\code{:} \var{bounds-exp} \var{type-annotation} \\
+\>\code{:} \var{type-annotation} \var{bounds-exp}
+\end{tabbing}
+
+A type annotation can be used to declare that an unchecked
+pointer to a structure should be treated as a \lstinline+ptr+ in
+checked code. Here is a declaration for a function
+\lstinline+count_char+ that takes
+an unchecked pointer to the struct \code{S} defined earlier,
+with a type annotation. \lstinline+count_char+ counts the number
+of occurrences of \lstinline+arg+ in \lstinline+S+. Checked code must pass a
+value that is a valid \lstinline+ptr+ to \lstinline+count_char+:
+\begin{lstlisting}
+int count_char(S *str : itype(ptr<S>), char arg);
+\end{lstlisting}
+A type annotation can be used to declare that an unchecked array member should
+be treated as a checked array in checked code:
+\begin{lstlisting}
+struct S {
+   int a[5] : itype(int checked[5]);
+};
+\end{lstlisting}
+
+Here are functions from the C Standard Library with type annotations.
+In the examples, type annotations for return types are placed 
+after the parameter list, the same way that bounds expression for
+return values are placed:
+\begin{lstlisting}
+double modf(double value, double *iptr : itype(ptr<double>));
+int fclose(FILE *stream : itype(ptr<FILE>));
+FILE *tmpfile(void) : itype(ptr<FILE>);
+struct tm *gmtime(const time_t *timer : itype(ptr<const time_t>)) :
+    itype(ptr<struct tm>);
+\end{lstlisting}
+
+A set of rules define interface type compatibility.
+The \var{type name} in a type annotation must be compatible
+with the original unchecked type when checkedness
+of pointers and arrays is ignored. The \var{type name} cannot
+lose checking.  It must be at least as checked as the
+original type.  Finally, the \var{type name} must be
+a checked type.   Checked types are defined inductively:
+checked pointer and array types are checked types,
+array and pointer types constructed from checked types
+are checked types, and function types constructed from
+at least one checked type are checked types.
+
+
+\subsection{Examples}
+\label{section:bounds-safe-interface-examples}
+
+Here are some examples:
+\begin{lstlisting}
+void copy(array_ptr<int> dest : count(len),
+              array_ptr<int> src : count(len), int len)
+{
+    // dest, src will be converted implicitly to void * pointers.
+    // Even though this is an unchecked context, the function call
+    // arguments will be checked to make sure that they meet the
+    // bounds requirements of memcpy.  This is because the argument
+    // expressions have checked pointer types.
+    memcpy(dest, src, len * sizeof(int));
+}
+
+f(S s) 
+{
+     int len = s.len;
+     array_ptr<char> sp : count(len) = s.arr;
+     ...
+     if (len > 0) {
+        sp[0] = 'a';
+     }
+}
+\end{lstlisting}
+
+This example will fail at compile time:
+\begin{lstlisting}
+void bad_copy(int *dest, array_ptr<int> src : count(len), int len)
+{
+    // dest, src will be converted implicitly to void * pointers.
+    // Because an argument had a checked pointer type, the function call
+    // will be checked to make sure parameters meet the bounds
+    // requirements.  This will fail because dest has no bounds.
+    memcpy(dest, src, len * sizeof(int));
+}
+\end{lstlisting}
+
+In contrast, this example will compile:
+\begin{lstlisting}
+void subtle_copy(int *dest, array_ptr<int> src : count(len), int len)
+{
+    // This function call will not be checked for bounds
+    // requirements because no arguments have checked pointer
+    // types.  This shows both that the programmer has control
+    // over checking by using types and why checked contexts
+    // should be used with checked pointers when possible (perhaps
+    // the programmer did not want to do this).
+    memcpy(dest, (void *) src, len * sizeof(int));
+}
+\end{lstlisting}
+
+\subsection{Parameter array types}
+
+In C, arrays are passed by reference as arguments.  During
+type checking, the type of parameters with type ``array of \var{T}'' are
+altered to \uncheckedptrT.  Before checking interface type
+compatibility for a parameter, if the interface type is an array type,
+it is altered to be a pointer type following the rules in
+Section~\ref{section:array-to-pointer-conversion}.   The checking is
+then done using the alted parameter type and altered interface type.
+The original unaltered interface type is used when inferring bounds
+and bounds requirements.
+
+The following examples illustrate some possible bounds-safe interface
+declarations for a parameter of type \lstinline{int **}:
+\begin{lstlisting}
+void f(int **p : itype(ptr<ptr<int>>));
+void f(int **p : itype(ptr<array_ptr<int>>));
+void f(int **p : itype(array_ptr<ptr<int>>));
+void f(int **p : itype(array_ptr<array_ptr<int>>));
+void f(int **p : itype(ptr<int *>));
+void f(int **p : itype(array_ptr<int *>));
+void f(int **p : itype(ptr<int> checked[10]));
+void f(int **p : itype(ptr<int> checked[]));
+void f(int **p : itype(array_ptr<int> checked[10]));
+void f(int **p : itype(int *checked[20]));
+\end{lstlisting}
+
+\subsection{Function pointer type as parameter}
+Function pointers that are parameters in a bounds-safe interface specification
+can themselves have a bounds-safe interface type.  This allows both checked and
+unchecked function pointers to be passed as actual arguments.
+Here is an example:
+\begin{lstlisting}
+int apply_fun (
+  char *buffer : itype(array_ptr<char>) count(length),
+  size_t length,
+  int ((*fun)(char *buf, size_t len)) :
+      itype(ptr<int(array_ptr<char> buf : count(len), size_t len)>)
+);
+\end{lstlisting}
+
+In the above example \lstinline+fun+ is a function pointer.  Note that an extra
+pair of parentheses is required around the function pointer declaration before
+the type annotation.  This is necessary to disambiguate parsing.  Without the
+extra pair of parentheses, the compiler attempts to bind the itype (
+\lstinline+ptr<int(array_ptr<char> buf : count(len), size_t len)>+) to the
+return value of the function pointed to by \lstinline+fun+, which will result
+in a compilation error.
+
+\subsection{Bounds expression and type annotations}
+A bounds-safe interface declaration can have both a bounds expression and a type
+annotation.  This allows programmers to declare bounds-safe interfaces for declarations involving
+nested pointer types.
+
+Consider a bounds-safe interface for \lstinline{char **p}.
+The checked type for the variable can be declared using a type annotation
+and the bounds for the variable can be declared using a bounds expression.
+\begin{lstlisting}
+char **p : itype(ptr<ptr<char>>);
+char **p : itype(ptr<nt_array_ptr<char>>);
+char **p : count(len) itype(array_ptr<ptr<char>>)
+char **p : count(len) itype(array_ptr<nt_array_ptr<char>>);
+char **p : itype(nt_array_ptr<ptr<char>>);
+char **p : count(4) itype(nt_array_ptr<nt_array_ptr<char>>);
+\end{lstlisting}
+
+If only a bounds expression is placed on a declaration of a variable with type \uncheckedptrinst{T},
+it implies that the type annotation is \arrayptrinst{T}.   If it is placed on a variable with an
+array type \lstinline{T[D]}, it implies that the type annotation is \lstinline{T checked[D]}.   If
+an interface type and a bounds expression are both specified, the interface type must
+be an \arrayptr\ type or checked array type.
+
+\subsection{Redeclaring existing functions and variables with bounds-safe interfaces}
+\label{section:bounds-safe-interface-redeclaration}
+
+C allows variables or functions to be declared with types that are missing information.
+There can be other declarations of the variables or functions with types that are more complete
+and fill in the missing information.  The types that are missing information are said to be
+``compatible'' with the more complete versions of the types.  Multiple declarations of
+a variable or function are required to have compatible types, not identical types.
+
+This notion of compability extends to bounds-safe interfaces naturally.  We extend the
+definition of compatibility of function types in Section~\ref{section:function-types} as follows:
+\begin{itemize}
+\item Given corresponding parameters with compatible unchecked pointer types,
+one parameter may have a bounds declaration and one parameter may omit the bounds declaration.
+\item Given return values with compatible unchecked pointer types, one
+return value may have a bounds declaration and one return value may omit the bounds declaration.
+\end{itemize}
+
+The following are examples of declarations of functions with compatible types:
+\begin{lstlisting}
+int f(int *);
+int f(int * : count(5));
+
+int g(int *a, int len, int *b);               // decl 1
+int g(int *a : count(len), int len, int *b);  // decl 2
+int g(int *a, int len, int *b : count(len));  // decl 3
+int g(int *a : count(len), int len, int *b : count(len));  // decl 4
+\end{lstlisting}
+The declarations of \code{g} are particularly interesting. They are all
+compatible declarations.  The only version
+that could be used in a checked scope is declaration 4.   For declarations 2 and 3,
+where bounds information is missing for a parameter, the argument passed to \code{g}
+for that parameter cannot have an \arrayptr\ type.  The typing rules prevent arguments
+with checked type from being used with parameters of \code{g} that are missing
+bounds information.
+
+\subsection{Type checking}
+\label{section:bounds-safe-interface-type-checking}
+
+Bounds-safe interfaces allow unchecked pointer types to be used
+where checked pointer types with assignment compatible referent types are
+expected and {\it vice versa}.
+To handle this, implicit pointer conversions are inserted during type checking.
+Section~\ref{section:implicit-conversions} covered implicit conversions from unchecked pointer types to checked pointer types.
+
+Implicit conversions from checked pointer types to unchecked pointer types
+with assignment-compatible referent types are allowed at the uses of functions,
+variables, or members with bounds-safe interfaces, and at return statements.  
+In this case, assignment compatibility is applied in a reverse fashion (assignment compatibility
+is defined in Section~\ref{section:implicit-conversions}).
+The source referent type must be
+assignment compatible with the destination referent type.  The conversions are
+done for rvalue expressions by inserting C cast operators to the desired unchecked types.
+They are done at:
+\begin{itemize}
+\item Function call arguments: If the function being called has a
+      bounds-safe interface for parameters with unchecked pointer types, a parameter
+      has an unchecked pointer type, the corresponding argument expression
+      has a checked pointer type, and the argument referent type is assignment
+      compatible with the parameter referent type, then the argument expression
+      will be converted implicitly to the unchecked pointer type.
+\item Assignments to variables with external scope: if the variable being
+     assigned to has an unchecked pointer type and a bounds-safe interface, the
+     right-hand side expression has a checked pointer type, and the right-hand
+     side expression referent type is assignment compatible with the referent
+     type of the variable, then the right-hand side expression will be converted
+     implicitly to the unchecked pointer type.
+\item
+    Member assignments: a similar conversion is done for member assignments.
+\item Assignments to pointer dereferences: if the pointer dereference expression
+  being assigned to has an unchecked pointer type and a bounds-safe interface, the
+  right-hand side expression has a checked pointer type, and the right-hand side
+  expression referent type is assignment compatible with the referent type of the
+  pointer dereference expression, then the right-hand side expression will be
+  converted implicitly to the unchecked pointer type.
+\item Assignments to array subscripts: if the array subscript expression being
+  assigned to has an unchecked pointer type and a bounds-safe interface, the
+  right-hand side expression has a checked pointer type, and the right-hand
+  side expression referent type is assignment compatible with the referent
+  type of the array subscript expression, then the right-hand side expression
+  wil be converted implicitly to the unchecked pointer type.
+\item Assignments to null-terminated arrays: if the left-hand side expression
+  being assigned to has a checked null-terminated array type, the right-hand side
+  expression has an unchecked null-terminated array type and a bounds-safe interface,
+  and the referent type of the right-hand side expression is assignment compatible
+  with the referent type of the left-hand side, then the right-hand side expression
+  will be converted implicitly to the checked null-terminated array type.
+\item Return statements: if a function has an unchecked pointer return type and a
+  return bounds-safe interface, and a return statement in the body of the function
+  has an expression with a checked pointer type, and the return statement expression is
+  assignment compatible with the return type of the function, then the return expression
+  will be converted implicitly to the unchecked pointer type.
+\end{itemize}
+
+Implicit conversions at bounds-safe interfaces are allowed from checked pointer types to
+\uncheckedptrvoid.  This rule is likely to change in the future.  There is not a  design for
+checking type-safety of casts yet and the design will amost certainly affect 
+\uncheckedptrvoid\ casts.
+
+Only one implicit pointer conversion is allowed for an expression at a bounds-safe
+interface.  For example, an expression will not be
+coerced implicitly from \ptrinst{\var{S}} to \uncheckedptrvoid\ to
+\uncheckedptrinst{\var{T}}, where \var{S} and \var{T} are different types.
+
+\subsection{Checking bounds declarations}
+\label{section:checking-bounds-interfaces}
+
+The checking rules in Chapter~\ref{chapter:checking-bounds} require
+only small changes to check code with bounds-safe interfaces.  The
+checking is done after any implicit pointer conversions have been
+inserted.
+\begin{itemize}
+\item Contexts are extended to include unchecked pointer variables with
+      bounds-safe interfaces.
+\item Inference of bounds of expressions (Section~\ref{section:inferring-expression-bounds}) incorporates information from bounds-safe interfaces:
+\begin{itemize}
+\item Uses of variables (Section~\ref{section:checking-variables}): 
+      if a variable with an unchecked pointer type is used and the context has
+      a bounds for the variable, the bounds in the context are used as the bounds
+      for the variable.
+\item Function calls (Section~\ref{section:inferring-bounds-for-function-calls}): 
+      the rules in this section are also applied when a function returns an unchecked
+      pointer value and the return value has a bounds-safe interface.
+\end{itemize}
+\item The checking that an expression statement, declaration, or bundled
+      block implies the declared bounds of variables includes:
+\begin{itemize}
+\item In checked contexts, all variables with bounds-safe interfaces.
+\item In unchecked contexts, all variables with bounds-safe interfaces
+      that are modified by an assignment within the statement, declaration,
+      or bundled block, where the right-hand side expression
+      is converted implicitly from a checked pointer type to an unchecked pointer type.
+\end{itemize}
+For the included variables, bounds are tracked through the statement or
+bundled block.
+\item The checking of function call arguments
+      in function calls (Section~\ref{section:checking-function-call-arguments})
+      includes parameters with bounds-safe interfaces:
+\begin{itemize}
+\item In checked contexts.
+\item In unchecked contexts, when one or more argument expressions have been
+      converted implicitly to unchecked pointer types.
+\end{itemize}
+The parameters are included by adding their bounds-safe interfaces to the
+declared bounds in the constructed \keyword{where} clauses.
+\item The checking of return statements (Section~\ref{section:checking-return-statements})
+includes return statements where there is a return bounds-safe interface for the enclosing function:
+\begin{itemize}
+\item In checked contexts.
+\item In unchecked contexts, when the return statement expression has been converted
+      implicitly to an unchecked pointer type.
+\end{itemize}
+The return bounds-safe interface is used in place of the function return bounds.
+\end{itemize}
+
+The checking for assignments and function calls has some interesting 
+implications in unchecked contexts.  It is possible to have a statement, 
+a declaration, or a bundled block that mixes different kinds of pointers
+in assignments to the same  variable.  
+Some right-hand sides could have checked pointer types and others
+could have unchecked pointer types.  This is a programming practice that is discouraged.
+Nevertheless, the bounds declarations will be checked no matter which
+kind of assignment is the last one.  This implies that if the last 
+assignment has an unsafe pointer-typed right-hand side, it will still need
+to have valid bounds. If a subexpression of a comma expression mixes checked and
+unchecked pointer types, then that subexpression will be checked.
+It is also possible to mix argument expressions with
+checked and unchecked  pointer types in one function call.  The checking of bounds
+for function arguments is done for all arguments, so this also implies that the unchecked
+pointer-typed expressions will need to have valid bounds.
+
+Here is some example code that illustrates the behavior of the compiler:
+\begin{lstlisting}
+extern int *lib_func_1(_Array_ptr<int> p);
+extern int *lib_func_2(_Array_ptr<int> p) : itype(_Array_ptr<int>);
+extern _Array_ptr<int> lib_func_3(_Array_ptr<int> p);
+
+int *foo(int *p : count(2), int *r : count(n), unsigned n) : count(4)
+_Unchecked {
+  _Array_ptr<int> chk : count(1) = 0;
+
+  n++;                   // The declared bounds of r are not validated.
+  r = p;                 // The declared bounds of r are not validated.
+  r = chk;               // The declared bounds of r are validated.
+  chk = 0, n = 0;        // The declared bounds of r are not validated.
+  p = chk, p++;          // The declared bounds of p are validated.
+  p = chk, n++;          // The declared bounds of p are validated
+                         // but not of r.
+  r = chk, n++;          // The declared bounds of r are validated.
+  r = lib_func_1(chk);   // The declared bounds of r are not validated.
+  r = lib_func_2(chk);   // The declared bounds of r are not validated.
+  r = lib_func_3(chk);   // The declared bounds of r are validated.
+
+  if (n < 5)
+    return p;      // The return bounds are not checked.
+
+  else if (n < 10)
+    return chk, p; // The return bounds are not checked as the type of
+                   // the return value expression chk, p is int *.
+  else
+    return p, chk; // The return value bounds are checked as the type
+                   // of the return value expression p, chk is
+		   // _Array_ptr<int> (which is implicitly cast to int *).
+}
+\end{lstlisting}
+
+
+\section{Bounds-safe interfaces for generic functions and struct types}
+\label{sec:generic-bounds-safe-interfaces}
+This section describe how to provide bounds-safe interfaces for existing functions
+that are actually generic. It extends the examples in Section~\ref{sec:generic-functions}.
+
+Here is the existing bounds-safe interface for \lstinline+bsearch+. 
+The bounds declaration on \uncheckedptrvoid{} results in a parameter being
+treated as having type \arrayptrvoid{} in checked code:
+\begin{lstlisting} 
+// Current Checked C version declaration
+void *bsearch(const void *key : byte_count(size),
+              const void *base : byte_count(nmemb * size),
+              size_t nmemb, size_t size,
+              int ((*compar)(const void *, const void *)) :
+                itype(ptr<int(ptr<const void>, ptr<const void>)>)) :
+                byte_count(size);
+\end{lstlisting}
+To declare that a bounds-safe interface for a function that is generic, we precede
+the function declaration with an \lstinline+itype_for_any(...)+ clause.
+Here is a version of \lstinline+bsearch+ modified this way:
+\begin{lstlisting}
+// Generic Checked C version
+itype_for_any(T)
+void *bsearch(const void *key : itype(ptr<const T>),
+              const void *base : itype(array_ptr<const T>) byte_count(nmemb * size),
+              size_t nmemb, size_t size,
+              int ((*compar)(const void *, const void *)) :
+              itype(ptr<int (ptr<const T>, ptr<const T>)>)) : itype(ptr<T>);
+\end{lstlisting}
+The \lstinline+itype_for_any(T))+ indicates that \lstinline+bsearch+ has a generic
+bounds-safe interface.   The type variable \lstinline+T+ is available in the
+bounds-safe interface declarations for parameters and return values.  The parameter 
+\lstinline+base+ has both an itype and a bounds declaration.
+
+Here are bounds safe-interfaces for other C standard library
+functions:
+\begin{lstlisting}
+itype_for_any(T) void *malloc(size_t size) :
+                    itype(array_ptr<T>) byte_count(size);
+
+itype_for_any(T) void *calloc(size_t nmemb, size_t size : sizeof(T)) :
+                    itype(array_ptr<T>) byte_count(nmemb * size);
+
+itype_for_any(T) void free(void *pointer : itype(array_ptr<T>) count(1));
+
+itype_for_any(T) void *memcpy(void * restrict dest :
+                                 itype(array_ptr<T>) byte_count(n),
+                               const void *T src :
+                                 itype(array_ptr<T>) byte_count(n),
+                               size_t n where n % sizeof(T) == 0) :
+                                 itype(array_ptr<T>) byte_count(n);
+\end{lstlisting}
+
+The bounds-safe interfaces act as follows.  When a function 
+is applied to type arguments, the type arguments are substituted
+for the type variables to construct the concrete function type.
+For parameters and returns that have bounds-safe interfaces, the
+bounds-safe interfaces are used for their types.
+
+Type parameters are mandatory in calls
+to generic bounds-safe interface functions from checked scopes.
+Type parameters are optional in unchecked contexts. When a 
+function with a generic bounds-safe interface is called
+without type variables from unchecked code, we apply void type
+for the type variables.
+
+Consider as an example \lstinline+bsearch<int>+.  First a concrete
+function type is constructed:
+\begin{lstlisting}
+void *(const void *key : itype(ptr<const int>),
+       const void *base : itype(array_ptr<const int>) byte_count(nmemb * size)),
+       size_t nmemb, size_t size,
+       int ((*compar)(const void *, const void *)) :
+           itype(ptr<int (ptr<const int>, ptr<const int>)>)) : itype(ptr<int>);
+\end{lstlisting}
+Then, bounds-safe interfaces for parameters and returns are used as
+their types:
+\begin{lstlisting}
+ptr<int> (ptr<const int> key,
+               array_ptr<int> base : byte_count(nmemb * size),
+              size_t nmemb, size_t size,
+              ptr<int (ptr<const int>, ptr<const int>)> compar);
+\end{lstlisting}
+Now, suppose \lstinline+bsearch+ is called without applying it to type variables.
+In that case, any itypes that use a type variable are discarded:
+\begin{lstlisting}-
+void *(const void *key,
+         const void *base : byte_count(nmemb * size),
+         size_t nmemb, size_t size,
+         int ((*compar)(const void *, const void *)));
+\end{lstlisting}
+
+\section{Conversions between pointers and integers}
+\label{section:pointer-integer-conversions}
+
+C allows pointers to be converted to suitably large enough integer
+types and then converted back to pointers.  Integer operations can
+done on the converted values before they are converted back.
+This is one of the features of C that leads people to 
+say that C cannot possibly be made type-safe.  In this section,
+we explain how casts between pointers and integers within 
+expressions can be controlled and reasoned about.
+
+\subsection{Tagged pointers}
+We start with a motivating example, tagged pointers.
+C programs sometimes store information in unused bits of pointers
+to save on space in data structures.  Other times this is done
+to acheive atomicity when reading or writing data.  A
+program might store a tag in the least significant bits or most
+significant bits of some pointers, knowing that those bits are always
+zero otherwise.
+
+The bounds of such a pointer are easy to describe: they are the bounds
+of the original pointer. If a pointer variable or member is used in its
+own bounds, the tag must be removed first. This is
+done by masking out the bits that are always 0.
+
+For example, suppose there is the following structure:
+
+\begin{lstlisting}
+struct S {
+  array_ptr<int> p : bounds(p, p + 4);
+  int tag : 2;
+}
+\end{lstlisting}
+
+A programmer might know that on a machine with 32 bit pointers, the
+least 2 significant bits of p are always 0, so the tag could be stored
+within p. The bounds would be changed to:
+
+\begin{lstlisting}
+struct S {
+  array_ptr<int> p : bounds((array_ptr<int>) ((size_t) p & ~3), 
+                            (array_ptr<int>) ((size_t) p & ~3) + 4) rel_align(char);
+}
+\end{lstlisting}
+
+There is one important caveat (for now): tags cannot be stored in null pointers. A
+null pointer may have bounds that are not valid. This is fine because
+the null pointer may not be used to access memory. However, tagging a
+null pointer could result in a non-null pointer with bounds that are
+invalid. This pointer could be used to access memory incorrectly.
+
+\subsection{Extending bounds checking rules to integral
+expressions}
+
+The inference of bounds for expressions disregards non-narrowing cast operators:
+the  information flows through the operation, with adjustments if the bounds
+include \exprcurrentvalue.  This makes it straightforward to extend the
+rules for inferring bounds to integral expressions:
+
+\begin{itemize}
+\item
+  Given \var{e1} \var{op} \var{e2}, where \var{op} is an additive, multiplicative, or bitwise
+  binary operator on integral types, the bounds of \var{e1} and \var{e2} can be
+  computed:
+
+  \begin{itemize}
+  \item
+    If \boundsdecl{\var{e1}}{\var{b}}, where \var{b} is not \boundsunknown, and 
+    \boundsdecl{\var{e2}}{\boundsunknown}, and it can be proved that \var{e1} \code{!= 0}, then
+    \boundsinfer{\var{e1} \var{op} \var{e2}}{\var{b}}.
+  \item
+    If the special variable \exprcurrentvalue\ occurs in \var{b}:
+    \begin{itemize}
+    \item
+      If \var{op} has an inverse operation \var{inverse-op}, then 
+      \exprcurrentvalue\ \var{inverse-op} \var{e2} is substituted for \exprcurrentvalue.
+    \item
+      Otherwise the bounds of the expression are altered to be \boundsunknown.
+    \end{itemize}
+  \item
+    Similar rules apply for the reverse situation where \boundsdecl{\var{e1}}{\boundsunknown}
+    and \boundsdecl{\var{e2}}{\var{b}}, where \var{b} is not \boundsunknown.
+  \end{itemize}
+\item
+  Given \var{e1} \var{op} \var{e2} where \var{op} is a shift operator, \var{e1} is the integral value
+  being shifted, and \var{e2} is the shift amount,
+
+  \begin{itemize}
+  \item
+    If \boundsdecl{\var{e1}}{\var{b}}, where \var{b} is not \boundsunknown, and \var{e2} has
+    \boundsunknown, and it can be proved that \var{e1} \code{!= 0}, then \boundsinfer{\var{e1} \var{op} \var{e2}}{\var{b}}.
+  \item
+    If the special variable \exprcurrentvalue\ occurs in \var{b},
+    bounds of the expression are altered to be \boundsunknown. Shift
+    expressions are not invertible because they lose information.
+  \end{itemize}
+\end{itemize}
+
+\subsection{An example}
+
+The following example shows functions for tagged pointers
+(where the tag is stored in the least siginficant bit) that
+create a tagged pointer and that set the tag to 1.
+
+\begin{lstlisting}
+#define untagged_bounds(x) \
+   bounds((array_ptr<int>) ((size_t) x & ~0x1), \
+          (array_ptr<int>) ((size_t) x & ~0x1) + 1) rel_align(char)
+
+array_ptr<int> create(void) 
+where untagged_bounds(return_value)
+{
+   array_ptr<int> x : bounds(x, x + 1) = malloc(sizeof(int));
+   dynamic_check(x == (array_ptr<int>) ((size_t) x & ~0x1));
+   // follows from substituting the right-hand side in the current bounds
+   where x : untagged_bounds(x); 
+   return x;
+}
+
+// set tag to 1
+array_ptr<int> set(array_ptr<int> x : untagged_bounds(x)) 
+where untagged_bounds(return_value)
+{
+  if (x != NULL) {
+     // ((size_t) x | 1) has the same bounds as x                   
+     array_ptr<int> tmp : untagged_bounds(x) = (array_ptr<int>) ((size_t) x | 1);
+     dynamic_check((size_t) tmp & ~0x1 == (size_t) x & ~0x1);
+     // follows from substituting the right-hand side of the
+     //dynamic check expression in the current bounds for tmp
+     where tmp : untagged_bounds(tmp);
+     return tmp;
+  }
+  return x;
+}
+\end{lstlisting}
+
+\subsection{Allowing bounds to be declared for integer-typed variables}
+
+We have described how bounds can be inferred for an expression with
+casts between pointers and integers.  A programmer may want to
+introduce variables for the results of subexpressions of an
+expression or may not be able to do all of a computation within an expression.
+To allow more general handling of casts between pointers and
+integers, we allow bounds to be declared for integer-typed variables.
+This may seem confusing, but it is a natural extension to tracking the
+bounds for pointer values that have been cast to integers.   The \lstinline+set+
+function can be written to use temporary variables instead:
+\begin{lstlisting}
+array_ptr<int> set(array_ptr<int> x : untagged_bounds(x))
+where untagged_bounds(return_value)
+{
+  if (x != NULL) {
+     size_t raw : untagged_bounds(raw) = (size_t) x;
+     size_t tagged : untagged_bounds(raw) = raw | 1;
+     dynamic_check(raw & ~0x1 == tagged & ~0x1);
+     // bounds follow from substituting the right-hand side of the
+     // dynamic check expression in the bounds for tagged.
+     array_ptr<int> result : untagged_bounds(result) = (array_ptr<int>) tagged
+     return result;
+  }
+  return x;
+}
+\end{lstlisting}
+
+\section{Restricted interoperation with functions without prototypes}
+C allows declarations of functions that do not specify the type of their parameters
+(no-prototype function declarations).  This provides backward compatibility between
+ANSI C from 1989 and earlier versions of C that did not check the types of
+arguments at calls.  Using functions declared this way is
+dangerous.  Arguments are passed based on their types and an incorrect call can be made
+where the types of arguments do not match the types of the parameters of the function
+definition.  This could lead to bypassing of checking.  Checked pointers could be 
+converted silently to unchecked pointers or vice versa.  Even worse, parameters could contain
+corrupted values or the stack could be corrupted.
+
+We recommend strongly that programmers do not declare functions without prototypes.  This
+feature is a backward compatibility feature and is used rarely now.
+The GCC and clang C compilers have warning flags that will detect the declaration of functions without 
+prototypes.
+
+For checked scopes, the declaration or use of functions with no prototypes is an error
+and is not allowed.   In unchecked scopes, forbidding the use of function
+declarations without prototypes would violate the design goal of providing backward compatibility.
+Instead, we restrict the usage of no-prototype functions to reduce the possibility of
+bounds checking being bypassed accidentally in unchecked blocks.
+
+Informally, we want to prevent values with checked types from being passed as arguments or
+returned from calls to no-prototype functions.  This requires some care to define because of
+structures, unions, and function pointers. We define the set of types $E$ that are an error to use
+with functions without prototypes by induction.  It includes:
+\begin{enumerate}
+\item Checked pointer and array types.
+\item Complete structure and union types with members that have types in $E$.
+\item Pointers to function types that have argument or return types that are in $E$.
+\item Complete structure and union types with members with bounds declarations (these
+      are described in Chapter~\ref{chapter:structure-bounds}).
+\item Pointers to function types with bounds declarations.
+\end{enumerate}
+Clauses 4 and 5 handle the case of integer-typed values that have bounds declarations
+(note that bounds-safe interfaces on unchecked pointer types are not bounds declarations).
+
+We define the following rules for unchecked scopes:
+\begin{enumerate}
+\item It is an error to call a function that is
+declared to have no prototype and pass or return a value whose type is in $E$.
+\item A function declaration with no prototype is incompatible with a function declaration
+with a prototype that has parameter types or a return type in $E$ or that has bounds
+declarations.
+\end{enumerate}
+
+\subsection{Examples of errors caught by rules}
+The rules catch common errors.  They catch passing a checked pointer
+to a function with no prototype:
+\begin{lstlisting}
+int f();
+
+int g(ptr<int> a) {
+  f(a);  // error - passing a checked type to a function without a prototype
+}
+\end{lstlisting}
+They also catch redeclaring a function with no prototype to have a checked parameter:
+\begin{lstlisting}
+int f();
+
+struct S {
+  array_ptr<int> ap : count(len);
+  int len;
+}
+
+// Error - incompatible definition of f with a prototype.
+int f(S y) {
+ ...
+ }
+\end{lstlisting}
+By rule 2, the definition of \lstinline+f+ is incompatible with the initial
+declaration of \lstinline+f+, so this is an error.  It is an error even
+if \lstinline+S+ is an incomplete type at the time of
+a prototype declaration for \lstinline+f+:
+\begin{lstlisting} 
+int f();
+
+struct S;
+
+int f(S y);  // Declarations involving incomplete types are allowed.
+
+// Now define struct S.
+struct S {
+  array_ptr<int> ap : count(len);
+  int len;
+}
+
+// Error - incompatible definition of f with the initial declaration of f.
+int f(S y) {
+ ...
+}
+\end{lstlisting}
+
+\subsection{Example of errors not caught by the rules}
+The rules are not foolproof, though. Checking can be bypassed by code that
+declares a function with no prototype in one
+compilation unit and defines it in another compilation unit:
+\begin{lstlisting}
+Compilation unit 1:
+
+int g(ptr<int> x) {
+ ...
+ }
+
+Compilation unit 2:
+
+extern int g();
+void h(void) {
+  g(5);  // Error
+}
+\end{lstlisting}
+The definition of \lstinline+g+ in compilation unit 1 is incompatible with
+the declaration in compilation unit 2, but there is no way for a compiler
+to detect this.
+
+The checking could be deferred to linking. The compiler could decorate the linker names of
+functions whose argument types or return types are in $E$ differently from the names 
+of functions whose argument types and return types are not in $E$.
+
+\subsection{Unchecked pointers to checked types}
+There is a limited way in which no-prototype functions can interoperate with checked types.
+The definition of $E$ allows unchecked
+pointers to checked pointers and arrays
+to be passed to or returned from no-prototype functions.  It also allows unchecked pointers to
+structures or unions that have checked members to be passed to or returned from
+no-prototype functions.  Finally, it allows unchecked pointers with bounds-safe interfaces to be
+passed to functions with no prototypes.  This is necessary so that bounds-safe interfaces
+can be added to existing code without breaking the code.   
+
+Here are some examples:
+\begin{lstlisting}
+int g();
+
+int g(ptr<int> *x);
+
+int f();
+
+struct S {
+  array_ptr<ptr> ap : count(len);
+  int len;
+}
+
+int f(S *arg);
+\end{lstlisting}
+
+There are three reasons to allow unchecked pointers that point to checked data to
+be passed to functions without prototypes.  First, the unchecked pointer types 
+indicate a lack of checking, so it is already clear from the types of the variables being
+used that there is some lack of checking.  Second, we believe that this
+will support incremental conversion of code to use the Checked C extension.  Finally,
+it would be difficult to enforce that an unchecked pointer does not point
+to a checked type. An unchecked pointer could point to an incomplete
+structure or union type. A compilation unit might never define the type. The type
+could even be unresolved during linking of a library if none of the library compilation units
+define the type.
