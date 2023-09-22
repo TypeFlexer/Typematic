@@ -3486,7 +3486,8 @@ public:
                                        SourceLocation EqualLoc,
                                        ExprResult Init,
                                        bool TopLevelOfInitList = false,
-                                       bool AllowExplicit = false);
+                                       bool AllowExplicit = false,
+                                       clang::FunctionDecl *FDecl = NULL);
   ExprResult PerformObjectArgumentInitialization(Expr *From,
                                                  NestedNameSpecifier *Qualifier,
                                                  NamedDecl *FoundDecl,
@@ -12258,7 +12259,8 @@ public:
                                 SourceLocation Loc,
                                 QualType DstType, QualType SrcType,
                                 Expr *SrcExpr, AssignmentAction Action,
-                                bool *Complained = nullptr);
+                                bool *Complained = nullptr,
+                                clang::FunctionDecl *FDecl = nullptr);
 
   /// IsValueInFlagEnum - Determine if a value is allowed as part of a flag
   /// enum. If AllowMask is true, then we also allow the complement of a valid
@@ -12276,7 +12278,8 @@ public:
   /// C99 6.5.16.
   AssignConvertType CheckAssignmentConstraints(SourceLocation Loc,
                                                QualType LHSType,
-                                               QualType RHSType);
+                                               QualType RHSType,
+                                               clang::FunctionDecl *FDecl=NULL);
 
   /// Check assignment constraints and optionally prepare for a conversion of
   /// the RHS to the LHS type. The conversion is prepared for if ConvertRHS
@@ -12284,7 +12287,8 @@ public:
   AssignConvertType CheckAssignmentConstraints(QualType LHSType,
                                                ExprResult &RHS,
                                                CastKind &Kind,
-                                               bool ConvertRHS = true);
+                                               bool ConvertRHS = true,
+                                               clang::FunctionDecl *FDecl = NULL);
 
   /// Check assignment constraints for an assignment of RHS to LHSType.
   ///
@@ -12303,7 +12307,7 @@ public:
   AssignConvertType CheckSingleAssignmentConstraints(
       QualType LHSType, ExprResult &RHS, bool Diagnose = true,
       bool DiagnoseCFAudited = false, bool ConvertRHS = true,
-      QualType LHSInteropType = QualType());
+      QualType LHSInteropType = QualType(), clang::FunctionDecl *FDecl = NULL);
 
 public:
   /// \brief: Given a value with type Ty that has a bounds declaration,

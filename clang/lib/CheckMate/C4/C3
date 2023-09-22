@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+usage="$0 <file>"
+
+if [ -z $1 ]; then
+  echo $usage 
+fi
+
+dune exec -- src/main.exe -f $1
