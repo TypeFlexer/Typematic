@@ -14,19 +14,58 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake bin utils
+          sudo apt-get install -y ninja-build cmake binutils
 
-      - name: Compile 3c target
-        working-directory: ./llvm
+      - name: Setup build directory and Compile 3c target
         run: |
-          cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1
+          mkdir -p llvm/build
+          cd llvm/build
+          cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
           ninja 3c
+          echo "$PWD/bin" >> $GITHUB_PATH  # Assuming the 3c binary is located in ./llvm/build/bin after compilation
 
-      - name: Run 3c on all files and compare
+      - name: Run 3c on nsimple.c and compare
         run: |
-          for file in typematic-tests/input/*; do
-            filename=$(basename -- "$file")
-            base="${filename%.*}"
-            ./path_to_3c_binary/3c -addcr -alltypes -dump-stats "$file" -- > "typematic-tests/temp_output/${base}.c"
-            diff "typematic-tests/temp_output/${base}.c" "typematic-tests/output/${base}_op.c"
-          done
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file=input/nsimple.c
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
+          diff "temp_output/${base}.c" "output/${base}_expected.c"
+
+      - name: Run 3c on simple.c and compare
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file=input/simple.c
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
+          diff "temp_output/${base}.c" "output/${base}_expected.c"
+
+
+      - name: Run 3c on structsimple_1.c and compare
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file=input/structsimple_1.c
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
+          diff "temp_output/${base}.c" "output/${base}_expected.c"
+
+      - name: Run 3c on structsimple_2.c and compare
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file=input/structsimple_2.c
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
+          diff "temp_output/${base}.c" "output/${base}_expected.c"
+
+      - name: Run 3c on structsimple.c and compare
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file=input/structsimple.c
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
+          diff "temp_output/${base}.c" "output/${base}_expected.c"

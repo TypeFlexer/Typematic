@@ -16,5 +16,7 @@ int main(){
 	si* ts;
 	_TPtr<int> targ2;
 	s.arg2 = targ2;
+	an a;
+	a.arg5 = s.arg2;
 	return 0;
 }
