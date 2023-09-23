@@ -50,7 +50,13 @@ jobs:
           filename=$(basename -- "$file")
           base="${filename%.*}"
           3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
-          # ... rest of the comparison code (same as above) ...
+          
+          # Process both files to remove consecutive newlines
+          awk 'NF || !seen[$0]++' "temp_output/${base}.c" > "temp_output/${base}_processed.c"
+          awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
+          
+          # Compare the processed files
+          diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
         continue-on-error: true
 
       - name: Compare Files for structsimple_1.c
@@ -62,7 +68,12 @@ jobs:
           filename=$(basename -- "$file")
           base="${filename%.*}"
           3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
-          # ... rest of the comparison code (same as above) ...
+          # Process both files to remove consecutive newlines
+          awk 'NF || !seen[$0]++' "temp_output/${base}.c" > "temp_output/${base}_processed.c"
+          awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
+          
+          # Compare the processed files
+          diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
         continue-on-error: true
 
       - name: Compare Files for structsimple_2.c
@@ -74,7 +85,12 @@ jobs:
           filename=$(basename -- "$file")
           base="${filename%.*}"
           3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
-          # ... rest of the comparison code (same as above) ...
+          # Process both files to remove consecutive newlines
+          awk 'NF || !seen[$0]++' "temp_output/${base}.c" > "temp_output/${base}_processed.c"
+          awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
+          
+          # Compare the processed files
+          diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
         continue-on-error: true
 
       - name: Compare Files for structsimple.c
@@ -86,5 +102,10 @@ jobs:
           filename=$(basename -- "$file")
           base="${filename%.*}"
           3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
-          # ... rest of the comparison code (same as above) ...
+          # Process both files to remove consecutive newlines
+          awk 'NF || !seen[$0]++' "temp_output/${base}.c" > "temp_output/${base}_processed.c"
+          awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
+          
+          # Compare the processed files
+          diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
         continue-on-error: true
