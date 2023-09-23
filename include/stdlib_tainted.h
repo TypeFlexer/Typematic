@@ -24,6 +24,7 @@ _Itype_for_any(T) _TArray_ptr<T> t_realloc(_TPtr<T> pointer, size_t size);
 
 _Itype_for_any(T) _TArray_ptr<T> t_calloc(size_t nmemb, size_t size);
 
+
 extern _Itype_for_any(T) _TPtr<T> hoard_malloc(size_t size);
 extern _Itype_for_any(T) void hoard_free(_TPtr<T> ptr);
 extern _Itype_for_any(T) _TArray_ptr<T> hoard_realloc(_TPtr<T> pointer, size_t size);
