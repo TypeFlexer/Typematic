@@ -23,44 +23,68 @@ jobs:
       - name: Create temp_output directory
         run: mkdir -p $GITHUB_WORKSPACE/typematic-tests/temp_output
 
-      - name: Define file check function
+      - name: Compare Files for nsimple.c
+        env:
+          FILE_NAME: nsimple.c
         run: |
-          compare_files() {
-            file="input/$1"
-            filename=$(basename -- "$file")
-            base="${filename%.*}"
-            3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file="input/${FILE_NAME}"
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
           
-            # Process both files to remove consecutive newlines
-            awk 'NF || !seen[$0]++' "temp_output/${base}.c" > "temp_output/${base}_processed.c"
-            awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
+          # Process both files to remove consecutive newlines
+          awk 'NF || !seen[$0]++' "temp_output/${base}.c" > "temp_output/${base}_processed.c"
+          awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
           
-            # Compare the processed files
-            diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
-          }
-          echo "compare_files" >> $GITHUB_ENV
-
-      - name: Run 3c on nsimple.c and compare
-        run: compare_files nsimple.c
+          # Compare the processed files
+          diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
         continue-on-error: true
-        shell: bash
 
-      - name: Run 3c on simple.c and compare
-        run: compare_files simple.c
+      - name: Compare Files for simple.c
+        env:
+          FILE_NAME: simple.c
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file="input/${FILE_NAME}"
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          # ... rest of the comparison code (same as above) ...
         continue-on-error: true
-        shell: bash
 
-      - name: Run 3c on structsimple_1.c and compare
-        run: compare_files structsimple_1.c
+      - name: Compare Files for structsimple_1.c
+        env:
+          FILE_NAME: structsimple_1.c
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file="input/${FILE_NAME}"
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          # ... rest of the comparison code (same as above) ...
         continue-on-error: true
-        shell: bash
 
-      - name: Run 3c on structsimple_2.c and compare
-        run: compare_files structsimple_2.c
+      - name: Compare Files for structsimple_2.c
+        env:
+          FILE_NAME: structsimple_2.c
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file="input/${FILE_NAME}"
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          # ... rest of the comparison code (same as above) ...
         continue-on-error: true
-        shell: bash
 
-      - name: Run 3c on structsimple.c and compare
-        run: compare_files structsimple.c
+      - name: Compare Files for structsimple.c
+        env:
+          FILE_NAME: structsimple.c
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file="input/${FILE_NAME}"
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          # ... rest of the comparison code (same as above) ...
         continue-on-error: true
-        shell: bash
