@@ -19,6 +19,9 @@ jobs:
           ninja 3c
           echo "$PWD/bin" >> $GITHUB_PATH  # Assuming the 3c binary is located in ./llvm/build/bin after compilation
 
+      - name: Create temp_output directory
+        run: mkdir -p $GITHUB_WORKSPACE/typematic-tests/temp_output
+
       - name: Run 3c on nsimple.c and compare
         run: |
           cd $GITHUB_WORKSPACE/typematic-tests
