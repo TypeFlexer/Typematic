@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <stdlib_tainted.h>
 
-_TPtr<int> t_malloc(long size);
-
 _Tainted _TPtr<int> increment(_TPtr<int> tainted_ptr) {
     (*tainted_ptr)++;
     return tainted_ptr;
