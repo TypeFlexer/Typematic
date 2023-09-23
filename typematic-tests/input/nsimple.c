@@ -1,6 +1,6 @@
-//#include <stdio.h>
-//#include <stdlib.h>
-//#include <stdlib_tainted.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdlib_tainted.h>
 
 _TPtr<int> t_malloc(long size);
 
@@ -11,7 +11,6 @@ int* increment(int* tainted_ptr) {
 
 int main() {
     _TPtr<int> seed_tainted_ptr = t_malloc(sizeof(int));
-    //int* tptr = seed_tainted_ptr;
     *seed_tainted_ptr = 10;
 
     printf("Value before increment: %d\n", *seed_tainted_ptr);

@@ -8,9 +8,6 @@ int* simple (int* a, int* b)
         return b;
 }
 
-
-//_TPtr<int> t_malloc(long size);
-
 int main() {
     // Allocate an int on the heap and set its value
     //_TPtr<int> heapInt = t_malloc(10*sizeof(int));
@@ -25,9 +22,8 @@ int main() {
 
     int* alias3 = simple(alias1, alias2);
     // Print the final value of the heap-allocated int
-    //printf("Final value: %d\n", *heapInt);
+    printf("Final value: %d\n", *heapInt);
 
-    // Free the heap-allocated memory
     free(heapInt);
 
     return 0;

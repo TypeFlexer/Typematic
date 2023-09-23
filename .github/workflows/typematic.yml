@@ -17,6 +17,7 @@ jobs:
           cd llvm/build
           cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
           ninja 3c
+          ninja checkcbox-headers # for the typeflexer headers
           echo "$PWD/bin" >> $GITHUB_PATH  # Assuming the 3c binary is located in ./llvm/build/bin after compilation
 
       - name: Create temp_output directory
@@ -28,8 +29,8 @@ jobs:
           file=input/nsimple.c
           filename=$(basename -- "$file")
           base="${filename%.*}"
-          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
-          diff "temp_output/${base}.c" "output/${base}_expected.c"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          diff -w "temp_output/${base}.c" "output/${base}_expected.c"
 
       - name: Run 3c on simple.c and compare
         run: |
@@ -37,8 +38,8 @@ jobs:
           file=input/simple.c
           filename=$(basename -- "$file")
           base="${filename%.*}"
-          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
-          diff "temp_output/${base}.c" "output/${base}_expected.c"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          diff -w "temp_output/${base}.c" "output/${base}_expected.c"
 
 
       - name: Run 3c on structsimple_1.c and compare
@@ -47,8 +48,8 @@ jobs:
           file=input/structsimple_1.c
           filename=$(basename -- "$file")
           base="${filename%.*}"
-          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
-          diff "temp_output/${base}.c" "output/${base}_expected.c"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          diff -w "temp_output/${base}.c" "output/${base}_expected.c"
 
       - name: Run 3c on structsimple_2.c and compare
         run: |
@@ -56,8 +57,8 @@ jobs:
           file=input/structsimple_2.c
           filename=$(basename -- "$file")
           base="${filename%.*}"
-          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
-          diff "temp_output/${base}.c" "output/${base}_expected.c"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          diff -w "temp_output/${base}.c" "output/${base}_expected.c"
 
       - name: Run 3c on structsimple.c and compare
         run: |
@@ -65,5 +66,5 @@ jobs:
           file=input/structsimple.c
           filename=$(basename -- "$file")
           base="${filename%.*}"
-          3c -addcr -alltypes -dump-stats "$file" -- > "temp_output/${base}.c"
-          diff "temp_output/${base}.c" "output/${base}_expected.c"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          diff -w "temp_output/${base}.c" "output/${base}_expected.c"

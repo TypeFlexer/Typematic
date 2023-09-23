@@ -4,12 +4,9 @@
 
 _Tainted _TNt_array_ptr<int> simple(_TPtr<int> a, _TNt_array_ptr<int> b)
 {
-*b = *a + *b;
-return b;
+        *b = *a + *b;
+        return b;
 }
-
-
-//_TPtr<int> t_malloc(long size);
 
 int main() {
     // Allocate an int on the heap and set its value
@@ -25,9 +22,8 @@ int main() {
 
     _TNt_array_ptr<int> alias3 = simple(alias1, alias2);
     // Print the final value of the heap-allocated int
-    //printf("Final value: %d\n", *heapInt);
+    printf("Final value: %d\n", *heapInt);
 
-    // Free the heap-allocated memory
     t_free<int>(heapInt);
 
     return 0;

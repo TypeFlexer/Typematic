@@ -12,9 +12,9 @@ typedef Tstruct simple{
 } si;
 
 int main()_Checked {
-si s = {};
-_TPtr<si> ts;
-_TPtr<int> targ2;
-s.arg2 = targ2;
-return 0;
+        si s = {};
+        _TPtr<si> ts;
+        _TPtr<int> targ2;
+        s.arg2 = targ2;
+        return 0;
 }
