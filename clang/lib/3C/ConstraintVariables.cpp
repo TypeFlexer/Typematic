@@ -1891,6 +1891,8 @@ PointerVariableConstraint::mkString(Constraints &CS,
   bool EmittedBase = false;
   // Have we emitted the name of the variable yet?
   bool EmittedName = false;
+
+  bool TaintedFunctionPtr = false;
   if (!EmitName || IsReturn)
     EmittedName = true;
   int TypeIdx = 0;
@@ -1959,12 +1961,28 @@ PointerVariableConstraint::mkString(Constraints &CS,
       EndStrs.push_front(">");
       break;
     case Atom::A_TPtr:
-      getQualString(TypeIdx, Ss);
+    if (FV)
+    {
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+            break;
 
-      EmittedBase = false;
-      Ss << "_TPtr<";
-      EndStrs.push_front(">");
-      break;
+        FptrInner << "*";
+        if (!EmittedBase) {
+            FptrInner << getName() << " ";
+        }
+
+        EmittedName = true;
+        TaintedFunctionPtr = true;
+        getQualString(TypeIdx, FptrInner);
+    }
+    else {
+        getQualString(TypeIdx, Ss);
+
+        EmittedBase = false;
+        Ss << "_TPtr<";
+        EndStrs.push_front(">");
+    }
+    break;
     case Atom::A_Arr:
       // If this is an array.
       getQualString(TypeIdx, Ss);
@@ -1979,28 +1997,62 @@ PointerVariableConstraint::mkString(Constraints &CS,
       EndStrs.push_front(">");
       break;
     case Atom::A_TArr:
-      // If this is an array.
-      getQualString(TypeIdx, Ss);
-      // If it's an Arr, then the character we substitute should
-      // be [] instead of *, IF, the original type was an array.
-      // And, if the original type was a sized array of size K.
-      // we should substitute [K].
-      if (emitArraySize(ConstArrs, TypeIdx, K))
-        break;
-      EmittedBase = false;
-      Ss << "_TArray_ptr<";
-      EndStrs.push_front(">");
+      if (FV)
+      {
+          if (emitArraySize(ConstArrs, TypeIdx, K))
+              break;
+
+          FptrInner << "*";
+          if (!EmittedBase) {
+              FptrInner << getName() << " ";
+          }
+
+          EmittedName = true;
+          TaintedFunctionPtr = true;
+          getQualString(TypeIdx, FptrInner);
+      }
+      else {
+          // If this is an array.
+          getQualString(TypeIdx, Ss);
+          // If it's an Arr, then the character we substitute should
+          // be [] instead of *, IF, the original type was an array.
+          // And, if the original type was a sized array of size K.
+          // we should substitute [K].
+          if (emitArraySize(ConstArrs, TypeIdx, K))
+              break;
+          EmittedBase = false;
+          Ss << "_TArray_ptr<";
+          EndStrs.push_front(">");
+      }
       break;
     case Atom::A_NTArr:
-      // If this is an NTArray.
-      getQualString(TypeIdx, Ss);
-      if (emitArraySize(ConstArrs, TypeIdx, K))
-        break;
+    if (FV)
+    {
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+            break;
 
-      EmittedBase = false;
-      Ss << "_Nt_array_ptr<";
-      EndStrs.push_front(">");
-      break;
+        FptrInner << "*";
+
+        if (!EmittedBase) {
+            FptrInner << getName() << " ";
+        }
+
+        EmittedName = true;
+        TaintedFunctionPtr = true;
+
+        getQualString(TypeIdx, FptrInner);
+    }
+    else {
+        // If this is an NTArray.
+        getQualString(TypeIdx, Ss);
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+            break;
+
+        EmittedBase = false;
+        Ss << "_Nt_array_ptr<";
+        EndStrs.push_front(">");
+    }
+    break;
     case Atom::A_TNTArr:
       // If this is an NTArray.
       getQualString(TypeIdx, Ss);
@@ -2076,9 +2128,12 @@ PointerVariableConstraint::mkString(Constraints &CS,
   }
 
   // Add closing elements to type
-  addArrayAnnotations(ConstArrs, EndStrs);
-  for (std::string Str : EndStrs) {
-    Ss << Str;
+  if (!TaintedFunctionPtr)
+  {
+      addArrayAnnotations(ConstArrs, EndStrs);
+      for (std::string Str : EndStrs) {
+          Ss << Str;
+      }
   }
 
   if (IsReturn && !ForItype && !StringRef(Ss.str()).endswith("*"))

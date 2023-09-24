@@ -8,14 +8,14 @@ double subtract(_TPtr<double> a, _TPtr<double> b);
 double multiply(_TPtr<double> a, _TPtr<double> b);
 double divide(_TPtr<double> a, _TPtr<double> b);
 void displayMenu();
-double executeOperation(_TPtr<double (_TPtr<double>, _TPtr<double>)> operation, _TPtr<double> a, _TPtr<double> b);
+double executeOperation(double (*operation )(_TPtr<double>, _TPtr<double>), _TPtr<double> a, _TPtr<double> b);
 
 int main() {
     int choice;
     _TPtr<double> x = t_malloc<double>(sizeof(double));
     _TPtr<double> y = t_malloc<double>(sizeof(double));
     _TPtr<double> result = t_malloc<double>(sizeof(double));
-    _TPtr<double (_TPtr<double>, _TPtr<double>)> operation = NULL;
+    double (*operation )(_TPtr<double>, _TPtr<double>) = ((void *)0);
 
     if (!x || !y || !result) _Checked {
         _Unchecked { printf("Memory allocation failed.\n"); };
@@ -46,20 +46,20 @@ int main() {
         switch (choice) _Checked {
             case 1:
                 operation = add;
-            break;
+                break;
             case 2:
                 operation = subtract;
-            break;
+                break;
             case 3:
                 operation = multiply;
-            break;
+                break;
             case 4:
                 if (*y == 0) {
                     _Unchecked { printf("Error: Division by zero!\n"); };
                     continue;
                 }
-            operation = divide;
-            break;
+                operation = divide;
+                break;
         }
 
         // Execute the operation
@@ -75,19 +75,19 @@ int main() {
 }
 
 _Tainted double add(_TPtr<double> a, _TPtr<double> b) {
-return *a + *b;
+    return *a + *b;
 }
 
 _Tainted double subtract(_TPtr<double> a, _TPtr<double> b) {
-return *a - *b;
+    return *a - *b;
 }
 
 _Tainted double multiply(_TPtr<double> a, _TPtr<double> b) {
-return *a * *b;
+    return *a * *b;
 }
 
 _Tainted double divide(_TPtr<double> a, _TPtr<double> b) {
-return *a / *b;
+    return *a / *b;
 }
 
 _Tainted void displayMenu() {
@@ -100,6 +100,6 @@ _Tainted void displayMenu() {
     printf("Enter your choice: ");
 }
 
-_Tainted double executeOperation(_TPtr<double (_TPtr<double>, _TPtr<double>)> operation, _TPtr<double> a, _TPtr<double> b) {
-return operation(a, b);
+_Tainted double executeOperation(double (*operation )(_TPtr<double>, _TPtr<double>), _TPtr<double> a, _TPtr<double> b) {
+    return operation(a, b);
 }

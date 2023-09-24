@@ -15,7 +15,7 @@ int main() {
     _TPtr<double> x = malloc(sizeof(double));
     double *y = malloc(sizeof(double));
     double *result = malloc(sizeof(double));
-    double (*operation)(double *, double *) = NULL;
+    double (*operation)(double *, double *);
 
     if (!x || !y || !result) {
         printf("Memory allocation failed.\n");
