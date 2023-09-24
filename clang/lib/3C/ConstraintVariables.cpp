@@ -4017,7 +4017,14 @@ FunctionVariableConstraint::mkString(Constraints &CS,
   Ret = Ret + "(";
   std::vector<std::string> ParmStrs;
   for (const auto &I : this->ParamVars)
-    ParmStrs.push_back(I.mkString(CS, true, ForItypeBase));
+  {
+        bool isInternalConstraintTainted = I.InternalConstraint->hasTainted(CS.getVariables());
+        bool isExternalConstraintTainted = I.ExternalConstraint->hasTainted(CS.getVariables());
+        if (isInternalConstraintTainted && isExternalConstraintTainted)
+            ParmStrs.push_back(I.mkString(CS, true, true, true));
+        else
+            ParmStrs.push_back(I.mkString(CS, true, ForItypeBase, false));
+  }
 
   if (ParmStrs.size() > 0) {
     std::ostringstream Ss;
@@ -5144,8 +5151,12 @@ void TFVComponentVariable::mergeDeclaration(TFVComponentVariable *From,
 }
 
 std::string FVComponentVariable::mkString(Constraints &CS, bool EmitName,
-                                          bool ForItypeBase) const {
-  return mkTypeStr(CS, EmitName, "", ForItypeBase) +
+                                          bool ForItypeBase, bool isTainted) const {
+    if (isTainted) {
+        return mkTaintedTypeStr(CS, EmitName);
+    }
+    else
+        return mkTypeStr(CS, EmitName, "", ForItypeBase) +
          mkItypeStr(CS, ForItypeBase);
 }
 
@@ -5193,6 +5204,11 @@ std::string FVComponentVariable::mkTypeStr(Constraints &CS, bool EmitName,
     Ret += " : " + ExternalConstraint->getBoundsStr();
 
   return Ret;
+}
+
+std::string FVComponentVariable::mkTaintedTypeStr(Constraints &CS, bool EmitName) const {
+    return ExternalConstraint->mkString(
+                   CS, MKSTRING_OPTS(EmitName, ForItype = false));
 }
 
 std::string TFVComponentVariable::mkTypeStr(Constraints &CS, bool EmitName,

@@ -1,0 +1,105 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdlib_tainted.h>
+
+// Function prototypes
+double add(_TPtr<double> a, _TPtr<double> b);
+double subtract(_TPtr<double> a, _TPtr<double> b);
+double multiply(_TPtr<double> a, _TPtr<double> b);
+double divide(_TPtr<double> a, _TPtr<double> b);
+void displayMenu();
+double executeOperation(_TPtr<double (_TPtr<double>, _TPtr<double>)> operation, _TPtr<double> a, _TPtr<double> b);
+
+int main() {
+    int choice;
+    _TPtr<double> x = t_malloc<double>(sizeof(double));
+    _TPtr<double> y = t_malloc<double>(sizeof(double));
+    _TPtr<double> result = t_malloc<double>(sizeof(double));
+    _TPtr<double (_TPtr<double>, _TPtr<double>)> operation = NULL;
+
+    if (!x || !y || !result) _Checked {
+        _Unchecked { printf("Memory allocation failed.\n"); };
+        exit(1);
+    }
+
+    while (1) {
+        displayMenu();
+        scanf("%d", &choice);
+
+        // Exit choice
+        if (choice == 5) _Checked {
+            _Unchecked { printf("Exiting...\n"); };
+            break;
+        }
+
+        // Check if valid choice
+        if (choice < 1 || choice > 4) _Checked {
+            _Unchecked { printf("Invalid choice!\n"); };
+            continue;
+        }
+
+        // Get input values
+        printf("Enter two numbers: ");
+        scanf("%lf %lf", x, y);
+
+        // Assign appropriate function to the function pointer
+        switch (choice) _Checked {
+            case 1:
+                operation = add;
+            break;
+            case 2:
+                operation = subtract;
+            break;
+            case 3:
+                operation = multiply;
+            break;
+            case 4:
+                if (*y == 0) {
+                    _Unchecked { printf("Error: Division by zero!\n"); };
+                    continue;
+                }
+            operation = divide;
+            break;
+        }
+
+        // Execute the operation
+        *result = executeOperation(operation, x, y);
+        printf("Result: %lf\n", *result);
+    }
+
+    t_free<double>(x);
+    t_free<double>(y);
+    t_free<double>(result);
+
+    return 0;
+}
+
+_Tainted double add(_TPtr<double> a, _TPtr<double> b) {
+return *a + *b;
+}
+
+_Tainted double subtract(_TPtr<double> a, _TPtr<double> b) {
+return *a - *b;
+}
+
+_Tainted double multiply(_TPtr<double> a, _TPtr<double> b) {
+return *a * *b;
+}
+
+_Tainted double divide(_TPtr<double> a, _TPtr<double> b) {
+return *a / *b;
+}
+
+_Tainted void displayMenu() {
+    printf("\nCalculator Menu:\n");
+    printf("1. Add\n");
+    printf("2. Subtract\n");
+    printf("3. Multiply\n");
+    printf("4. Divide\n");
+    printf("5. Exit\n");
+    printf("Enter your choice: ");
+}
+
+_Tainted double executeOperation(_TPtr<double (_TPtr<double>, _TPtr<double>)> operation, _TPtr<double> a, _TPtr<double> b) {
+return operation(a, b);
+}

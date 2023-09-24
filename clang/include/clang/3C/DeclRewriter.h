@@ -48,6 +48,10 @@ public:
                                         RecordDecl *Decl,
                                         std::string UseName, ProgramInfo &Info);
 
+  static RewrittenDecl
+  buildTaintedDecl(PVConstraint *pConstraint, DeclaratorDecl *pDecl, std::string basicString, ProgramInfo &info,
+                   ArrayBoundsRewriter &rewriter, bool decls);
+
 private:
   Rewriter &R;
   ProgramInfo &Info;
@@ -127,5 +131,9 @@ protected:
                      bool RewriteToDecoyTstructType);
 
     RewrittenDecl buildStructVar(const StructureVariableConstraint *SV, RecordDecl *Decl);
+
+    RewrittenDecl
+    buildTaintedDecl(PVConstraint *Defn, DeclaratorDecl *Decl, std::string UseName, bool &RewriteParm, bool &RewriteRet,
+                     bool GenerateSDecls);
 };
 #endif // LLVM_CLANG_3C_DECLREWRITER_H

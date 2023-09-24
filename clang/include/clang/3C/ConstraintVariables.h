@@ -1535,7 +1535,7 @@ public:
                         std::string UseName = "",
                         bool ForItypeBase = false) const;
   std::string mkString(Constraints &CS, bool EmitName = true,
-                       bool ForItypeBase = false) const;
+                       bool ForItypeBase = false, bool  isTainted = false) const;
 
   bool hasItypeSolution(Constraints &CS) const;
   bool hasCheckedSolution(Constraints &CS) const;
@@ -1553,6 +1553,8 @@ public:
 
   bool solutionEqualTo(Constraints &CS, const FVComponentVariable *CV,
                        bool ComparePtyp) const;
+
+    std::string mkTaintedTypeStr(Constraints &CS, bool EmitName) const;
 };
 
 class TFVComponentVariable {
@@ -1602,6 +1604,10 @@ public:
 
     bool solutionEqualTo(Constraints &CS, const TFVComponentVariable *CV,
                          bool ComparePtyp) const;
+
+    std::string mkTaintedTypeStr(Constraints &CS, bool EmitName, std::string UseName, bool ForItypeBase) const;
+
+    std::string mkTaintedTypeStr(Constraints &CS, bool EmitName, std::string UseName) const;
 };
 
 // Constraints on a function type. Also contains a 'name' parameter for

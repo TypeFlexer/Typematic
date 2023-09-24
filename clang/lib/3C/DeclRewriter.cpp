@@ -693,6 +693,15 @@ SourceLocation DeclRewriter::getNextCommaOrSemicolon(SourceLocation L) {
   }
 }
 
+RewrittenDecl DeclRewriter::buildTaintedDecl(PVConstraint *pConstraint, DeclaratorDecl *pDecl, std::string basicString,
+                                             ProgramInfo &info, ArrayBoundsRewriter &rewriter, bool decls) {
+  std::string DeclName;
+  std::string Type =
+          pConstraint->mkString(info.getConstraints(), MKSTRING_OPTS(UseName = DeclName));
+
+  return RewrittenDecl(Type, "", "");
+}
+
 bool FunctionDeclBuilder::VisitRecordDecl(RecordDecl* RD){
     //get the struct constraint variable for the structure
     auto structName = RD->getNameAsString();
@@ -956,6 +965,17 @@ FunctionDeclBuilder::buildCheckedDecl(PVConstraint *Defn, DeclaratorDecl *Decl,
 }
 
 RewrittenDecl
+FunctionDeclBuilder::buildTaintedDecl(PVConstraint *Defn, DeclaratorDecl *Decl,
+                                      std::string UseName, bool &RewriteParm,
+                                      bool &RewriteRet, bool GenerateSDecls) {
+  RewrittenDecl RD = DeclRewriter::buildTaintedDecl(Defn, Decl, UseName, Info,
+                                                    ABRewriter, GenerateSDecls);
+  RewriteParm |= isa_and_nonnull<ParmVarDecl>(Decl);
+  RewriteRet |= isa_and_nonnull<FunctionDecl>(Decl);
+  return RD;
+}
+
+RewrittenDecl
 FunctionDeclBuilder::buildTstructDecl(StructConstraint *Defn, RecordDecl *Decl, std::string UseName,
                                       bool RewriteToTstructType,
                                       bool RewriteToDecoyTstructType) {
@@ -990,11 +1010,21 @@ FunctionDeclBuilder::buildDeclVar(const FVComponentVariable *CV,
 
   bool CheckedSolution = CV->hasCheckedSolution(Info.getConstraints());
   bool ItypeSolution = CV->hasItypeSolution(Info.getConstraints());
+  bool TaintedSolutionExternal = CV->getExternal()->hasTainted(Info.getConstraints().getVariables());
+  bool TaintedSolutionInternal = CV->getInternal()->hasTainted(Info.getConstraints().getVariables());
+  bool TaintedSolution = TaintedSolutionExternal || TaintedSolutionInternal;
+
+  if (TaintedSolution) {
+    return buildTaintedDecl(CV->getExternal(), Decl, UseName, RewriteParm,
+                            RewriteRet, GenerateSDecls);
+  }
+  else
   if (ItypeSolution ||
       (CheckedSolution && _3COpts.ItypesForExtern && !StaticFunc)) {
     return buildItypeDecl(CV->getExternal(), Decl, UseName, RewriteParm,
                           RewriteRet, GenerateSDecls, CheckedSolution);
   }
+  else
   if (CheckedSolution) {
     return buildCheckedDecl(CV->getExternal(), Decl, UseName, RewriteParm,
                             RewriteRet, GenerateSDecls);
