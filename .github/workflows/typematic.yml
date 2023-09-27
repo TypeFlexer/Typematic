@@ -120,3 +120,20 @@ jobs:
           
           # Compare the processed files
           diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
+
+      - name: Compare Files for propagateThroughStructures.c
+        env:
+          FILE_NAME: propagateThroughStructures.c
+        run: |
+          cd $GITHUB_WORKSPACE/typematic-tests
+          file="input/${FILE_NAME}"
+          filename=$(basename -- "$file")
+          base="${filename%.*}"
+          3c -addcr -alltypes "$file" -- > "temp_output/${base}.c"
+          # Process both files to remove consecutive newlines
+          awk 'NF || !seen[$0]++' "temp_output/${base}.c" > "temp_output/${base}_processed.c"
+          awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
+
+          # Compare the processed files
+          diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
+

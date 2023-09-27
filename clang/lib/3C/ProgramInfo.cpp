@@ -205,30 +205,30 @@ void ProgramInfo::printAggregateStats(const std::set<std::string> &F,
   for (const auto &N : AllAtoms) {
     ConstAtom *CA = CS.getAssignment(N);
     switch (CA->getKind()) {
-    case Atom::A_Arr:
-      TotA += 1;
-      break;
-    case Atom::A_NTArr:
-      TotNt += 1;
-      break;
-    case Atom::A_Ptr:
-      TotP += 1;
-      break;
-    case Atom::A_Wild:
-      TotWi += 1;
-      break;
-    case Atom::A_struct:
-      Totstrct += 1;
-      break;
-    case Atom::A_Tstruct:
-      TotTstruct += 1;
-      break;
-    case Atom::A_DTstruct:
-      TotDTstruct += 1;
-      break;
-    case Atom::A_Var:
-    case Atom::A_Const:
-      llvm_unreachable("bad constant in environment map");
+      case Atom::A_Arr:
+        TotA += 1;
+            break;
+      case Atom::A_NTArr:
+        TotNt += 1;
+            break;
+      case Atom::A_Ptr:
+        TotP += 1;
+            break;
+      case Atom::A_Wild:
+        TotWi += 1;
+            break;
+      case Atom::A_struct:
+        Totstrct += 1;
+            break;
+      case Atom::A_Tstruct:
+        TotTstruct += 1;
+            break;
+      case Atom::A_DTstruct:
+        TotDTstruct += 1;
+            break;
+      case Atom::A_Var:
+      case Atom::A_Const:
+        llvm_unreachable("bad constant in environment map");
     }
   }
 
@@ -346,7 +346,7 @@ void ProgramInfo::printStats(const std::set<std::string> &F, raw_ostream &O,
       }
 
       FilesToVars[FileName] =
-          std::tuple<int, int, int, int, int, int, int, int>(VarC, PC, NtaC, AC, WC, ATS, AS, ADTS);
+              std::tuple<int, int, int, int, int, int, int, int>(VarC, PC, NtaC, AC, WC, ATS, AS, ADTS);
     }
   }
 
@@ -404,8 +404,8 @@ void ProgramInfo::printStats(const std::set<std::string> &F, raw_ostream &O,
   if (!JsonFormat) {
     O << "Summary\nTotalConstraints|TotalPtrs|TotalNTArr|TotalArr|TotalWild|Totalstructs|TotalTstructs|TotalDecoyTstructs\n";
     O << TotC << "|" << TotP << "|" << TotNt << "|" << TotA << "|" << TotWi << "|" << Totstrct << "|"
-    << TotTstruct << "|" << TotDTstruct
-    << "\n";
+      << TotTstruct << "|" << TotDTstruct
+      << "\n";
   } else {
     O << "\"Summary\":{";
     O << "\"TotalConstraints\":" << TotC << ",";
@@ -490,8 +490,8 @@ bool ProgramInfo::link() {
     if (!V.second) {
       std::string VarName = V.first;
       auto WildReason = ReasonLoc(
-          "External global variable " + VarName + " has no definition",
-          Rsn.Location);
+              "External global variable " + VarName + " has no definition",
+              Rsn.Location);
       const std::set<PVConstraint *> &C = GlobalVariableSymbols[VarName];
       for (const auto &Var : C) {
         // TODO: Is there an easy way to get a PSL to attach to the constraint?
@@ -529,8 +529,8 @@ void ProgramInfo::linkFunction(FunctionVariableConstraint *FV) {
   // to an undefined function. DEFAULT_REASON is a sentinel for
   // ConstraintVariable::equateWithItype; see the comment there.
   std::string Rsn = (FV->hasBody() ? DEFAULT_REASON : "Unchecked pointer in parameter or "
-                                          "return of undefined function " +
-                                          FV->getName());
+                                                      "return of undefined function " +
+                                                      FV->getName());
 
   // Handle the cases where itype parameters should not be treated as their
   // unchecked type.
@@ -546,10 +546,10 @@ void ProgramInfo::linkFunction(FunctionVariableConstraint *FV) {
   // external variables to solve to checked types meaning the parameter will be
   // rewritten to an itype.
   auto LinkComponent = [this, Reason](const FVComponentVariable *FVC) {
-    FVC->getInternal()->constrainToWild(CS, Reason);
-    if (!_3COpts.InferTypesForUndefs &&
-        !FVC->getExternal()->srcHasItype() && !FVC->getExternal()->isGeneric())
-      FVC->getExternal()->constrainToWild(CS, Reason);
+      FVC->getInternal()->constrainToWild(CS, Reason);
+      if (!_3COpts.InferTypesForUndefs &&
+          !FVC->getExternal()->srcHasItype() && !FVC->getExternal()->isGeneric())
+        FVC->getExternal()->constrainToWild(CS, Reason);
   };
 
   if (!FV->hasBody()) {
@@ -642,7 +642,7 @@ ProgramInfo::insertNewFVConstraint(FunctionDecl *FD, FVConstraint *NewC,
                          DiagnosticsEngine::Fatal,
                          "merging failed for %q0 due to %1",
                          FD->getLocation())
-      << FD << ReasonFailed;
+          << FD << ReasonFailed;
   // A failed merge will provide poor data, but the diagnostic error report
   // will cause the program to terminate after the variable adder step.
   return (*Map)[FuncName];
@@ -755,71 +755,82 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
     assert(!isa<ParmVarDecl>(VD));
     QualType QT = VD->getTypeSourceInfo()->getTypeLoc().getType();
     if (QT->isPointerType() || QT->isArrayType()) {
-        if (QT->isTaintedPointerType())
-        {
-            TPVConstraint *P = new TPVConstraint(D, *this, *AstContext);
-            P->setValidDecl();
-            NewTV = P;
-            std::string VarName(VD->getName());
-            unifyIfTaintedTypedef(QT, *AstContext, P);
-            auto PSL = PersistentSourceLoc::mkPSL(VD, *AstContext);
-            //ensureNtCorrect(VD->getType(), PSL, P);
-            if (VD->hasGlobalStorage()) {
-                // If we see a definition for this global variable, indicate so in
-                // ExternGVars.
-                if (VD->hasDefinition() || VD->hasDefinition(*AstContext)) {
-                    ExternGVars[VarName] = true;
-                }
-                    // If we don't, check that we haven't seen one before before setting to
-                    // false.
-                else if (!ExternGVars[VarName]) {
-                    ExternGVars[VarName] = false;
-                }
-              TaintedGlobalVariableSymbols[VarName].insert(P);
-            }
+      if (QT->isTaintedPointerType())
+      {
+        TPVConstraint *P = new TPVConstraint(D, *this, *AstContext);
+        P->setValidDecl();
+        NewTV = P;
+        std::string VarName(VD->getName());
+        unifyIfTaintedTypedef(QT, *AstContext, P);
+        auto PSL = PersistentSourceLoc::mkPSL(VD, *AstContext);
+        //ensureNtCorrect(VD->getType(), PSL, P);
+        if (VD->hasGlobalStorage()) {
+          // If we see a definition for this global variable, indicate so in
+          // ExternGVars.
+          if (VD->hasDefinition() || VD->hasDefinition(*AstContext)) {
+            ExternGVars[VarName] = true;
+          }
+            // If we don't, check that we haven't seen one before before setting to
+            // false.
+          else if (!ExternGVars[VarName]) {
+            ExternGVars[VarName] = false;
+          }
+          TaintedGlobalVariableSymbols[VarName].insert(P);
         }
-        else {
-            PVConstraint *P = new PVConstraint(D, *this, *AstContext);
-            P->setValidDecl();
-            NewCV = P;
-            std::string VarName(VD->getName());
-            unifyIfTypedef(QT, *AstContext, P);
-            auto PSL = PersistentSourceLoc::mkPSL(VD, *AstContext);
-            ensureNtCorrect(VD->getType(), PSL, P);
-            if (VD->hasGlobalStorage()) {
-                // If we see a definition for this global variable, indicate so in
-                // ExternGVars.
-                if (VD->hasDefinition() || VD->hasDefinition(*AstContext)) {
-                    ExternGVars[VarName] = true;
-                }
-                    // If we don't, check that we haven't seen one before before setting to
-                    // false.
-                else if (!ExternGVars[VarName]) {
-                    ExternGVars[VarName] = false;
-                }
-                GlobalVariableSymbols[VarName].insert(P);
-            }
+      }
+      else {
+        PVConstraint *P = new PVConstraint(D, *this, *AstContext);
+        P->setValidDecl();
+        NewCV = P;
+        std::string VarName(VD->getName());
+        unifyIfTypedef(QT, *AstContext, P);
+        auto PSL = PersistentSourceLoc::mkPSL(VD, *AstContext);
+        ensureNtCorrect(VD->getType(), PSL, P);
+        if (VD->hasGlobalStorage()) {
+          // If we see a definition for this global variable, indicate so in
+          // ExternGVars.
+          if (VD->hasDefinition() || VD->hasDefinition(*AstContext)) {
+            ExternGVars[VarName] = true;
+          }
+            // If we don't, check that we haven't seen one before before setting to
+            // false.
+          else if (!ExternGVars[VarName]) {
+            ExternGVars[VarName] = false;
+          }
+          GlobalVariableSymbols[VarName].insert(P);
         }
+      }
     }
 
   } else if (FieldDecl *FlD = dyn_cast<FieldDecl>(D)) {
     QualType QT = FlD->getTypeSourceInfo()->getTypeLoc().getType();
     if (QT->isPointerType() || QT->isArrayType()) {
-      PVConstraint *P = new PVConstraint(D, *this, *AstContext);
-      unifyIfTypedef(QT, *AstContext, P);
-      NewCV = P;
-      NewCV->setValidDecl();
-      if (FlD->getParent()->isUnion()) {
-        auto Rsn = ReasonLoc(UNION_FIELD_REASON, PLoc);
-        NewCV->equateWithItype(*this, Rsn);
-        NewCV->constrainToWild(CS, Rsn);
+      if (QT->isTaintedPointerType())
+      {
+        TPVConstraint *P = new TPVConstraint(D, *this, *AstContext);
+        P->setValidDecl();
+        NewTV = P;
+        std::string VarName(FlD->getName());
+        unifyIfTaintedTypedef(QT, *AstContext, P);
+      }
+      else
+      {
+        PVConstraint *P = new PVConstraint(D, *this, *AstContext);
+        unifyIfTypedef(QT, *AstContext, P);
+        NewCV = P;
+        NewCV->setValidDecl();
+        if (FlD->getParent()->isUnion()) {
+          auto Rsn = ReasonLoc(UNION_FIELD_REASON, PLoc);
+          NewCV->equateWithItype(*this, Rsn);
+          NewCV->constrainToWild(CS, Rsn);
+        }
       }
     }
   } else if (RecordDecl* RlD = dyn_cast<RecordDecl>(D))
   {
-      StructConstraint *P = new StructConstraint(D, *this, *AstContext);
-      NewSV = P;
-      NewSV->setValidDecl();
+    StructConstraint *P = new StructConstraint(D, *this, *AstContext);
+    NewSV = P;
+    NewSV->setValidDecl();
   }
   else
     llvm_unreachable("unknown decl type");
@@ -835,26 +846,26 @@ void ProgramInfo::addVariable(clang::DeclaratorDecl *D,
     constrainWildIfMacro(NewCV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
     Variables[PLoc] = NewCV;
   }
-    if (NewTV)
-    {
-        if (!canWrite(PLoc.getFileName())) {
-        auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
-        NewTV->equateWithItype(*this, Rsn);
-        NewTV->constrainToWild(CS, Rsn);
-        }
-        TaintedconstrainWildIfMacro(NewTV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
-      Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewTV);
+  if (NewTV)
+  {
+    if (!canWrite(PLoc.getFileName())) {
+      auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
+      NewTV->equateWithItype(*this, Rsn);
+      NewTV->constrainToWild(CS, Rsn);
     }
+    TaintedconstrainWildIfMacro(NewTV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
+    Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewTV);
+  }
 
-    if (NewSV)
-    {
-        if (!canWrite(PLoc.getFileName())) {
-            auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
-            NewSV->constrainToWild(CS, Rsn);
-        }
-        //StructureconstrainWildIfMacro(NewSV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
-        Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewSV);
+  if (NewSV)
+  {
+    if (!canWrite(PLoc.getFileName())) {
+      auto Rsn = ReasonLoc(UNWRITABLE_REASON, PLoc);
+      NewSV->constrainToWild(CS, Rsn);
     }
+    //StructureconstrainWildIfMacro(NewSV, D->getLocation(), ReasonLoc(MACRO_REASON, PLoc));
+    Variables[PLoc] = reinterpret_cast<ConstraintVariable *>(NewSV);
+  }
 }
 
 void ProgramInfo::ensureNtCorrect(const QualType &QT,
@@ -868,7 +879,7 @@ void ProgramInfo::ensureNtCorrect(const QualType &QT,
     }
     else
       PV->constrainOuterTo(CS, CS.getArr(),
-                         ReasonLoc(ARRAY_REASON, PSL), true, true);
+                           ReasonLoc(ARRAY_REASON, PSL), true, true);
   }
 }
 
@@ -888,18 +899,18 @@ void ProgramInfo::unifyIfTypedef(const QualType &QT, ASTContext &Context,
 }
 
 void ProgramInfo::unifyIfTaintedTypedef(const QualType &QT, ASTContext &Context,
-                                 TPVConstraint *P, ConsAction CA) {
-    if (const auto *TDT = dyn_cast<TypedefType>(QT.getTypePtr())) {
-        auto *TDecl = TDT->getDecl();
-        auto PSL = PersistentSourceLoc::mkPSL(TDecl, Context);
-        auto O = lookupTypedef(PSL);
-        auto Rsn = ReasonLoc("typedef", PSL);
-        if (O.hasValue()) {
-            auto *Bounds = &O.getValue();
-            P->setTypedef(reinterpret_cast<TaintedConstraintVariable *>(Bounds), TDecl->getNameAsString());
-           TaintedconstrainConsVarGeq(P, reinterpret_cast<TaintedConstraintVariable *>(Bounds), CS, Rsn, CA, false, this);
-        }
+                                        TPVConstraint *P, ConsAction CA) {
+  if (const auto *TDT = dyn_cast<TypedefType>(QT.getTypePtr())) {
+    auto *TDecl = TDT->getDecl();
+    auto PSL = PersistentSourceLoc::mkPSL(TDecl, Context);
+    auto O = lookupTypedef(PSL);
+    auto Rsn = ReasonLoc("typedef", PSL);
+    if (O.hasValue()) {
+      auto *Bounds = &O.getValue();
+      P->setTypedef(reinterpret_cast<TaintedConstraintVariable *>(Bounds), TDecl->getNameAsString());
+      TaintedconstrainConsVarGeq(P, reinterpret_cast<TaintedConstraintVariable *>(Bounds), CS, Rsn, CA, false, this);
     }
+  }
 }
 
 ProgramInfo::IDAndTranslationUnit ProgramInfo::getExprKey(Expr *E,
@@ -984,15 +995,15 @@ void ProgramInfo::constrainWildIfMacro(ConstraintVariable *CV,
 }
 
 void ProgramInfo::TaintedconstrainWildIfMacro(TaintedConstraintVariable *TV,
-                                       SourceLocation Location,
-                                       const ReasonLoc &Rsn) {
+                                              SourceLocation Location,
+                                              const ReasonLoc &Rsn) {
   if (!Rewriter::isRewritable(Location))
     TV->constrainToWild(CS, Rsn);
 }
 
 void ProgramInfo::StructureconstrainWildIfMacro(StructureConstraintVariable *SV,
-                                              SourceLocation Location,
-                                              const ReasonLoc &Rsn) {
+                                                SourceLocation Location,
+                                                const ReasonLoc &Rsn) {
   assert(false);
 }
 
@@ -1053,7 +1064,7 @@ FVConstraint *ProgramInfo::getFuncFVConstraint(FunctionDecl *FD,
       assert(!F->hasBody());
       assert("FunFVar can only be null if FuncName is not in the map!" &&
              ExternalFunctionFVCons.find(FuncName) ==
-                 ExternalFunctionFVCons.end());
+             ExternalFunctionFVCons.end());
       ExternalFunctionFVCons[FuncName] = F;
       FunFVar = ExternalFunctionFVCons[FuncName];
     }
@@ -1118,7 +1129,7 @@ FVConstraint *ProgramInfo::getStaticFuncConstraint(std::string FuncName,
                                                    std::string FileName) const {
   if (StaticFunctionFVCons.find(FileName) != StaticFunctionFVCons.end() &&
       StaticFunctionFVCons.at(FileName).find(FuncName) !=
-          StaticFunctionFVCons.at(FileName).end()) {
+      StaticFunctionFVCons.at(FileName).end()) {
     return StaticFunctionFVCons.at(FileName).at(FuncName);
   }
   return nullptr;
@@ -1129,7 +1140,7 @@ FVConstraint *ProgramInfo::getStaticFuncConstraint(std::string FuncName,
 // other constraint vars that have been determined to be WILD because they
 // depend on other constraint vars that are directly assigned WILD.
 bool ProgramInfo::computeInterimConstraintState(
-    const std::set<std::string> &FilePaths) {
+        const std::set<std::string> &FilePaths) {
 
   // Get all the valid vars of interest i.e., all the Vars that are present
   // in one of the files being compiled.
@@ -1154,9 +1165,9 @@ bool ProgramInfo::computeInterimConstraintState(
   ValidVarsS.insert(ValidVarsVec.begin(), ValidVarsVec.end());
 
   auto GetLocOrZero = [](const Atom *Val) {
-    if (const auto *VA = dyn_cast<VarAtom>(Val))
-      return VA->getLoc();
-    return (ConstraintKey)0;
+      if (const auto *VA = dyn_cast<VarAtom>(Val))
+        return VA->getLoc();
+      return (ConstraintKey)0;
   };
   CVars ValidVarsKey;
   std::transform(ValidVarsS.begin(), ValidVarsS.end(),
@@ -1181,16 +1192,16 @@ bool ProgramInfo::computeInterimConstraintState(
     OnlyIndirect.clear();
 
     auto BFSVisitor = [&](Atom *SearchAtom) {
-      auto *SearchVA = dyn_cast<VarAtom>(SearchAtom);
-      if (SearchVA && AllValidVars.find(SearchVA) != AllValidVars.end()) {
-        CState.RCMap[SearchVA->getLoc()].insert(VA->getLoc());
+        auto *SearchVA = dyn_cast<VarAtom>(SearchAtom);
+        if (SearchVA && AllValidVars.find(SearchVA) != AllValidVars.end()) {
+          CState.RCMap[SearchVA->getLoc()].insert(VA->getLoc());
 
-        if (ValidVarsKey.find(SearchVA->getLoc()) != ValidVarsKey.end())
-          TmpCGrp.insert(SearchVA->getLoc());
-        if (DirectWildVarAtoms.find(SearchVA) == DirectWildVarAtoms.end()) {
-          OnlyIndirect.insert(SearchVA->getLoc());
+          if (ValidVarsKey.find(SearchVA->getLoc()) != ValidVarsKey.end())
+            TmpCGrp.insert(SearchVA->getLoc());
+          if (DirectWildVarAtoms.find(SearchVA) == DirectWildVarAtoms.end()) {
+            OnlyIndirect.insert(SearchVA->getLoc());
+          }
         }
-      }
     };
     CS.getChkCG().visitBreadthFirst(VA, BFSVisitor);
 
@@ -1273,8 +1284,8 @@ void ProgramInfo::insertIntoPtrSourceMap(PersistentSourceLoc PSL,
 }
 
 void ProgramInfo::insertCVAtoms(
-    ConstraintVariable *CV,
-    std::map<ConstraintKey, ConstraintVariable *> &AtomMap) {
+        ConstraintVariable *CV,
+        std::map<ConstraintKey, ConstraintVariable *> &AtomMap) {
   if (auto *PVC = dyn_cast<PVConstraint>(CV)) {
     for (Atom *A : PVC->getCvars())
       if (auto *VA = dyn_cast<VarAtom>(A)) {
@@ -1299,7 +1310,7 @@ void ProgramInfo::insertCVAtoms(
         // It is possible that VA->getLoc() already exists in the map if there
         // is a function which is declared before it is defined.
         assert(AtomMap.find(VA->getLoc()) == AtomMap.end() ||
-                       SVC->isPartOfFunctionPrototype());
+               SVC->isPartOfFunctionPrototype());
         AtomMap[VA->getLoc()] = CV;
       }
   }
@@ -1384,7 +1395,7 @@ void ProgramInfo::addTypedef(PersistentSourceLoc PSL, TypedefDecl *TD,
 }
 
 void ProgramInfo::registerTranslationUnits(
-    const std::vector<std::unique_ptr<clang::ASTUnit>> &ASTs) {
+        const std::vector<std::unique_ptr<clang::ASTUnit>> &ASTs) {
   assert(TranslationUnitIdxMap.empty());
   unsigned int Idx = 0;
   for (const auto &AST : ASTs) {

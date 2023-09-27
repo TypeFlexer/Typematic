@@ -202,7 +202,16 @@ CastPlacementVisitor::getCastString(ConstraintVariable *Dst,
     } else {
       Type = Dst->mkString(Info.getConstraints(), MKSTRING_OPTS(EmitName = false));
     }
-    return std::make_pair("_Assume_bounds_cast<" + Type + ">(", Suffix);
+
+    // Check if the Type contains tainted pointer types
+    if (Type.find("_TPtr<") != std::string::npos ||
+        Type.find("_TArray_ptr<") != std::string::npos ||
+        Type.find("_TNt_array_ptr<") != std::string::npos) {
+      return std::make_pair("_Tainted_Assume_bounds_cast<" + Type + ">(", Suffix);
+    } else {
+      return std::make_pair("_Assume_bounds_cast<" + Type + ">(", Suffix);
+    }
+
   }
   default:
     llvm_unreachable("No casting needed");
