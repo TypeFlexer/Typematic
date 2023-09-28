@@ -14726,27 +14726,38 @@ static bool needsConversionOfHalfVec(bool OpRequiresConversion, ASTContext &Ctx,
 
   return HasVectorOfHalfType(E0) && (!E1 || HasVectorOfHalfType(E1));
 }
-bool Sema::CheckUnExprIntegrityInTaintedScope(ExprResult *InputExpr,
-                                               SourceLocation OpLoc)
+
+bool Sema::CheckUnExprIntegrityInTaintedScope(ExprResult *InputExpr, SourceLocation OpLoc)
 {
-    if(InputExpr->get() == NULL)
-      return true;
-    // Should Also be the same for RHS
-    auto IpExpr = InputExpr->get();
-    if (IpExpr->getReferencedDeclOfCallee() != NULL)
-    {
-        if((IpExpr->getReferencedDeclOfCallee()->getParentFunctionOrMethod()
-          == NULL) && (!IpExpr->getReferencedDeclOfCallee()->isTaintedDecl()))
-        {
-            Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0
-                 << InputExpr->get()->getSourceRange()
-           << FixItHint::CreateInsertion(OpLoc, "Qualify"
-                                     " the global variable as _Tainted");
-            return false;
-        }
-    }
+  if(InputExpr->get() == NULL)
     return true;
+
+  auto IpExpr = InputExpr->get();
+
+  if (IpExpr->getReferencedDeclOfCallee() != NULL)
+  {
+    auto Decl = IpExpr->getReferencedDeclOfCallee();
+
+    // Check if the declaration does not belong to any function/method
+    bool isOutOfFunctionScope = Decl->getParentFunctionOrMethod() == NULL;
+
+    if (clang::VarDecl *VarD = llvm::dyn_cast<clang::VarDecl>(Decl))
+    {
+      bool isGlobalOrExtern = VarD->hasGlobalStorage() && !VarD->isStaticLocal();
+
+      if (isOutOfFunctionScope && isGlobalOrExtern)
+      {
+        Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0
+        << InputExpr->get()->getSourceRange()
+        << FixItHint::CreateInsertion(OpLoc, "Create a wrapper to this tainted function \n "
+                                             "and pass Global variables as parameters!");
+        return false;
+      }
+    }
+  }
+  return true;
 }
+
 bool Sema::CheckUnExprIntegrityInCheckedScope(ExprResult *InputExpr,
                                               SourceLocation OpLoc)
 {
@@ -14795,44 +14806,46 @@ bool Sema::CheckCallExprIntegrityInTaintedScope(Expr *Fn,
   return true;
 }
 bool Sema::CheckBinExprIntegrityInTaintedScope(ExprResult *LHS, ExprResult *RHS,
-                                                  SourceLocation OpLoc,
+                                               SourceLocation OpLoc,
                                                SourceRange SR)
 {
-    if((RHS->get() == NULL) || (LHS->get() == NULL))
-      return true;
-
-    auto RHSExpr = RHS->get();
-    auto LHSExpr = LHS->get();
-    if (RHSExpr->getReferencedDeclOfCallee() != NULL) {
-      if ((RHSExpr->getReferencedDeclOfCallee()->getParentFunctionOrMethod() ==
-          NULL) && ((!RHSExpr->getReferencedDeclOfCallee()->isTaintedDecl())
-              && !(RHSExpr->getReferencedDeclOfCallee()->isMirrorDecl()))){
-        Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0 << RHSExpr->getSourceRange()
-                                    << FixItHint::CreateInsertion(OpLoc, "Qualify"
-                                         " the global variable as _Tainted or "
-                                         "const-qualified _Mirror");
-        return false;
-      }
-    }
-
-    /*
-     * Mirror variables can be assigned as long as they are performed in the
-     * Mirrored context
-     */
-    if ((LHSExpr->getReferencedDeclOfCallee() != NULL) &&
-        (LHSExpr->getReferencedDeclOfCallee()
-                     ->getParentFunctionOrMethod() == NULL)
-        && (!LHSExpr->getReferencedDeclOfCallee()->isTaintedDecl())
-        && (LHSExpr->getMirrorScopeSpecifier() != Mirror_Memory)) {
-        Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0 << LHSExpr->getSourceRange()
-                                    << FixItHint::CreateInsertion(OpLoc, "Qualify"
-                                           " the global variable as _Tainted");
-        return false;
-    }
-
+  if((RHS->get() == NULL) || (LHS->get() == NULL))
     return true;
-}
 
+  auto RHSExpr = RHS->get();
+  auto LHSExpr = LHS->get();
+
+  auto CheckDeclForGlobal = [this, OpLoc](clang::Expr* Expr) -> bool {
+      if (Expr->getReferencedDeclOfCallee() != NULL) {
+        auto Decl = Expr->getReferencedDeclOfCallee();
+
+        // Check if the declaration does not belong to any function/method
+        bool isOutOfFunctionScope = Decl->getParentFunctionOrMethod() == NULL;
+
+        if (clang::VarDecl *VarD = llvm::dyn_cast<clang::VarDecl>(Decl))
+        {
+          bool isGlobalOrExtern = VarD->hasGlobalStorage() && !VarD->isStaticLocal();
+          if (isOutOfFunctionScope && isGlobalOrExtern &&
+              (!Decl->isTaintedDecl()) && !(Decl->isMirrorDecl())) {
+            Diag(OpLoc, diag::err_typecheck_globalvar_tfscope) << 0
+            << Expr->getSourceRange()
+            << FixItHint::CreateInsertion(OpLoc, "Create a wrapper to this tainted function \n "
+                                                 "and pass Global variables as parameters!");
+            return false;
+          }
+        }
+      }
+      return true;
+  };
+
+  if (!CheckDeclForGlobal(RHSExpr))
+    return false;
+
+  if (!CheckDeclForGlobal(LHSExpr))
+    return false;
+
+  return true;
+}
 bool Sema::CheckBinExprIntegrityInCheckedScope(ExprResult *LHS, ExprResult *RHS,
                                                SourceLocation OpLoc,
                                                SourceRange SR)
