@@ -3,8 +3,8 @@
 #include <stdlib_tainted.h>
 
 typedef Tstruct Dataval{
-        _TPtr<double> taintedValue;
-        double normalValue;
+    _TPtr<double> taintedValue;
+    double normalValue;
 } Data;
 
 
