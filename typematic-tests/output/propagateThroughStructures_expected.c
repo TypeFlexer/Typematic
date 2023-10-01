@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include <stdlib_tainted.h>
 
-
-typedef  {
-    _TPtr<double> taintedValue;
-    double normalValue;
+typedef Tstruct Dataval{
+        _TPtr<double> taintedValue;
+        double normalValue;
 } Data;
+
 
 _Tainted void displayData(_TPtr<Data> data) {
     printf("Tainted Value: %lf\n", *(data->taintedValue));
@@ -24,7 +24,7 @@ int main() {
     }
 
     *(data.taintedValue) = 10.5;
-    
+
     displayData(&data);
 
     t_free<double>(data.taintedValue);

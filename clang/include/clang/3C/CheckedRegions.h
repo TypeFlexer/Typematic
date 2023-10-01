@@ -105,6 +105,8 @@ private:
     bool isTaintedStruct(QualType Qt, std::set<std::string> &Seen);
 
     bool isTainted(CVarOption Cv);
+
+    bool hasGlobalVariableAccess(CompoundStmt *S);
 };
 
 #endif // LLVM_CLANG_3C_CHECKEDREGIONS_H

@@ -12,11 +12,11 @@ typedef struct simple{
 } si;
 
 int main()_Checked {
-    si s = {};
-    _Ptr<si> ts = ((void *)0);
-    _TPtr<int> targ2;
-    s.arg2 = targ2;
-    an a = {};
-    a.arg5 = s.arg2;
-    return 0;
+	si s = {};
+	_Ptr<si> ts = ((void *)0);
+	_TPtr<int> targ2;
+	s.arg2 = targ2;
+	an a = {};
+	a.arg5 = s.arg2;
+	return 0;
 }

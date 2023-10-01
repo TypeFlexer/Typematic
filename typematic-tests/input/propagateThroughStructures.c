@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include <stdlib_tainted.h>
 
-
-typedef struct {
+typedef struct Dataval{
     _TPtr<double> taintedValue;
     double normalValue;
 } Data;
+
 
 void displayData(Data *data) {
     printf("Tainted Value: %lf\n", *(data->taintedValue));

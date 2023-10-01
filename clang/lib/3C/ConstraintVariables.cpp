@@ -15,6 +15,7 @@
 #include "clang/Lex/Lexer.h"
 #include "llvm/ADT/StringSwitch.h"
 #include <sstream>
+#include <regex>
 
 using namespace clang;
 // Macro for boolean implication.
@@ -1901,7 +1902,10 @@ PointerVariableConstraint::mkString(Constraints &CS,
   // a generic function so give it the default generic type name.
   // Add more type names below if we expect to use a lot.
   std::string BaseTypeName = BaseType;
-  if (InferredGenericIndex > -1 && isVoidPtr() &&
+  std::regex pattern(R"(struct\s+(\w+))");
+  std::string replacement = "Tstruct $1";
+
+    if (InferredGenericIndex > -1 && isVoidPtr() &&
       isSolutionChecked(CS.getVariables())) {
     assert(InferredGenericIndex < 3
            && "Trying to use an unexpected type variable name");
@@ -1977,6 +1981,7 @@ PointerVariableConstraint::mkString(Constraints &CS,
     }
     else {
         getQualString(TypeIdx, Ss);
+        BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
 
         EmittedBase = false;
         Ss << "_TPtr<";
@@ -2195,7 +2200,10 @@ TaintedPointerVariableConstraint::mkString(Constraints &CS,
   // a generic function so give it the default generic type name.
   // Add more type names below if we expect to use a lot.
   std::string BaseTypeName = BaseType;
-  if (InferredGenericIndex > -1 && isVoidPtr() &&
+  std::regex pattern(R"(struct\s+(\w+))");
+  std::string replacement = "Tstruct $1";
+
+    if (InferredGenericIndex > -1 && isVoidPtr() &&
       isSolutionTainted(CS.getVariables())) {
     assert(InferredGenericIndex < 3
            && "Trying to use an unexpected type variable name");
@@ -2249,56 +2257,57 @@ TaintedPointerVariableConstraint::mkString(Constraints &CS,
     switch (K) {
       case Atom::A_TPtr:
         getQualString(TypeIdx, Ss);
+        BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
 
-            EmittedBase = false;
-            Ss << "_TPtr<";
-            EndStrs.push_front(">");
-            break;
+        EmittedBase = false;
+        Ss << "_TPtr<";
+        EndStrs.push_front(">");
+        break;
       case Atom::A_TArr:
         // If this is an array.
         getQualString(TypeIdx, Ss);
-            // If it's an Arr, then the character we substitute should
-            // be [] instead of *, IF, the original type was an array.
-            // And, if the original type was a sized array of size K.
-            // we should substitute [K].
-            if (emitArraySize(ConstArrs, TypeIdx, K))
-              break;
-            EmittedBase = false;
-            Ss << "_TArray_ptr<";
-            EndStrs.push_front(">");
-            break;
+        // If it's an Arr, then the character we substitute should
+        // be [] instead of *, IF, the original type was an array.
+        // And, if the original type was a sized array of size K.
+        // we should substitute [K].
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+          break;
+        EmittedBase = false;
+        Ss << "_TArray_ptr<";
+        EndStrs.push_front(">");
+        break;
       case Atom::A_TNTArr:
         // If this is an NTArray.
         getQualString(TypeIdx, Ss);
-            if (emitArraySize(ConstArrs, TypeIdx, K))
-              break;
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+          break;
 
-            EmittedBase = false;
-            Ss << "_TNt_array_ptr<";
-            EndStrs.push_front(">");
-            break;
-            // If there is no array in the original program, then we fall through to
-            // the case where we write a pointer value.
+        EmittedBase = false;
+        Ss << "_TNt_array_ptr<";
+        EndStrs.push_front(">");
+        break;
+        // If there is no array in the original program, then we fall through to
+        // the case where we write a pointer value.
       case Atom::A_Wild:
         if (emitArraySize(ConstArrs, TypeIdx, K))
           break;
-            // FIXME: This code emits wild pointer levels with the outermost on the
-            // left. The outermost should be on the right
-            // (https://github.com/correctcomputation/checkedc-clang/issues/161).
-            if (FV != nullptr) {
-              FptrInner << "*";
-              getQualString(TypeIdx, FptrInner);
-            } else {
-              if (!EmittedBase) {
-                assert(!BaseTypeName.empty());
-                EmittedBase = true;
-                Ss << BaseTypeName << " ";
-              }
-              Ss << "*";
-              getQualString(TypeIdx, Ss);
-            }
+        // FIXME: This code emits wild pointer levels with the outermost on the
+        // left. The outermost should be on the right
+        // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+        if (FV != nullptr) {
+          FptrInner << "*";
+          getQualString(TypeIdx, FptrInner);
+        } else {
+          if (!EmittedBase) {
+            assert(!BaseTypeName.empty());
+            EmittedBase = true;
+            Ss << BaseTypeName << " ";
+          }
+          Ss << "*";
+          getQualString(TypeIdx, Ss);
+        }
 
-            break;
+        break;
       case Atom::A_Const:
       case Atom::A_Var:
         llvm_unreachable("impossible");

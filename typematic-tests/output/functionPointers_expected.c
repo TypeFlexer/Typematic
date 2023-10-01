@@ -46,20 +46,20 @@ int main() {
         switch (choice) _Checked {
             case 1:
                 operation = add;
-                break;
+            break;
             case 2:
                 operation = subtract;
-                break;
+            break;
             case 3:
                 operation = multiply;
-                break;
+            break;
             case 4:
                 if (*y == 0) {
                     _Unchecked { printf("Error: Division by zero!\n"); };
                     continue;
                 }
-                operation = divide;
-                break;
+            operation = divide;
+            break;
         }
 
         // Execute the operation

@@ -40,6 +40,8 @@ public:
 
   bool VisitCallExpr(CallExpr *C);
 
+  bool VisitRecordDecl(RecordDecl *RD);
+
 private:
   ASTContext *Context;
   ProgramInfo &Info;
@@ -57,6 +59,13 @@ private:
                      // itype(nt_array_ptr).
   };
 
+  // Enumeration indicating what type of cast is required at a call site.
+  enum StructureTypeNeeded {
+      STRUCT = 0,
+      TAINTED_STRUCT,
+      DECOY_TAINTED_STRUCT
+  };
+
   CastNeeded needCasting(ConstraintVariable *SrcInt, ConstraintVariable *SrcExt,
                          ConstraintVariable *DstInt,
                          ConstraintVariable *DstExt);
@@ -70,5 +79,13 @@ private:
                       CastNeeded CastKind, Expr *E);
   void reportCastInsertionFailure(Expr *E, const std::string &CastStr);
   void updateRewriteStats(CastNeeded CastKind);
+
+    std::string
+    getTaintedStructString(StructureTypeNeeded StructKind);
+
+    void TaintedStructureResolution(StructureTypeNeeded StructKind, RecordDecl* RD);
+    void updateRewriteStats(StructureTypeNeeded CastKind);
+
+    bool isTstruct(RecordDecl *RD);
 };
 #endif // LLVM_CLANG_3C_CASTPLACEMENT_H

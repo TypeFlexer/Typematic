@@ -56,6 +56,10 @@ void PerformanceStats::endTotalTime() {
 }
 
 void PerformanceStats::incrementNumAssumeBounds() { NumAssumeBoundsCasts++; }
+void PerformanceStats::incrementTstructs() { NumTstructs++; }
+void PerformanceStats::incrementDecoyTstructs() { NumDecoyTstructs++; }
+void PerformanceStats::incrementStructs() { structs++; }
+
 void PerformanceStats::incrementNumCheckedCasts() { NumCheckedCasts++; }
 
 void PerformanceStats::incrementNumWildCasts() { NumWildCasts++; }
@@ -85,6 +89,9 @@ void PerformanceStats::printPerformanceStats(llvm::raw_ostream &O,
     O << "{\"ReWriteStats\":{";
     O << "\"NumAssumeBoundsCasts\":" << NumAssumeBoundsCasts;
     O << ", \"NumCheckedCasts\":" << NumCheckedCasts;
+    O << ", \"NumTstructs\":" << NumTstructs;
+    O << ", \"NumDecoyTstructs\":" << NumDecoyTstructs;
+    O << ", \"Structs\":" << structs;
     O << ", \"NumWildCasts\":" << NumWildCasts;
     O << ", \"NumFixedCasts\":" << NumFixedCasts;
     O << ", \"NumITypes\":" << NumITypes;
@@ -105,6 +112,9 @@ void PerformanceStats::printPerformanceStats(llvm::raw_ostream &O,
     O << "ReWriteStats\n";
     O << "NumAssumeBoundsCasts:" << NumAssumeBoundsCasts << "\n";
     O << "NumCheckedCasts:" << NumCheckedCasts << "\n";
+    O << "NumTstructs:" << NumTstructs;
+    O << "NumDecoyTstructs:" << NumDecoyTstructs;
+    O << "Structs:" << structs;
     O << "NumWildCasts:" << NumWildCasts << "\n";
     O << "NumFixedCasts:" << NumFixedCasts << "\n";
     O << "NumITypes:" << NumITypes << "\n";

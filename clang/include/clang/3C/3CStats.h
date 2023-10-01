@@ -29,6 +29,9 @@ public:
   // Rewrite Stats
   unsigned long NumAssumeBoundsCasts;
   unsigned long NumCheckedCasts;
+  unsigned long NumTstructs;
+  unsigned long structs;
+  unsigned long NumDecoyTstructs;
   unsigned long NumWildCasts;
   unsigned long NumFixedCasts;
   unsigned long NumITypes;
@@ -46,6 +49,7 @@ public:
     RewritingTimeSt = TotalTimeSt = 0;
 
     NumAssumeBoundsCasts = NumCheckedCasts = 0;
+    NumTstructs = NumDecoyTstructs = structs = 0;
     NumWildCasts = NumITypes = NumFixedCasts = 0;
 
     NumCheckedRegions = NumUnCheckedRegions = NumTaintedRegions = 0;
@@ -80,6 +84,12 @@ public:
 
   void printPerformanceStats(llvm::raw_ostream &O, bool JsonFormat);
 
+  void incrementTstructs();
+
+  void incrementDecoyTstructs();
+
+  void incrementStructs();
+
 private:
   clock_t CompileTimeSt;
   clock_t ConstraintBuilderTimeSt;
@@ -87,6 +97,7 @@ private:
   clock_t ArrayBoundsInferenceTimeSt;
   clock_t RewritingTimeSt;
   clock_t TotalTimeSt;
+
 };
 
 class ProgramInfo;

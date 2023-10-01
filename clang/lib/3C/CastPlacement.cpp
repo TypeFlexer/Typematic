@@ -17,6 +17,78 @@
 
 using namespace clang;
 
+//lets create an other pass to rewrite structures to Tstructs or _Decoy Tstructs
+
+bool CastPlacementVisitor::isTstruct(RecordDecl* RD) {
+  for (auto field: RD->fields()) {  // Iterate through all fields of the RecordDecl
+    QualType fieldType = field->getType();  // Get the type of the field
+    ASTContext *TmpCtx = const_cast<ASTContext *>(Context);
+    CVarOption cvar = Info.getVariable(field, TmpCtx);
+    ConstAtom *CAtom = nullptr;
+    const RecordType *recordType = fieldType->getAs<RecordType>();
+
+    if (cvar.hasValue()) {
+      if (recordType) {
+        StructureVariableConstraint *SV = dyn_cast<StructureVariableConstraint>(&cvar.getValue());
+        if (SV) {
+          if (!SV->isTstructV() && !SV->isDecoyTstruct())
+            return false;
+        }
+      } else {
+        PointerVariableConstraint *PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+        if (PV) {
+          CAtom = Info.getConstraints().getAssignment(PV->getCvars().at(0));
+          if (!CAtom->isTainted())
+            return false;
+        }
+      }
+    }
+  }
+  return true;  // Return false if no pointer fields are found
+}
+
+bool CastPlacementVisitor::VisitRecordDecl(RecordDecl* RD)
+{
+    std::string RDName = RD->getNameAsString();
+    bool isExplicitTStruct = RD->isTaintedStruct();
+    bool isExplicitDecoyTStruct = RD->isDecoyDecl();
+
+    if (isExplicitTStruct || isExplicitDecoyTStruct)
+      return true;
+
+    ASTContext *TmpCtx = const_cast<ASTContext *>(Context);
+    CVarOption cvar = Info.getVariable(RD, TmpCtx);
+    if (!cvar.hasValue()){
+        return true;
+    }
+
+    bool isTaintedStructure = isTstruct(RD);
+    bool isDecoyTStruct = false; //later we need to find a mechanism to find out if the structure is a decoy or not
+
+    StructureTypeNeeded StructKind = STRUCT;
+
+    if (isTaintedStructure) {
+      if (isDecoyTStruct) {
+        StructKind = DECOY_TAINTED_STRUCT;
+      }
+      else
+        StructKind = TAINTED_STRUCT;
+    }
+
+    if (StructKind == TAINTED_STRUCT || StructKind == DECOY_TAINTED_STRUCT) {
+        StructureVariableConstraint *SV = dyn_cast<StructureVariableConstraint>(&cvar.getValue());
+        if (SV){
+            if (StructKind == DECOY_TAINTED_STRUCT)
+                SV->setDecoyTstruct(true);
+            else if (StructKind == TAINTED_STRUCT)
+                SV->setTstruct(true);
+
+            TaintedStructureResolution(StructKind, RD);
+        }
+    }
+    return true;
+}
+
 bool CastPlacementVisitor::VisitCallExpr(CallExpr *CE) {
   // Get the constraint variable for the function.
   Decl *CalleeDecl = CE->getCalleeDecl();
@@ -218,6 +290,45 @@ CastPlacementVisitor::getCastString(ConstraintVariable *Dst,
   }
 }
 
+// Get the string representation of the cast required for the call. The return
+// is a pair of strings: a prefix and suffix string that form the complete cast
+// when placed around the expression being cast.
+std::string
+CastPlacementVisitor::getTaintedStructString(StructureTypeNeeded StructKind) {
+  switch (StructKind) {
+    case STRUCT:
+      return "struct";
+    case TAINTED_STRUCT:
+      return "Tstruct";
+    case DECOY_TAINTED_STRUCT: {
+      return "_Decoy Tstruct";
+    }
+    default:
+      llvm_unreachable("No casting needed");
+  }
+}
+
+void CastPlacementVisitor::TaintedStructureResolution(StructureTypeNeeded StructKind, RecordDecl* RD) {
+  SourceLocation BeginLoc = RD->getBeginLoc();
+  PersistentSourceLoc PSL = PersistentSourceLoc::mkPSL(RD, *Context);
+  if (!canWrite(PSL.getFileName())) {
+    return;
+  }
+
+  auto CastStrs = getTaintedStructString(StructKind);  // Assuming this returns "Tstruct"
+
+  bool FrontRewritable = Writer.isRewritable(BeginLoc);
+  bool EndRewritable = Writer.isRewritable(RD->getEndLoc());
+  if (FrontRewritable && EndRewritable) {
+    // Get the source text range of the word "struct"
+    SourceRange structRange(BeginLoc, BeginLoc.getLocWithOffset(strlen("struct")));
+    // Replace the entire range of text that contains the word "struct"
+    bool BFail = Writer.ReplaceText(structRange, CastStrs);
+    updateRewriteStats(StructKind);
+    assert("Locations were rewritable, fail should not be possible." && !BFail);
+  }
+}
+
 void CastPlacementVisitor::surroundByCast(ConstraintVariable *Dst,
                                           ConstraintVariable *TypeVar,
                                           CastNeeded CastKind, Expr *E) {
@@ -296,6 +407,23 @@ void CastPlacementVisitor::reportCastInsertionFailure(
                          E->getExprLoc())
       << Context->getSourceManager().getExpansionRange(E->getSourceRange())
       << CastStr;
+}
+
+void CastPlacementVisitor::updateRewriteStats(StructureTypeNeeded CastKind) {
+  auto &PStats = Info.getPerfStats();
+  switch (CastKind) {
+    case TAINTED_STRUCT:
+      PStats.incrementTstructs();
+          break;
+    case DECOY_TAINTED_STRUCT:
+      PStats.incrementDecoyTstructs();
+          break;
+    case STRUCT:
+      PStats.incrementStructs();
+          break;
+    default:
+      llvm_unreachable("Unhandled cast.");
+  }
 }
 
 void CastPlacementVisitor::updateRewriteStats(CastNeeded CastKind) {

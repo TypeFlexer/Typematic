@@ -3,18 +3,18 @@
 #include <string.h>
 #include <stdlib_tainted.h>
 
-typedef struct anothersimp {
-    _TArray_ptr<char> arg4;
-    _TPtr<int> arg5;
-    _TPtr<struct anothersimp> simp3;
+typedef Tstruct anothersimp {
+        _TArray_ptr<char> arg4;
+        _TPtr<int> arg5;
+        _TPtr<Tstruct anothersimp> simp3;
 } an;
 
-typedef struct simple {
-    int arg1;
-    _TPtr<int> arg2;
-    _TPtr<char> arg3;
-    _TPtr<struct simple> simp1;
-    _TPtr<an> simp2;
+typedef Tstruct simple {
+        int arg1;
+        _TPtr<int> arg2;
+        _TPtr<char> arg3;
+        _TPtr<Tstruct simple> simp1;
+        _TPtr<an> simp2;
 } si;
 
 int main(){
