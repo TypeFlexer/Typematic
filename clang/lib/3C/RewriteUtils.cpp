@@ -415,6 +415,111 @@ public:
     return true;
   }
 
+  bool VisitVarDecl(VarDecl *varDecl) {
+    if (varDecl->hasInit()) {
+      Expr *initExpr = varDecl->getInit()->IgnoreImplicit();
+      ConstAtom *CAtom = nullptr;
+
+      if (CHKCBindTemporaryExpr *tempExpr = dyn_cast<CHKCBindTemporaryExpr>(initExpr)) {
+        initExpr = tempExpr->getSubExpr()->IgnoreImplicit();
+      }
+
+      if (clang::StringLiteral *strLit = dyn_cast<clang::StringLiteral>(initExpr)) {
+        CVarOption cvar = Info.getVariable(varDecl, Context);
+        if (!cvar.hasValue()){
+          return true;
+        }
+
+        PointerVariableConstraint *PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+        if (PV) {
+          CAtom = Info.getConstraints().getAssignment(PV->getCvars().at(0));
+          bool isTaintedPointerPointingToAStringLiteral = CAtom->isTainted();
+          if (isTaintedPointerPointingToAStringLiteral){
+            // Get the source location of the initializer
+            SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
+            SourceLocation endLoc = varDecl->getInit()->getEndLoc();
+
+            // Fetch the actual constant string
+            std::string literalValue = strLit->getString().str();
+
+            // Escape any quotes in the string literal value for use in the replacement text
+            size_t pos = 0;
+            while ((pos = literalValue.find('"', pos)) != std::string::npos) {
+              literalValue.replace(pos, 1, "\\\"");
+              pos += 2;  // Skip past the inserted escape character
+            }
+
+            // Build the replacement text
+            std::string replacementText = "__ConstantStringToTainted__(\"" + literalValue + "\", strlen(\"" + literalValue + "\"))";
+
+            // Replace the initializer in the source code
+            Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+          }
+        }
+      } else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(initExpr)) {
+        VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
+        if (referredVar) {
+          QualType referredVarType = referredVar->getType();
+          if (const ConstantArrayType *constArrType = dyn_cast<ConstantArrayType>(referredVarType.getTypePtr())) {
+            // This is a reference to a static buffer
+            unsigned numElements = static_cast<unsigned>(constArrType->getSize().getZExtValue());
+
+            // Get the source location of the initializer
+            SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
+            SourceLocation endLoc = varDecl->getInit()->getEndLoc();
+
+            // Build the replacement text
+            std::string replacementText = "__ConstantArrayToTainted__(" + referredVar->getName().str() + ", " + std::to_string(numElements) + ")";
+
+            // Replace the initializer in the source code
+            Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  bool VisitBinaryOperator(BinaryOperator *op) {
+    if (op->getOpcode() == BO_Assign) {
+      Expr *rhs = op->getRHS();
+      NamedDecl *lhsDecl = nullptr;
+      if (DeclRefExpr *lhs = dyn_cast<DeclRefExpr>(op->getLHS()->IgnoreParenImpCasts())) {
+        lhsDecl = dyn_cast<NamedDecl>(lhs->getDecl());
+      }
+
+      if (lhsDecl) {
+        if (isa<clang::StringLiteral>(rhs)) {
+          // Handle string literal assignment...
+        } else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(rhs)) {
+          VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
+          if (referredVar) {
+            QualType referredVarType = referredVar->getType();
+            if (const ConstantArrayType *constArrType = dyn_cast<ConstantArrayType>(referredVarType.getTypePtr())) {
+              // This is a reference to a static buffer
+              unsigned numElements = static_cast<unsigned>(constArrType->getSize().getZExtValue());
+
+              // Get the source location of the assignment
+              SourceLocation startLoc = op->getLHS()->getBeginLoc();
+              SourceLocation endLoc = op->getRHS()->getEndLoc();
+
+              // Build the replacement text
+              std::string replacementText = lhsDecl->getName().str() +
+                      " = __ConstantArrayToTainted__(" + referredVar->getName().str() + ", " +
+                      std::to_string(numElements) + ")";
+
+              // Replace the assignment in the source code
+              Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+            }
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
 private:
   ASTContext *Context;
   ProgramInfo &Info;
