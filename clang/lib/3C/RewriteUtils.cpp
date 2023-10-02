@@ -426,7 +426,7 @@ public:
 
       if (clang::StringLiteral *strLit = dyn_cast<clang::StringLiteral>(initExpr)) {
         CVarOption cvar = Info.getVariable(varDecl, Context);
-        if (!cvar.hasValue()){
+        if (!cvar.hasValue()) {
           return true;
         }
 
@@ -434,7 +434,7 @@ public:
         if (PV) {
           CAtom = Info.getConstraints().getAssignment(PV->getCvars().at(0));
           bool isTaintedPointerPointingToAStringLiteral = CAtom->isTainted();
-          if (isTaintedPointerPointingToAStringLiteral){
+          if (isTaintedPointerPointingToAStringLiteral) {
             // Get the source location of the initializer
             SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
             SourceLocation endLoc = varDecl->getInit()->getEndLoc();
@@ -450,35 +450,85 @@ public:
             }
 
             // Build the replacement text
-            std::string replacementText = "__ConstantStringToTainted__(\"" + literalValue + "\", strlen(\"" + literalValue + "\"))";
+            std::string replacementText =
+                    "__ConstantStringToTainted__(\"" + literalValue + "\", strlen(\"" + literalValue + "\"))";
 
             // Replace the initializer in the source code
             Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
           }
+        } else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(initExpr)) {
+          VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
+          if (referredVar) {
+            QualType referredVarType = referredVar->getType();
+            if (const ConstantArrayType *constArrType = dyn_cast<ConstantArrayType>(referredVarType.getTypePtr())) {
+              unsigned numElements = static_cast<unsigned>(constArrType->getSize().getZExtValue());
+
+              // Get the source location of the initializer
+              SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
+              SourceLocation endLoc = varDecl->getInit()->getEndLoc();
+
+              if (constArrType->getElementType()->isArrayType()) {
+                // Multi-dimensional array case
+                const ConstantArrayType *innerConstArrType = dyn_cast<ConstantArrayType>(
+                        constArrType->getElementType().getTypePtr());
+                unsigned innerNumElements = static_cast<unsigned>(innerConstArrType->getSize().getZExtValue());
+
+                // Build the replacement text
+                std::string replacementText =
+                        "__ConstantNonLinearbufferToTainted__(" + referredVar->getName().str() + ", " +
+                        std::to_string(numElements) + ", " + std::to_string(innerNumElements) + ")";
+
+                // Replace the initializer in the source code
+                Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+              } else {
+                // One-dimensional array case
+                std::string replacementText = "__ConstantArrayToTainted__(" + referredVar->getName().str() + ", " +
+                                              std::to_string(numElements) + ")";
+                Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+              }
+            }
+          }
         }
-      } else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(initExpr)) {
+      }
+      else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(initExpr)) {
         VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
         if (referredVar) {
           QualType referredVarType = referredVar->getType();
           if (const ConstantArrayType *constArrType = dyn_cast<ConstantArrayType>(referredVarType.getTypePtr())) {
-            // This is a reference to a static buffer
             unsigned numElements = static_cast<unsigned>(constArrType->getSize().getZExtValue());
 
             // Get the source location of the initializer
             SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
             SourceLocation endLoc = varDecl->getInit()->getEndLoc();
 
-            // Build the replacement text
-            std::string replacementText = "__ConstantArrayToTainted__(" + referredVar->getName().str() + ", " + std::to_string(numElements) + ")";
+            const clang::Type *baseTypePtr = constArrType->getElementType()->getBaseElementTypeUnsafe();
+            QualType baseType = QualType::getFromOpaquePtr(baseTypePtr);
+            std::string baseTypeStr = baseType.getAsString();
 
-            // Replace the initializer in the source code
-            Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+            if (constArrType->getElementType()->isArrayType()) {
+              // Multi-dimensional array case
+              const ConstantArrayType *innerConstArrType =
+                      dyn_cast<ConstantArrayType>(constArrType->getElementType().getTypePtr());
+              unsigned innerNumElements = static_cast<unsigned>(innerConstArrType->getSize().getZExtValue());
+
+              // Build the replacement text
+              std::string replacementText = "__ConstantNonLinearbufferToTainted__(" + referredVar->getName().str()
+                      + ", " + std::to_string(numElements) + ", " + std::to_string(innerNumElements) +
+                      ", sizeof("+ baseTypeStr + "))";
+
+              // Replace the initializer in the source code
+              Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+            }
+            else {
+              // One-dimensional array case
+              std::string replacementText = "__ConstantArrayToTainted__(" + referredVar->getName().str() + ", " + std::to_string(numElements) + ", " + baseTypeStr + ")";
+              Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+            }
           }
         }
       }
+      return true;
     }
-
-    return true;
   }
 
   bool VisitBinaryOperator(BinaryOperator *op) {
@@ -490,35 +540,76 @@ public:
       }
 
       if (lhsDecl) {
-        if (isa<clang::StringLiteral>(rhs)) {
-          // Handle string literal assignment...
-        } else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(rhs)) {
+          if (isa<clang::StringLiteral>(rhs)) {
+            // Handle string literal assignment...
+            clang::StringLiteral *strLit = dyn_cast<clang::StringLiteral>(rhs);
+            std::string literalValue = strLit->getString().str();
+
+            // Escape any quotes in the string literal value for use in the replacement text
+            size_t pos = 0;
+            while ((pos = literalValue.find('"', pos)) != std::string::npos) {
+              literalValue.replace(pos, 1, "\\\"");
+              pos += 2;  // Skip past the inserted escape character
+            }
+
+            // Get the source location of the assignment
+            SourceLocation startLoc = op->getLHS()->getBeginLoc();
+            SourceLocation endLoc = op->getRHS()->getEndLoc();
+
+            // Build the replacement text
+            std::string replacementText = lhsDecl->getName().str() +
+                                          " = __ConstantStringToTainted__(\"" + literalValue + "\", strlen(\"" + literalValue + "\"))";
+
+            // Replace the assignment in the source code
+            Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+
+          } else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(rhs)) {
           VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
           if (referredVar) {
             QualType referredVarType = referredVar->getType();
             if (const ConstantArrayType *constArrType = dyn_cast<ConstantArrayType>(referredVarType.getTypePtr())) {
-              // This is a reference to a static buffer
               unsigned numElements = static_cast<unsigned>(constArrType->getSize().getZExtValue());
 
               // Get the source location of the assignment
               SourceLocation startLoc = op->getLHS()->getBeginLoc();
               SourceLocation endLoc = op->getRHS()->getEndLoc();
 
-              // Build the replacement text
-              std::string replacementText = lhsDecl->getName().str() +
-                      " = __ConstantArrayToTainted__(" + referredVar->getName().str() + ", " +
-                      std::to_string(numElements) + ")";
+              const clang::Type *elementType = constArrType->getElementType().getTypePtr();
+              while (elementType->isArrayType()) {
+                elementType = dyn_cast<ConstantArrayType>(elementType)->getElementType().getTypePtr();
+              }
+              std::string baseTypeStr = QualType(elementType, 0).getAsString();
 
-              // Replace the assignment in the source code
-              Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+              if (constArrType->getElementType()->isArrayType()) {
+                // Multi-dimensional array case
+                const ConstantArrayType *innerConstArrType = dyn_cast<ConstantArrayType>(constArrType->getElementType().getTypePtr());
+                unsigned innerNumElements = static_cast<unsigned>(innerConstArrType->getSize().getZExtValue());
+
+                // Build the replacement text
+                std::string replacementText = lhsDecl->getName().str() +
+                                              " = __ConstantNonLinearbufferToTainted__(" + referredVar->getName().str()
+                                              + ", " + std::to_string(numElements) + ", " + std::to_string(innerNumElements) +
+                                              ", sizeof(" + baseTypeStr + "))";
+
+                // Replace the assignment in the source code
+                Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+              } else {
+                // One-dimensional array case
+                std::string replacementText = lhsDecl->getName().str() +
+                                              " = __ConstantArrayToTainted__(" + referredVar->getName().str() + ", " +
+                                              std::to_string(numElements) + ", sizeof(" + baseTypeStr + "))";
+
+                // Replace the assignment in the source code
+                Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+              }
             }
           }
         }
       }
     }
-
     return true;
   }
+
 
 private:
   ASTContext *Context;

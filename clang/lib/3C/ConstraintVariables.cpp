@@ -644,6 +644,7 @@ PointerVariableConstraint::PointerVariableConstraint(
       Parent(nullptr) {
   PersistentSourceLoc PSL = PersistentSourceLoc::mkPSL(D, C);
   QualType QTy = QT;
+  bool DoNotTaint = false;
   const Type *Ty = QTy.getTypePtr();
   auto &CS = I.getConstraints();
   // If the type is a decayed type, then maybe this is the result of
@@ -832,11 +833,15 @@ PointerVariableConstraint::PointerVariableConstraint(
       SrcVars.push_back(CAtom);
     }
 
-    if (strstr(Name.c_str(), "alias1") || strstr(Name.c_str(), "alias2") || strstr(Name.c_str(), "heapInt"))
-    {
-        int i = 10;
-    }
     if (Ty->isArrayType() || Ty->isIncompleteArrayType()) {
+    if (isa<ConstantArrayType>(Ty))
+    {
+        DoNotTaint = true;
+    }
+    else
+    {
+        DoNotTaint = false;
+    }
       // Boil off the typedefs in the array case.
       // TODO this will need to change to properly account for typedefs
       bool Boiling = true;
@@ -904,8 +909,12 @@ PointerVariableConstraint::PointerVariableConstraint(
     // This type is not a constant atom. We need to create a VarAtom for this.
     if (!VarCreated) {
       VarAtom *VA = CS.getFreshVar(Npre + N, VK);
+      if (DoNotTaint)
+        VA->setDoNotTaint();
       Vars.push_back(VA);
-      SrcVars.push_back(CS.getWild());
+      ConstAtom *CAtom = nullptr;
+      CAtom = CS.getWild();
+      SrcVars.push_back(CAtom);
 
       // Incomplete arrays are not given ARR as an upper bound because the
       // transformation int[] -> _Ptr<int> is permitted but int[1] -> _Ptr<int>
@@ -1937,6 +1946,10 @@ PointerVariableConstraint::mkString(Constraints &CS,
     assert(C != nullptr);
 
     Atom::AtomKind K = C->getKind();
+    VarAtom *VA = dyn_cast<VarAtom>(V);
+    if (VA && VA->getDoNotTaint()) {
+        K = Atom::A_Wild;
+    }
 
     // If this is not an itype or generic
     // make this wild as it can hold any pointer type.

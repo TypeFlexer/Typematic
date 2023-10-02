@@ -1,47 +1,26 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib_tainted.h>
-
-//_TPtr<char> t_malloc(long val);
-
-typedef struct anothersimp {
-        char* arg4;
-        int* arg5;
-        struct anothersimp* simp3;
-} an;
-
-typedef struct simple {
-        int arg1;
-        int* arg2;
-        char* arg3;
-        struct simple* simp1;
-        an* simp2;
-} si;
-
 int main(){
-        si* ts = t_malloc(sizeof(si));
-        char* name = "Arunkumar Bhattar";
+    char* name1 = "Alice";
+    char* name2 = "Bob";
+    _TPtr<char> name_tptr1 = name1;
+    _TPtr<char> name_tptr2 = name2;
 
-        int* targ2 = (int*)malloc(10 * sizeof(int));
-        for (int i = 0; i < 10; i++) {
-                targ2[i] = i;
-        }
+    int scores1[5] = {90, 80, 70, 60, 50};
+    int scores2[5] = {45, 55, 65, 75, 85};
+    _TPtr<int> tainted_scores1 = scores1;
+    _TPtr<int> tainted_scores2 = scores2;
 
-        ts->arg2 = targ2;
-        ts->arg1 = 100;
-        ts->arg3 = t_malloc((strlen(name) + 1) * sizeof(char));
-        strncpy(ts->arg3, name, strlen(name) + 1); // +1 to include the null terminator
+    _TPtr<char> alias_name_tptr = name_tptr1;  // Aliasing of pointer
+    _TPtr<int> alias_scores_tptr = tainted_scores1;  // Aliasing of pointer
 
-        an* as = t_malloc(sizeof(an));
-        as->arg4 = ts->arg3;
-        as->arg5 = ts->arg2;
+    name_tptr1 = name_tptr2;  // Contravariant propagation
+    tainted_scores1 = tainted_scores2;  // Contravariant propagation
 
-        // Free allocated memory
-        free(targ2);
-        free(ts->arg3);
-        free(ts);
-        free(as);
+    char* alias_name = name1;  // Aliasing of pointer
+    int* alias_scores = scores1;  // Aliasing of pointer
 
-        return 0;
+    alias_name_tptr = name_tptr2;  // Covariant propagation
+    alias_scores_tptr = tainted_scores2;  // Covariant propagation
+
+    return 0;
 }
+

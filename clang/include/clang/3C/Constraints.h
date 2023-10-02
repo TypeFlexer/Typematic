@@ -128,8 +128,9 @@ public:
     return A->getKind() != A_Var;
   }
   void setExplicit(bool I) { IsExplicit = I; }
+  void setExplicitConstArray(bool I) { IsExplicitCA = I; }
   bool isExplicit() const { return IsExplicit; }
-
+  bool isExplicitConstArray() const { return IsExplicitCA; }
   virtual ConstAtom* reflectToTainted() {
     // By default, return self.
     // This method will be overridden in the derived classes that have tainted counterparts.
@@ -141,6 +142,7 @@ private:
     // that was marked by explicit annotations from the developer and not
     // inferred by the 3C.
     bool IsExplicit = false;
+    bool IsExplicitCA = false;
 };
 
 // This refers to a location that we are trying to solve for.
@@ -180,6 +182,14 @@ public:
     O << "\"" << varKindToStr(KindV) << Name << "_" << Loc << "\"";
   }
 
+  void setDoNotTaint() {
+      doNotTaint = true;
+  }
+
+  bool getDoNotTaint() {
+      return doNotTaint;
+  }
+
   bool operator==(const Atom &Other) const override {
     if (const VarAtom *V = llvm::dyn_cast<VarAtom>(&Other))
       return V->Loc == Loc;
@@ -213,6 +223,7 @@ private:
   // LHS of an equality.
   std::set<Constraint *, PComp<Constraint *>> Constraints;
   std::set<TaintedConstraint *, PComp<TaintedConstraint *>> TaintedConstraints;
+  bool doNotTaint = false;
 };
 
 /* ConstAtom ordering is:
