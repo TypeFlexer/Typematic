@@ -1,6 +1,0 @@
-[submodule "/home/arun/Music/TypeFlexer/clang/lib/CheckMate/C4"]
-	path = /home/arun/Music/TypeFlexer/clang/lib/CheckMate/C4
-	url = git@github.com:arunkumarbhattar/C4.git
-[submodule "clang/include/clang/CheckMate_headers"]
-	path = clang/include/clang/CheckMate_headers
-	url = git@github.com:TypeFlexer/CheckMate_headers.git
