@@ -13780,7 +13780,7 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl) {
       if (InCheckedScope && Var->hasInteropTypeExpr())
         Ty = Var->getInteropType();
 
-      if ((Ty->isCheckedPointerPtrType() || Ty->isTaintedPointerPtrType() )
+      if ((Ty->isCheckedPointerPtrType())
           && !getLangOpts()._3C)
         Diag(Var->getLocation(), diag::err_initializer_expected_for_ptr)
           << Var;
