@@ -22,6 +22,10 @@ jobs:
           ninja checkcbox-headers # for the typeflexer headers
           echo "$PWD/bin" >> $GITHUB_PATH
 
+      - name: Install llvm-lit
+        run: |
+          pip install lit
+
       - name: Compile and run Olden and Ptrdist tests
         run: |
           mkdir -p $GITHUB_WORKSPACE/olden_ptrdist
@@ -41,7 +45,7 @@ jobs:
       - name: Check for 16 passed tests
         run: |
           cd $GITHUB_WORKSPACE/olden_ptrdist/typeflexer-ptrdistOlden/tests-build
-          passed_tests=$(jq '.tests[] | select(.result == "PASS") | .name' results.json | wc -l)
+          passed_tests=$(jq '.tests[] | select(.code == "PASS") | .code' results.json | wc -l)
           if [ "$passed_tests" -ne 16 ]; then
             echo "Error: Expected 16 passed tests, but got $passed_tests"
             exit 1
