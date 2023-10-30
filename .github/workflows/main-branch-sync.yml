@@ -28,7 +28,7 @@ jobs:
           cd typeflexer-ptrdistOlden
           mkdir tests-build
           cd tests-build
-          cmake -DCMAKE_C_COMPILER=/home/arun/Desktop/TypeFlexer-Clang/llvm/cmake-build-debug/bin/clang -DCMAKE_CXX_COMPILER=g++ -C../cmake/caches/Debug.cmake ../
+          cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=g++ -C../cmake/caches/Debug.cmake ../
           make
 
       - name: Run llvm-lit and generate results
