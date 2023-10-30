@@ -1,25 +1,46 @@
-name: main branch sync
+name: Typeflexer Tests
 
 on:
-  push:
-    branches:
-      - 'main'
+  workflow_dispatch:
 
 jobs:
-  branch_sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-        with:
-          # persist-credentials: false allows us to use our own credentials for
-          # pushing to the repository.  Otherwise, the default github actions token
-          # is used.
-          persist-credentials: false
-          fetch-depth: 0
+  build-and-test:
+    runs-on: self-hosted
 
-      - name: Update branch
-        env:
-          LLVMBOT_TOKEN: ${{ secrets.LLVMBOT_MAIN_SYNC }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup build directory and Compile 3c target
         run: |
-          git push https://$LLVMBOT_TOKEN@github.com/${{ github.repository }} HEAD:master
+          mkdir -p llvm/build
+          cd llvm/build
+          cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
+          ninja clang
+          ninja checkcbox-headers # for the typeflexer headers
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Compile and run Olden and Ptrdist tests
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/olden_ptrdist
+          cd $GITHUB_WORKSPACE/olden_ptrdist
+          git clone https://github.com/TypeFlexer/typeflexer-ptrdistOlden.git
+          cd typeflexer-ptrdistOlden
+          mkdir tests-build
+          cd tests-build
+          cmake -DCMAKE_C_COMPILER=/home/arun/Desktop/TypeFlexer-Clang/llvm/cmake-build-debug/bin/clang -DCMAKE_CXX_COMPILER=g++ -C../cmake/caches/Debug.cmake ../
+          make
+
+      - name: Run llvm-lit and generate results
+        run: |
+          cd $GITHUB_WORKSPACE/olden_ptrdist/typeflexer-ptrdistOlden/tests-build
+          llvm-lit -v -j 12 -o results.json .
+
+      - name: Check for 16 passed tests
+        run: |
+          cd $GITHUB_WORKSPACE/olden_ptrdist/typeflexer-ptrdistOlden/tests-build
+          passed_tests=$(jq '.tests[] | select(.result == "PASS") | .name' results.json | wc -l)
+          if [ "$passed_tests" -ne 16 ]; then
+            echo "Error: Expected 16 passed tests, but got $passed_tests"
+            exit 1
+          fi
