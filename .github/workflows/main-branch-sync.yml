@@ -18,7 +18,7 @@ jobs:
           cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
           ninja clang
           ninja llvm-size
-          ninja llvm-lit
+          ninja llvm-lib
           ninja checkcbox-headers # for the typeflexer headers
           echo "$PWD/bin" >> $GITHUB_PATH
 
