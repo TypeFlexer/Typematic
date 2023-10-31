@@ -27,7 +27,6 @@
 #ifndef __STRING_CHECKED_H
 #define __STRING_CHECKED_H
 
-#pragma TLIB_SCOPE on
 #pragma CHECKED_SCOPE push
 #pragma CHECKED_SCOPE on
 
@@ -80,6 +79,7 @@ void *memmove(void * dest : byte_count(n),
 void *memset(void * dest : byte_count(n),
              int c,
              size_t n) : bounds(dest, (_Array_ptr<char>)dest + n);
+
 #endif
 
 #if _FORTIFY_SOURCE == 0 || !defined(strcpy)
@@ -122,8 +122,6 @@ int memcmp(const void *src1 : byte_count(n), const void *src2 : byte_count(n),
 
 int strcmp(const char *src1 : itype(_Nt_array_ptr<const char>),
            const char *src2 : itype(_Nt_array_ptr<const char>));
-int strcasecmp(const char *src1 : itype(_Nt_array_ptr<const char>),
-               const char *src2 : itype(_Nt_array_ptr<const char>));
 int strcoll(const char *src1 : itype(_Nt_array_ptr<const char>),
             const char *src2 : itype(_Nt_array_ptr<const  char>));
 
@@ -137,9 +135,6 @@ int strcoll(const char *src1 : itype(_Nt_array_ptr<const char>),
 int strncmp(const char *src : itype(_Nt_array_ptr<const char>),
             const char *s2 : itype(_Nt_array_ptr<const char>),
             size_t n);
-int strncasecmp(const char *src : itype(_Nt_array_ptr<const char>),
-                const char *s2 : itype(_Nt_array_ptr<const char>),
-                size_t n);
 
 size_t strxfrm(char * restrict dest : count(n),
                const char * restrict src :
@@ -173,11 +168,10 @@ char *strerror(int errnum) : itype(_Nt_array_ptr<char>);
 size_t strlen(const char *s : itype(_Nt_array_ptr<const char>));
 
 char *strdup(const char *s : itype(_Nt_array_ptr<const char>)) : itype(_Nt_array_ptr<char>);
-char *strndup(const char *s : itype(_Nt_array_ptr<const char>), size_t n) : itype(_Nt_array_ptr<char>);
 
 #include "_builtin_string_checked.h"
 
 #pragma CHECKED_SCOPE pop
-#pragma TLIB_SCOPE off
+
 #endif // guard
 #endif // Checked C 
