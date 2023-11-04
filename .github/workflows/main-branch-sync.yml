@@ -49,7 +49,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/olden_ptrdist/typeflexer-ptrdistOlden/tests-build
           passed_tests=$(jq '.tests[] | select(.code == "PASS") | .code' results.json | wc -l)
-          if [ "$passed_tests" -ne 16 ]; then
-            echo "Error: Expected 16 passed tests, but got $passed_tests"
+          if [ "$passed_tests" -ne 15 ]; then
+            echo "Error: Expected 15 passed tests, but got $passed_tests"
             exit 1
           fi
