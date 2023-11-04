@@ -12,13 +12,16 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Setup build directory and Compile 3c target
+        env:
+          TMPDIR: /home/arun/tmp
         run: |
           mkdir -p llvm/build
           cd llvm/build
-          cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
+          mkdir -p $TMPDIR
+          cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
           ninja clang
           ninja llvm-size
-          ninja llvm-lib
+          ninja llvm-ar # If you meant the 'ar' utility from LLVM
           ninja checkcbox-headers # for the typeflexer headers
           echo "$PWD/bin" >> $GITHUB_PATH
 
