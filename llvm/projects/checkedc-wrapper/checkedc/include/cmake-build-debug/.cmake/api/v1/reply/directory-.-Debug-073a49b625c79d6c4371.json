@@ -1,0 +1,107 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 75,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 82,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 89,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "checkedc-headers",
+			"destination" : "lib/clang/include",
+			"paths" : 
+			[
+				"assert_checked.h",
+				"assert.h",
+				"errno_checked.h",
+				"errno.h",
+				"fenv_checked.h",
+				"fenv.h",
+				"inttypes_checked.h",
+				"inttypes_checked_internal.h",
+				"math_checked.h",
+				"math.h",
+				"signal_checked.h",
+				"signal.h",
+				"stdchecked.h",
+				"stdio_checked.h",
+				"stdio.h",
+				"stdlib_checked.h",
+				"stdlib_tainted.h",
+				"stdlib.h",
+				"string_checked.h",
+				"string_tainted.h",
+				"string.h",
+				"threads_checked.h",
+				"threads.h",
+				"time_checked.h",
+				"time.h",
+				"unistd_checked.h",
+				"unistd.h",
+				"_builtin_stdio_checked.h",
+				"_builtin_string_checked.h",
+				"_builtin_common.h",
+				"checkedc_extensions.h"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "clang-headers",
+			"destination" : "lib/clang/include/arpa",
+			"paths" : 
+			[
+				"arpa/inet_checked.h",
+				"arpa/inet.h"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "clang-headers",
+			"destination" : "lib/clang/include/sys",
+			"paths" : 
+			[
+				"sys/socket_checked.h",
+				"sys/socket.h"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	}
+}

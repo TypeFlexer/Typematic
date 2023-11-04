@@ -4562,7 +4562,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
   NamedDecl *ND = E->getMemberDecl();
   if (auto *Field = dyn_cast<FieldDecl>(ND)) {
-    LValue LV = EmitLValueForField(BaseLV, Field);
+    LValue LV = EmitLValueForField(BaseLV, Field, E->isArrow());
     setObjCGCLValueClass(getContext(), E, LV);
     if (getLangOpts().OpenMP) {
       // If the member was explicitly marked as nontemporal, mark it as
@@ -4793,7 +4793,7 @@ static bool hasAnyVptr(const QualType Type, const ASTContext &Context) {
 }
 
 LValue CodeGenFunction::EmitLValueForField(LValue base,
-                                           const FieldDecl *field) {
+                                           const FieldDecl *field, bool isFieldAnArrowAccess) {
   LValueBaseInfo BaseInfo = base.getBaseInfo();
 
   if (field->isBitField()) {
@@ -4938,17 +4938,19 @@ LValue CodeGenFunction::EmitLValueForField(LValue base,
        *
        * Step 4: delete the final pointer
        */
-   auto *InstrumentedVal = EmitTaintedPtrDerefAdaptor(addr,
+      llvm::Value* InstrumentedVal = NULL;
+      if (isFieldAnArrowAccess)
+        InstrumentedVal = EmitTaintedPtrDerefAdaptor(addr,
         field->getParent()->getTypeForDecl()->getCoreTypeInternal());
-    if(InstrumentedVal != NULL)
-        addr = Address(InstrumentedVal, addr.getAlignment());
-    if (!IsInPreservedAIRegion &&
-        (!getDebugInfo() || !rec->hasAttr<BPFPreserveAccessIndexAttr>()))
-      // For structs, we GEP to the field that the record layout suggests.
-      addr = emitAddrOfFieldStorage(*this, addr, field);
-    else
-      // Remember the original struct field index
-      addr = emitPreserveStructAccess(*this, base, addr, field);
+      if(InstrumentedVal != NULL)
+          addr = Address(InstrumentedVal, addr.getAlignment());
+      if (!IsInPreservedAIRegion &&
+          (!getDebugInfo() || !rec->hasAttr<BPFPreserveAccessIndexAttr>()))
+          // For structs, we GEP to the field that the record layout suggests.
+          addr = emitAddrOfFieldStorage(*this, addr, field);
+      else
+          // Remember the original struct field index
+          addr = emitPreserveStructAccess(*this, base, addr, field);
   }
 
  /*

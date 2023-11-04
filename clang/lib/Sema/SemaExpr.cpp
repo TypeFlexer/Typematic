@@ -9232,7 +9232,7 @@ bool isTaintedAssignmentValid(CheckCBox_PointerKind &lhkind, CheckCBox_PointerKi
     }
     else if (!isTaintedPointerKind(lhkind) && isTaintedPointerKind(rhkind))
     {
-      if (FDecl->getAsFunction()->isTLIB())
+      if (FDecl && FDecl->getAsFunction()->isTLIB())
         return true;
       else
         return false;

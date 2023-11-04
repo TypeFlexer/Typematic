@@ -71,7 +71,7 @@ static bool shouldEmitNonNullCheck(const CodeGenModule &CGM,
   return true;
 }
 
-bool CodeGenFunction::shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
+bool CodeGenFunction::shouldEmitTaintedPtrDerefAdaptor(CodeGenModule &CGM,
                                             const QualType BaseTy) {
     if(!CGM.getLangOpts().CheckedC)
         return false;
@@ -93,7 +93,7 @@ bool CodeGenFunction::shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
 }
 
 bool CodeGenFunction::shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
-                                             const llvm::Type* BaseTy) {
+                                                       const llvm::Type* BaseTy) {
   if(!CGM.getLangOpts().CheckedC)
     return false;
 
@@ -101,11 +101,10 @@ bool CodeGenFunction::shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
     return false;
 
   if((!(BaseTy->isTaintedPtrTy() || BaseTy->isTStructTy())
-       || BaseTy->isFunctionTy()))
+      || BaseTy->isFunctionTy()))
     return false;
 
   return true;
-
 }
 
 void CodeGenFunction::EmitDynamicNonNullCheck(const Address BaseAddr,

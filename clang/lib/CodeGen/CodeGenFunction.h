@@ -3921,7 +3921,7 @@ public:
 
   llvm::Value *EmitIvarOffset(const ObjCInterfaceDecl *Interface,
                               const ObjCIvarDecl *Ivar);
-  LValue EmitLValueForField(LValue Base, const FieldDecl* Field);
+  LValue EmitLValueForField(LValue Base, const FieldDecl* Field,  bool isFieldAnArrowAccess = true);
   LValue EmitLValueForLambdaField(const FieldDecl *Field);
 
   /// EmitLValueForFieldInitialization - Like EmitLValueForField, except that
@@ -4765,7 +4765,7 @@ private:
                                    const VarDecl *VD);
     bool shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
                                           const llvm::Type *BaseTy);
-    bool shouldEmitTaintedPtrDerefAdaptor(const CodeGenModule &CGM,
+    bool shouldEmitTaintedPtrDerefAdaptor(CodeGenModule &CGM,
                                           const QualType BaseTy);
     void EmitDynamicTaintedCacheCheckBlocks(llvm::Value *Condition, llvm::Value  *ValPtr);
     llvm::BasicBlock *EmitTaintedL1_CacheMissBlock(llvm::BasicBlock *, llvm::Value *ValPtr);
