@@ -17,6 +17,7 @@ jobs:
         run: |
           mkdir -p llvm/build
           cd llvm/build
+          mkdir -p $TMPDIR
           cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
           ninja 3c
           ninja checkcbox-headers # for the typeflexer headers
