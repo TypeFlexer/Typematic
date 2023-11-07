@@ -41,7 +41,7 @@ void* c_fetch_pointer_from_sandbox(unsigned int);
 int sbx_register_callback(const void* chosen_interceptor, int no_of_args,
                           int does_return, int arg_types[]);
 
-
+#pragma TLIB_SCOPE pop
 #pragma CHECKED_SCOPE push
 #pragma CHECKED_SCOPE on
 
@@ -217,6 +217,24 @@ _TLIB _Unchecked  static _TPtr<char> CheckedToTaintedStrAdaptor(const char* Ip :
 #endif
 }
 
+_Unchecked static _TPtr<char> C2T(const char* Ip :
+                                                               itype(_Nt_array_ptr<const char>), size_t len)
+{
+#ifdef WASM_SBX
+  int Iplen = len;
+  _TPtr<char> RetPtr = string_tainted_malloc(Iplen*sizeof(char));
+  strcpy(RetPtr, Ip);
+  return RetPtr;
+#elif HEAP_SBX
+  int Iplen = len;
+  _TPtr<char> RetPtr = string_tainted_malloc(Iplen*sizeof(char));
+  strcpy(RetPtr, Ip);
+  return RetPtr;
+#else
+  return (_TPtr<char>)Ip;
+#endif
+}
+
 
 _TLIB  static _Ptr<char> TaintedToCheckedStrAdaptor(_TPtr<char> Ip, size_t len)
 {
@@ -239,7 +257,7 @@ _TLIB  static _Ptr<char> TaintedToCheckedStrAdaptor(_TPtr<char> Ip, size_t len)
 #endif
 }
 #pragma CHECKED_SCOPE pop
-#pragma TLIB_SCOPE pop
+
 
 
 #endif // guard 
