@@ -1961,7 +1961,7 @@ PointerVariableConstraint::mkString(Constraints &CS,
     // pushes the `>`. In general, before we visit a checked pointer level (not
     // a checked array level), we need to transfer any pending array levels and
     // emit the name (if applicable).
-    if (K != Atom::A_Wild && ArrSizes.at(TypeIdx).first != O_SizedArray) {
+    if (K != Atom::A_Wild && !ArrSizes.empty() && ArrSizes.at(TypeIdx).first != O_SizedArray) {
       addArrayAnnotations(ConstArrs, EndStrs);
       if (!EmittedName) {
         EmittedName = true;
@@ -1971,12 +1971,34 @@ PointerVariableConstraint::mkString(Constraints &CS,
 
     switch (K) {
     case Atom::A_Ptr:
-      getQualString(TypeIdx, Ss);
+    if (_3COpts.Mode == "typeflexer")
+    {
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+            break;
+        // FIXME: This code emits wild pointer levels with the outermost on the
+        // left. The outermost should be on the right
+        // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+        if (FV != nullptr) {
+            FptrInner << "*";
+            getQualString(TypeIdx, FptrInner);
+        } else {
+            if (!EmittedBase) {
+                assert(!BaseTypeName.empty());
+                EmittedBase = true;
+                Ss << BaseTypeName << " ";
+            }
+            Ss << "*";
+            getQualString(TypeIdx, Ss);
+        }
+    }
+    else{
+        getQualString(TypeIdx, Ss);
 
-      EmittedBase = false;
-      Ss << "_Ptr<";
-      EndStrs.push_front(">");
-      break;
+        EmittedBase = false;
+        Ss << "_Ptr<";
+        EndStrs.push_front(">");
+    }
+    break;
     case Atom::A_TPtr:
     if (FV)
     {
@@ -1992,6 +2014,26 @@ PointerVariableConstraint::mkString(Constraints &CS,
         TaintedFunctionPtr = true;
         getQualString(TypeIdx, FptrInner);
     }
+    else if (_3COpts.Mode == "checked-c")
+    {
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+            break;
+        // FIXME: This code emits wild pointer levels with the outermost on the
+        // left. The outermost should be on the right
+        // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+        if (FV != nullptr) {
+            FptrInner << "*";
+            getQualString(TypeIdx, FptrInner);
+        } else {
+            if (!EmittedBase) {
+                assert(!BaseTypeName.empty());
+                EmittedBase = true;
+                Ss << BaseTypeName << " ";
+            }
+            Ss << "*";
+            getQualString(TypeIdx, Ss);
+        }
+    }
     else {
         getQualString(TypeIdx, Ss);
         BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
@@ -2002,17 +2044,39 @@ PointerVariableConstraint::mkString(Constraints &CS,
     }
     break;
     case Atom::A_Arr:
-      // If this is an array.
-      getQualString(TypeIdx, Ss);
-      // If it's an Arr, then the character we substitute should
-      // be [] instead of *, IF, the original type was an array.
-      // And, if the original type was a sized array of size K.
-      // we should substitute [K].
-      if (emitArraySize(ConstArrs, TypeIdx, K))
-        break;
-      EmittedBase = false;
-      Ss << "_Array_ptr<";
-      EndStrs.push_front(">");
+        if (_3COpts.Mode == "typeflexer")
+        {
+            if (emitArraySize(ConstArrs, TypeIdx, K))
+                break;
+            // FIXME: This code emits wild pointer levels with the outermost on the
+            // left. The outermost should be on the right
+            // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+            if (FV != nullptr) {
+                FptrInner << "*";
+                getQualString(TypeIdx, FptrInner);
+            } else {
+                if (!EmittedBase) {
+                    assert(!BaseTypeName.empty());
+                    EmittedBase = true;
+                    Ss << BaseTypeName << " ";
+                }
+                Ss << "*";
+                getQualString(TypeIdx, Ss);
+            }
+        }
+        else {
+            // If this is an array.
+            getQualString(TypeIdx, Ss);
+            // If it's an Arr, then the character we substitute should
+            // be [] instead of *, IF, the original type was an array.
+            // And, if the original type was a sized array of size K.
+            // we should substitute [K].
+            if (emitArraySize(ConstArrs, TypeIdx, K))
+                break;
+            EmittedBase = false;
+            Ss << "_Array_ptr<";
+            EndStrs.push_front(">");
+        }
       break;
     case Atom::A_TArr:
       if (FV)
@@ -2028,6 +2092,26 @@ PointerVariableConstraint::mkString(Constraints &CS,
           EmittedName = true;
           TaintedFunctionPtr = true;
           getQualString(TypeIdx, FptrInner);
+      }
+      else if (_3COpts.Mode == "checked-c")
+      {
+          if (emitArraySize(ConstArrs, TypeIdx, K))
+              break;
+          // FIXME: This code emits wild pointer levels with the outermost on the
+          // left. The outermost should be on the right
+          // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+          if (FV != nullptr) {
+              FptrInner << "*";
+              getQualString(TypeIdx, FptrInner);
+          } else {
+              if (!EmittedBase) {
+                  assert(!BaseTypeName.empty());
+                  EmittedBase = true;
+                  Ss << BaseTypeName << " ";
+              }
+              Ss << "*";
+              getQualString(TypeIdx, Ss);
+          }
       }
       else {
           // If this is an array.
@@ -2060,6 +2144,26 @@ PointerVariableConstraint::mkString(Constraints &CS,
 
         getQualString(TypeIdx, FptrInner);
     }
+    else if (_3COpts.Mode == "typeflexer")
+    {
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+            break;
+        // FIXME: This code emits wild pointer levels with the outermost on the
+        // left. The outermost should be on the right
+        // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+        if (FV != nullptr) {
+            FptrInner << "*";
+            getQualString(TypeIdx, FptrInner);
+        } else {
+            if (!EmittedBase) {
+                assert(!BaseTypeName.empty());
+                EmittedBase = true;
+                Ss << BaseTypeName << " ";
+            }
+            Ss << "*";
+            getQualString(TypeIdx, Ss);
+        }
+    }
     else {
         // If this is an NTArray.
         getQualString(TypeIdx, Ss);
@@ -2072,14 +2176,36 @@ PointerVariableConstraint::mkString(Constraints &CS,
     }
     break;
     case Atom::A_TNTArr:
-      // If this is an NTArray.
-      getQualString(TypeIdx, Ss);
-      if (emitArraySize(ConstArrs, TypeIdx, K))
-        break;
+      if (_3COpts.Mode == "checked-c")
+      {
+        if (emitArraySize(ConstArrs, TypeIdx, K))
+            break;
+        // FIXME: This code emits wild pointer levels with the outermost on the
+        // left. The outermost should be on the right
+        // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+        if (FV != nullptr) {
+            FptrInner << "*";
+            getQualString(TypeIdx, FptrInner);
+        } else {
+            if (!EmittedBase) {
+                assert(!BaseTypeName.empty());
+                EmittedBase = true;
+                Ss << BaseTypeName << " ";
+            }
+            Ss << "*";
+            getQualString(TypeIdx, Ss);
+        }
+      }
+      else
+      {
+          getQualString(TypeIdx, Ss);
+          if (emitArraySize(ConstArrs, TypeIdx, K))
+              break;
 
-      EmittedBase = false;
-      Ss << "_TNt_array_ptr<";
-      EndStrs.push_front(">");
+          EmittedBase = false;
+          Ss << "_TNt_array_ptr<";
+          EndStrs.push_front(">");
+      }
       break;
     // If there is no array in the original program, then we fall through to
     // the case where we write a pointer value.

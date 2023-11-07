@@ -23,6 +23,7 @@ struct _3COptions {
   bool DumpIntermediate;
   bool Verbose;
   std::string OutputPostfix;
+  std::string Mode;
   std::string OutputDir;
   std::string ConstraintOutputJson;
   bool DumpStats;

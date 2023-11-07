@@ -12,6 +12,8 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Setup build directory and Compile 3c target
+        env:
+          TMPDIR: /home/arun/typematic-actions/tmp
         run: |
           mkdir -p llvm/build
           cd llvm/build

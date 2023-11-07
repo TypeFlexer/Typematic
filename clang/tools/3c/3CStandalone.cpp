@@ -96,6 +96,15 @@ static cl::opt<std::string> OptOutputPostfix(
              "foo.checked.c)"),
     cl::init("-"), cl::cat(_3CCategory));
 
+static cl::opt<std::string> OptMode(
+        "mode",
+        cl::desc("Mode to run 3C in. If mode is checked-c, only checked-c annotations are added, if mode is"
+                 "typeflexer, only tainted annotations are added, if mode is mixed, both checked-c and "
+                 "tainted annotations are added (In mixed mode, tainted pointer anntotation overwrites a non-user "
+                 "annotated checked-c pointer"),
+        cl::init("mixed"), cl::cat(_3CCategory));
+
+
 static cl::opt<std::string> OptOutputDir(
     "output-dir",
     cl::desc("Directory under which updated files will be written at the same "
@@ -339,6 +348,7 @@ int main(int argc, const char **argv) {
   CcOptions.HandleVARARGS = OptHandleVARARGS;
   CcOptions.DumpStats = OptDumpStats;
   CcOptions.OutputPostfix = OptOutputPostfix.getValue();
+  CcOptions.Mode = OptMode.getValue();
   CcOptions.OutputDir = OptOutputDir.getValue();
   CcOptions.Verbose = OptVerbose;
   CcOptions.DumpIntermediate = OptDumpIntermediate;
@@ -369,6 +379,13 @@ int main(int argc, const char **argv) {
   CcOptions.RemoveItypes = OptRemoveItypes;
   CcOptions.ForceItypes = OptForceItypes;
 #endif
+
+  std::string mode =  OptMode.getValue();
+  if (mode != "mixed" && mode != "checked-c" && mode != "typeflexer") {
+    llvm::errs() << "3c: Error: Invalid mode specified.\n"
+                 << "See: " << argv[0] << " --help\n";
+    return 1;
+  }
 
   //Add user specified function allocators
   std::string Malloc = OptMalloc.getValue();
