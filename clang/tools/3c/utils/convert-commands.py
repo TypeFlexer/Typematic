@@ -100,7 +100,7 @@ def runMain(cmd_args):
     s.add((frozenset(compiler_x_args), target_directory, file_to_add))
 
   # get the common path of the files as the base directory
-  compilation_base_dir = os.path.commonprefix(all_files)
+  compilation_base_dir = os.getcwd()
   prog_name = cmd_args.prog_name
   f = open(INDIVIDUAL_COMMANDS_FILE, 'w')
   for compiler_args, target_directory, src_file in s:
@@ -135,7 +135,8 @@ def runMain(cmd_args):
   args.extend(DEFAULT_ARGS)
   args.extend(list(set(total_x_args)))
   args.append('-base-dir="' + compilation_base_dir + '"')
-  args.extend(list(set(all_files)))
+  #args.extend(list(set(all_files)))
+  args.extend([os.path.basename(file) for file in set(all_files)])
   f = open(TOTAL_COMMANDS_FILE, 'w')
   f.write(" \\\n".join(args))
   f.close()

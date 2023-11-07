@@ -92,6 +92,10 @@ public:
 
     Decl *D = E->getCalleeDecl();
     FunctionDecl *TFD = dyn_cast_or_null<FunctionDecl>(D);
+    if (TFD != nullptr && TFD->isTLIB()) {
+      // If the function is a TLIB function, don't add constraints and return.
+      return true;
+    }
     std::string FuncName = "";
     if (auto *DD = dyn_cast_or_null<DeclaratorDecl>(D))
       FuncName = DD->getNameAsString();
@@ -151,6 +155,7 @@ public:
               ConsAction CA = Rewriter::isRewritable(A->getExprLoc())
                                   ? Wild_to_Safe
                                   : Same_to_Same;
+
               // Do not handle bounds key here because we will be
               // doing context-sensitive assignment next.
               constrainConsVarGeq(ParameterDC, ArgumentConstraints.first, CS,
