@@ -526,6 +526,28 @@ public:
             }
           }
         }
+      } else if (UnaryOperator *unaryOp = dyn_cast<UnaryOperator>(initExpr)) {
+          if (unaryOp->getOpcode() == UO_AddrOf) {
+              Expr *subExpr = unaryOp->getSubExpr();
+              if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(subExpr)) {
+                  VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
+                  if (referredVar && referredVar->getType()->isIntegerType()) {
+                      // Get the source location of the initializer
+                      SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
+                      SourceLocation endLoc = varDecl->getInit()->getEndLoc();
+
+                      // Now you would check if 'seed' should be tainted based on your specific criteria.
+                      // This is where you would integrate with your tainting mechanism.
+
+                      // For demonstration purposes, let's say we have a function that taints integer pointers.
+                      // We will replace the original expression with a call to this function.
+                      std::string replacementText = "__Marshall__T2C(" + referredVar->getNameAsString() + ")";
+
+                      // Replace the initializer in the source code
+                      Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+                  }
+              }
+          }
       }
       return true;
     }

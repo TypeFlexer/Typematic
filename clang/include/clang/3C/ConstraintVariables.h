@@ -1539,6 +1539,7 @@ public:
 
   bool hasItypeSolution(Constraints &CS) const;
   bool hasCheckedSolution(Constraints &CS) const;
+  bool hasTaintedSolution(Constraints &CS) const;
 
   PVConstraint *getInternal() const { return InternalConstraint; }
   PVConstraint *getExternal() const { return ExternalConstraint; }

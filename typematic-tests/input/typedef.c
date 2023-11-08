@@ -10,18 +10,13 @@ int* my_function(int* ptr) {
 
 void trigger_callback(another_name_for_callback cb, int* ptr) {
     int* result = cb(ptr);
-    // ... use result ...
 }
 
 int main() {
-    int x = 10;
-    _TPtr<int> seed = &x; // This is a regular pointer, not yet tainted
+    int a = 2;
+    int* seed = &a; // This is a regular pointer, not yet tainted
 
-    // Here we would assume the tool somehow taints the 'seed' and thus influences the callback.
-    // For example, your tool could mark 'seed' as tainted if it's used in a certain context
-    // where the taint could propagate.
-    // This could be simulated or indicated with a comment or macro, for example:
-    // _TPtr<int> tainted_seed = TAINT(seed); // Pseudo-operation to taint the seed
+    _TPtr<int> seed_t = seed;
 
     trigger_callback(my_function, seed);
 

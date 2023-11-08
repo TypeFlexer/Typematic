@@ -4204,6 +4204,13 @@ FunctionVariableConstraint::mkString(Constraints &CS,
               ForItypeBase);
   if (UseName.empty())
     UseName = Name;
+
+bool IsExternalConsTainted = ReturnVar.ExternalConstraint->hasTainted(CS.getVariables());
+bool IsInternalConsTainted = ReturnVar.InternalConstraint->hasTainted(CS.getVariables());
+
+if (IsExternalConsTainted || IsInternalConsTainted)
+    int i = 10;
+
   std::string Ret = ReturnVar.mkTypeStr(CS, false, "", ForItypeBase);
   std::string Itype = ReturnVar.mkItypeStr(CS, ForItypeBase);
   // When a function pointer type is the base for an itype, the name and
@@ -5383,7 +5390,8 @@ std::string FVComponentVariable::mkTypeStr(Constraints &CS, bool EmitName,
   // instead calling mkString the type is generated from the external constraint
   // variable. Because the call is passed ForItypeBase, it will emit an
   // unchecked type instead of the solved type.
-  if (ForItypeBase || hasCheckedSolution(CS) || (EmitName && !UseName.empty())) {
+  if (ForItypeBase || hasCheckedSolution(CS) || hasTaintedSolution(CS) ||
+        (EmitName && !UseName.empty())) {
     Ret = ExternalConstraint->mkString(
         CS, MKSTRING_OPTS(EmitName = EmitName, UseName = UseName,
                           ForItypeBase = ForItypeBase));
@@ -5484,6 +5492,19 @@ bool FVComponentVariable::hasCheckedSolution(Constraints &CS) const {
            InternalConstraint->isSolutionChecked(CS.getVariables())) ||
           ExternalConstraint->anyChanges(CS.getVariables())) &&
          InternalConstraint->solutionEqualTo(CS, ExternalConstraint);
+}
+
+bool FVComponentVariable::hasTaintedSolution(Constraints &CS) const {
+    // If the external constraint variable is checked, then the variable should
+    // be advertised as checked to callers. If the internal and external
+    // constraint variables solve to the same type, then they are both checked and
+    // we can use a _Ptr type.
+
+    bool IsExternalConsTainted = ExternalConstraint->hasTainted(CS.getVariables());
+    bool IsInternalConsTainted = InternalConstraint->hasTainted(CS.getVariables());
+
+    if (IsExternalConsTainted || IsInternalConsTainted)
+        return true;
 }
 
 
