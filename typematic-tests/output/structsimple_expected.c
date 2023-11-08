@@ -4,7 +4,7 @@
 #include <stdlib_tainted.h>
 
 typedef Tstruct anothersimp {
-        _TArray_ptr<char> arg4;
+        _TPtr<char> arg4;
         _TPtr<int> arg5;
         _TPtr<Tstruct anothersimp> simp3;
 } an;
@@ -19,7 +19,7 @@ typedef Tstruct simple {
 
 int main(){
     _TPtr<si> ts = t_malloc<si>(sizeof(si));
-    _TNt_array_ptr<char> name = __ConstantStringToTainted__("Arunkumar Bhattar", strlen("Arunkumar Bhattar"));
+    _TPtr<char> name = __ConstantStringToTainted__("Arunkumar Bhattar", strlen("Arunkumar Bhattar"));
 
     _TPtr<int> targ2 = (_TPtr<int>)malloc<int>(10 * sizeof(int));
     for (int i = 0; i < 10; i++) _Checked {
