@@ -9,7 +9,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Setup build directory and Compile 3c target
         env:
@@ -20,6 +20,7 @@ jobs:
           mkdir -p $TMPDIR
           cmake -G Ninja -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=compiler-rt -DCMAKE_LINKER=/usr/bin/gold -DCMAKE_BUILD_TYPE=Debug -DLLVM_LIT_ARGS=-v -DLLVM_PARALLEL_LINK_JOBS=1 ../
           ninja 3c
+          ninja llvm-size
           ninja checkcbox-headers # for the typeflexer headers
           echo "$PWD/bin" >> $GITHUB_PATH
 

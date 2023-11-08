@@ -160,7 +160,7 @@ bool Constraints::addTaintedConstraint(TaintedConstraint *C) {
 
     if (TGeq *G = dyn_cast<TGeq>(C)) {
       if (G->constraintIsTainted())
-        TaintedCG->addConstraint(reinterpret_cast<Geq *>(G), *this);
+        ChkCG->addConstraint(reinterpret_cast<Geq *>(G), *this);
 
       addReasonBasedTaintedConstraint(C);
 

@@ -917,7 +917,7 @@ private:
   //TaintedConstraintSet TheTaintedConstraints;
   // These are constraint graph representation of constraints.
   ConstraintsGraph *ChkCG;
-  ConstraintsGraph *TaintedCG;
+  //ConstraintsGraph *TaintedCG;
   ConstraintsGraph *PtrTypCG;
   std::map<std::string, ConstraintSet> ConstraintsByReason;
 //  std::map<std::string, TaintedConstraintSet> TaintedConstraintsByReason;

@@ -3009,7 +3009,7 @@ void CastOperation::CheckCStyleCast(bool IsCheckedScope, bool IsTaintedScope,
 
     // CheckCBox - Tainted Pointers Cannot be Cast to Un-Tainted Pointers
     if (DestType->isPointerType() && (!DestType->isTaintedPointerType())) {
-      if ((SrcType->isTaintedPointerType())) {
+      if (!Self.getLangOpts().drymatic && (SrcType->isTaintedPointerType())) {
         Self.Diag(SrcExpr.get()->getExprLoc(),
                   diag::err_tainted_cast_to_untainted)
             << SrcType << DestType << SrcExpr.get()->getSourceRange();

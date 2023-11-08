@@ -721,12 +721,14 @@ public:
                 auto *DRE = llvm::dyn_cast<DeclRefExpr>(arg);
                 ValueDecl* VD = nullptr;
                 Decl* D = nullptr;
-                if (DRE == nullptr)
+                if (DRE == nullptr && (arg->getReferencedDeclOfCallee() != nullptr))
                 {
                   VD = dyn_cast<ValueDecl>(arg->getReferencedDeclOfCallee());
                 }
-                else
+                else if (DRE != nullptr)
                   VD = DRE->getDecl();
+                else
+                    return true;
 
                 auto VarDInfo = Info.getVariable(VD, Context);
                 if (VarDInfo.hasValue()
