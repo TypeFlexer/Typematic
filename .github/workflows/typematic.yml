@@ -13,7 +13,7 @@ jobs:
 
       - name: Setup build directory and Compile 3c target
         env:
-          TMPDIR: /home/arun/typematic-actions/tmp
+          TMPDIR: /home/arun/tmp
         run: |
           mkdir -p llvm/build
           cd llvm/build
