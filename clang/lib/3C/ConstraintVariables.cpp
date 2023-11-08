@@ -5504,6 +5504,12 @@ bool FVComponentVariable::hasItypeSolution(Constraints &CS) const {
   // if the external variable is checked. If the external is checked, but the
   // internal is not equal to the external, then the internal is unchecked, so
   // have to use an itype instead of a _Ptr type.
+  bool IsExternalConsTainted = ExternalConstraint->hasTainted(CS.getVariables());
+  bool IsInternalConsTainted = InternalConstraint->hasTainted(CS.getVariables());
+
+  if (IsExternalConsTainted || IsInternalConsTainted)
+      return false;
+
   return ExternalConstraint->isSolutionChecked(CS.getVariables()) &&
          ExternalConstraint->anyChanges(CS.getVariables()) &&
          !InternalConstraint->solutionEqualTo(CS, ExternalConstraint);
