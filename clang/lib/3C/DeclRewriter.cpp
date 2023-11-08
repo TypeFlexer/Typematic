@@ -265,8 +265,7 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
                      ABRewriter.hasNewBoundsString(PV, D));
       SourceManager &SM = Context.getSourceManager();
       if (PVChanged && canWrite(SM.getFilename(D->getLocation()).str())) {
-        if (!PV->isPartOfFunctionPrototype())
-        {
+        if (!PV->isPartOfFunctionPrototype()) {
           // Rewrite a declaration, only if it is not part of function prototype.
           assert(!isa<ParmVarDecl>(D) &&
                  "Got a PVConstraint for a ParmVarDecl where "
@@ -276,6 +275,26 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
 
           RewrittenDecl RD = mkStringForPVDecl(MMD, PV, Info);
           std::string ReplacementText = RD.Type + RD.IType;
+          VarDecl *VD = dyn_cast<VarDecl>(D);
+          // Check if the ReplacementText indicates a tainted pointer type.
+          if ((VD && VD->hasInit()) && (ReplacementText.find("_TPtr") != std::string::npos ||
+              ReplacementText.find("_TArray_ptr") != std::string::npos ||
+              ReplacementText.find("_TNt_array_ptr") != std::string::npos)) {
+            // Further check if the initializer is a string literal.
+
+            Expr *initExpr = VD->getInit()->IgnoreImplicit();
+            if (CHKCBindTemporaryExpr *tempExpr = dyn_cast<CHKCBindTemporaryExpr>(initExpr)) {
+              initExpr = tempExpr->getSubExpr()->IgnoreImplicit();
+            }
+
+            if (clang::StringLiteral *strLiteral = dyn_cast<clang::StringLiteral>(initExpr)) {
+              // The initializer is a string literal and the variable is a tainted pointer.
+              std::string literalValue = strLiteral->getBytes().str();
+              // Construct the tainted replacement text with __ConstantStringToTainted__.
+              ReplacementText = "_TPtr<char> " + VD->getNameAsString() + " = __ConstantStringToTainted__(\"" +
+                                literalValue + "\", strlen(\"" + literalValue + "\"));";
+            }
+          }
           std::vector<std::string> SDecl;
           if (!RD.SupplementaryDecl.empty())
             SDecl.push_back(RD.SupplementaryDecl);
@@ -533,6 +552,25 @@ void DeclRewriter::rewriteMultiDecl(MultiDeclInfo &MDI, RSet &ToRewrite) {
         // FunctionDeclReplacement. But after drafting that, I wasn't convinced
         // that it was better than the status quo.
         assert(Replacement->getSourceRange(SM) == ReplaceSR);
+      }
+
+      // if Replacement->getReplacement() contains a trailing ";". It is meant to include the initializer as well
+      // as the trailing ";". So we need to include the initializer in the source range.
+      // Otherwise, we need to exclude the initializer from the source range.
+
+      if (Replacement->getReplacement().find(";") != std::string::npos) {
+        // We need to include the initializer in the source range.
+        ReplaceSR =
+                getDeclSourceRangeWithAnnotations(DL, /*IncludeInitializer=*/true);
+        //the code below anyway takes care of adding the trailing semi-colon, hence, lets remove it
+        // Remove the trailing semicolon from the replacement.
+        std::string replacementStr = Replacement->getReplacement();
+        if (!replacementStr.empty() && replacementStr.back() == ';') {
+          replacementStr.pop_back(); // Remove the last character, which is the semicolon.
+        }
+
+        // Assuming you have a way to set the replacement, do it here
+        Replacement->setReplacement(replacementStr);
       }
 
       if (IsFirst) {

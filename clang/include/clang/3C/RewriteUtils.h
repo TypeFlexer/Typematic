@@ -25,6 +25,7 @@ public:
   virtual Decl *getDecl() const = 0;
 
   std::string getReplacement() const { return Replacement; }
+  void setReplacement(std::string NewReplacement) {Replacement = NewReplacement;}
 
   virtual SourceRange getSourceRange(SourceManager &SM) const;
 
