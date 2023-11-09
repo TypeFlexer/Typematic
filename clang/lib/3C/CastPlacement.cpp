@@ -20,31 +20,37 @@ using namespace clang;
 //lets create an other pass to rewrite structures to Tstructs or _Decoy Tstructs
 
 bool CastPlacementVisitor::isTstruct(RecordDecl* RD) {
-  for (auto field: RD->fields()) {  // Iterate through all fields of the RecordDecl
-    QualType fieldType = field->getType();  // Get the type of the field
+  bool hasUntaintedPointer = true;
+  bool hasNonTstructStructure = true;
+
+  for (auto field: RD->fields()) {
+    QualType fieldType = field->getType();
     ASTContext *TmpCtx = const_cast<ASTContext *>(Context);
     CVarOption cvar = Info.getVariable(field, TmpCtx);
-    ConstAtom *CAtom = nullptr;
     const RecordType *recordType = fieldType->getAs<RecordType>();
 
     if (cvar.hasValue()) {
-      if (recordType) {
+      if (recordType) { // Check if it's a structure
         StructureVariableConstraint *SV = dyn_cast<StructureVariableConstraint>(&cvar.getValue());
-        if (SV) {
-          if (!SV->isTstructV() && !SV->isDecoyTstruct())
-            return false;
+        // Check if it's not a Tstruct or a decoy Tstruct
+        if (SV && !SV->isTstructV() && !SV->isDecoyTstruct()) {
+          hasNonTstructStructure = true;
         }
-      } else {
+      } else { // It's not a structure, so check if it's a tainted pointer
         PointerVariableConstraint *PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
         if (PV) {
-          CAtom = Info.getConstraints().getAssignment(PV->getCvars().at(0));
-          if (!CAtom->isTainted())
-            return false;
+          ConstAtom *CAtom = Info.getConstraints().getAssignment(PV->getCvars().at(0));
+          // If it's not a tainted pointer, mark it as an untainted pointer
+          if (!CAtom->isTainted()) {
+            hasUntaintedPointer = true;
+          }
         }
       }
     }
   }
-  return true;  // Return false if no pointer fields are found
+
+  // Return true only if there are no untainted pointers and no non-Tstruct structures
+  return !hasUntaintedPointer && !hasNonTstructStructure;
 }
 
 bool CastPlacementVisitor::VisitRecordDecl(RecordDecl* RD)
