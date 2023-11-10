@@ -74,6 +74,8 @@ private:
 
   CVarSet getInvalidCastPVCons(CastExpr *E);
 
+  CVarSet getTaintedCastPVCons(CastExpr *E);
+
   CVarSet addAtomAll(CVarSet CVS, ConstAtom *PtrTyp,
                      ReasonLoc &Rsn, Constraints &CS);
   CVarSet pvConstraintFromType(QualType TypE);

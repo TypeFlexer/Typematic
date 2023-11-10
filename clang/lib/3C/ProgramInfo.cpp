@@ -1384,7 +1384,16 @@ void ProgramInfo::addTypedef(PersistentSourceLoc PSL, TypedefDecl *TD,
   if (isa<clang::FunctionType>(TD->getUnderlyingType()))
     V = new FunctionVariableConstraint(TD, *this, C);
   else
-    V = new PointerVariableConstraint(TD, *this, C);
+  {
+    if (TD->getUnderlyingType()->isTaintedPointerType())
+    {
+      V = reinterpret_cast<ConstraintVariable *>(new TaintedPointerVariableConstraint(TD, *this, C));
+    }
+    else
+    {
+      V = new PointerVariableConstraint(TD, *this, C);
+    }
+  }
 
   if (!canWrite(PSL.getFileName()))
     V->constrainToWild(this->getConstraints(),

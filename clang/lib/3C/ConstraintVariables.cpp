@@ -991,7 +991,7 @@ PointerVariableConstraint::PointerVariableConstraint(
   }
 }
 
-TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
+    TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
         const QualType &QT, DeclaratorDecl *D, std::string N, ProgramInfo &I,
         const ASTContext &C, std::string *InFunc, int ForceGenericIndex,
         bool PotentialGeneric,
@@ -1302,7 +1302,7 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
     if (!VarCreated) {
       VarAtom *VA = CS.getFreshVar(Npre + N, VK);
       Vars.push_back(VA);
-      SrcVars.push_back(CS.getWild());
+      SrcVars.push_back(CS.getPtr());
 
       // Incomplete arrays are not given ARR as an upper bound because the
       // transformation int[] -> _Ptr<int> is permitted but int[1] -> _Ptr<int>
@@ -1369,14 +1369,15 @@ TaintedPointerVariableConstraint::TaintedPointerVariableConstraint(
   BaseType = QualStr.str() + BaseType;
 
   // If an outer pointer is wild, then the inner pointer must also be wild.
-  if (Vars.size() > 1) {
-    for (unsigned VarIdx = 0; VarIdx < Vars.size() - 1; VarIdx++) {
-      VarAtom *VI = dyn_cast<VarAtom>(Vars[VarIdx]);
-      VarAtom *VJ = dyn_cast<VarAtom>(Vars[VarIdx + 1]);
-      if (VI && VJ)
-        CS.addTaintedConstraint(new TGeq(VJ, VI, ReasonLoc(INNER_POINTER_REASON, PSL)));
-    }
-  }
+  // this does not apply to tainted pointers
+//  if (Vars.size() > 1) {
+//    for (unsigned VarIdx = 0; VarIdx < Vars.size() - 1; VarIdx++) {
+//      VarAtom *VI = dyn_cast<VarAtom>(Vars[VarIdx]);
+//      VarAtom *VJ = dyn_cast<VarAtom>(Vars[VarIdx + 1]);
+//      if (VI && VJ)
+//        CS.addTaintedConstraint(new TGeq(VJ, VI, ReasonLoc(INNER_POINTER_REASON, PSL)));
+//    }
+//  }
 }
 
 std::string PointerVariableConstraint::tryExtractBaseType(
@@ -1921,18 +1922,45 @@ PointerVariableConstraint::mkString(Constraints &CS,
     BaseTypeName = std::begin({"T","U","V"})[InferredGenericIndex];
   }
 
-  auto It = Vars.begin();
+  // Predicate function that returns true if the atom is not wild.
+    auto isNotWildAtom = [&CS, ForItypeBase](const Atom *A) -> bool {
+        assert(A != nullptr && "Atom pointer cannot be null.");
+        const auto &V = A;
+        // Since A is const-qualified, the resulting pointers from dyn_cast must also be const-qualified.
+        const ConstAtom *C = nullptr;
+        if (const ConstAtom *CA = dyn_cast<ConstAtom>(A)) {
+            C = CA;
+        } else {
+            // Since A is const-qualified, we have to use a const VarAtom pointer.
+            VarAtom *VA = const_cast<VarAtom *>(dyn_cast<VarAtom>(V));
+            assert(VA != nullptr && "Constraint variable can be either constant or VarAtom.");
+            // Need to perform a const_cast if CS.getVariables().at(VA).first returns a non-const pointer.
+            C = CS.getVariables().at(VA).first;
+        }
+        assert(C != nullptr);
+
+        // Now C is a const pointer, and we can check its kind directly.
+        return C->getKind() != Atom::A_Wild;
+    };
+
+  std::vector<Atom *> SortedVars = Vars;
+  // Reorder elements using stable_partition to move wild atoms to the end.
+  std::stable_partition(SortedVars.begin(), SortedVars.end(), isNotWildAtom);
+
+  auto It = SortedVars.begin();
   // Skip over first pointer level if only emitting pointee string.
   // This is needed when inserting type arguments.
   if (EmitPointee)
     ++It;
   // Iterate through the vars(), but if we have an internal typedef, then stop
   // once you reach the typedef's level.
-  for (; It != Vars.end() && IMPLIES(TypedefLevelInfo.HasTypedef,
+  bool AlreadyATaintedPointer = false;
+  for (; It != SortedVars.end() && IMPLIES(TypedefLevelInfo.HasTypedef,
                                      TypeIdx < TypedefLevelInfo.TypedefLevel);
        ++It, TypeIdx++) {
     const auto &V = *It;
     ConstAtom *C = nullptr;
+
     if (ForItypeBase) {
       C = CS.getWild();
     } else if (ConstAtom *CA = dyn_cast<ConstAtom>(V)) {
@@ -2041,6 +2069,7 @@ PointerVariableConstraint::mkString(Constraints &CS,
         EmittedBase = false;
         Ss << "_TPtr<";
         EndStrs.push_front(">");
+        AlreadyATaintedPointer = true;
     }
     break;
     case Atom::A_Arr:
@@ -2125,6 +2154,7 @@ PointerVariableConstraint::mkString(Constraints &CS,
           EmittedBase = false;
           Ss << "_TArray_ptr<";
           EndStrs.push_front(">");
+          AlreadyATaintedPointer = true;
       }
       break;
     case Atom::A_NTArr:
@@ -2205,6 +2235,7 @@ PointerVariableConstraint::mkString(Constraints &CS,
           EmittedBase = false;
           Ss << "_TNt_array_ptr<";
           EndStrs.push_front(">");
+          AlreadyATaintedPointer = true;
       }
       break;
     // If there is no array in the original program, then we fall through to
@@ -2224,7 +2255,10 @@ PointerVariableConstraint::mkString(Constraints &CS,
           EmittedBase = true;
           Ss << BaseTypeName << " ";
         }
-        Ss << "*";
+        if (!AlreadyATaintedPointer)
+            Ss << "*";
+        else
+            EndStrs.push_back("*");
         getQualString(TypeIdx, Ss);
       }
 
@@ -2289,217 +2323,464 @@ PointerVariableConstraint::mkString(Constraints &CS,
 std::string
 TaintedPointerVariableConstraint::mkString(Constraints &CS,
                                     const MkStringOpts &Opts) const {
-  UNPACK_OPTS(EmitName, ForItype, EmitPointee, UnmaskTypedef, UseName,
-              ForItypeBase);
+    UNPACK_OPTS(EmitName, ForItype, EmitPointee, UnmaskTypedef, UseName,
+                ForItypeBase);
 
-  // This function has become pretty ad-hoc and has a number of known bugs: see
-  // https://github.com/correctcomputation/checkedc-clang/issues/703. We hope to
-  // overhaul it in the future.
+    // This function has become pretty ad-hoc and has a number of known bugs: see
+    // https://github.com/correctcomputation/checkedc-clang/issues/703. We hope to
+    // overhaul it in the future.
 
-  // The name field encodes if this variable is the return type for a function.
-  // TODO: store this information in a separate field.
-  bool IsReturn = getName() == RETVAR;
+    // The name field encodes if this variable is the return type for a function.
+    // TODO: store this information in a separate field.
+    bool IsReturn = getName() == RETVAR;
 
-  if (UseName.empty()) {
-    UseName = getName();
-    if (UseName.empty())
-      EmitName = false;
-  }
+    if (UseName.empty()) {
+        UseName = getName();
+        if (UseName.empty())
+            EmitName = false;
+    }
 
-  if (IsTypedef && !UnmaskTypedef) {
-    std::string QualTypedef = gatherQualStrings() + TypedefString;
-    if (!ForItype)
-      QualTypedef += " ";
-    if (EmitName && !IsReturn)
-      QualTypedef += UseName;
-    return QualTypedef;
-  }
+    if (IsTypedef && !UnmaskTypedef) {
+        std::string QualTypedef = gatherQualStrings() + TypedefString;
+        if (!ForItype)
+            QualTypedef += " ";
+        if (EmitName && !IsReturn)
+            QualTypedef += UseName;
+        return QualTypedef;
+    }
 
-  std::ostringstream Ss;
-  // Annotations that will need to be placed on the identifier of an unchecked
-  // function pointer.
-  std::ostringstream FptrInner;
-  // This deque will store all the type strings that need to pushed
-  // to the end of the type string. This is typically things like
-  // closing delimiters.
-  std::deque<std::string> EndStrs;
-  // This will store stacked array decls to ensure correct order
-  // We encounter constant arrays variables in the reverse order they
-  // need to appear in, so the LIFO structure reverses these annotations
-  std::stack<std::string> ConstArrs;
-  // Have we emitted the string for the base type
-  bool EmittedBase = false;
-  // Have we emitted the name of the variable yet?
-  bool EmittedName = false;
-  if (!EmitName || IsReturn)
-    EmittedName = true;
-  int TypeIdx = 0;
+    std::ostringstream Ss;
+    // Annotations that will need to be placed on the identifier of an unchecked
+    // function pointer.
+    std::ostringstream FptrInner;
+    // This deque will store all the type strings that need to pushed
+    // to the end of the type string. This is typically things like
+    // closing delimiters.
+    std::deque<std::string> EndStrs;
+    // This will store stacked array decls to ensure correct order
+    // We encounter constant arrays variables in the reverse order they
+    // need to appear in, so the LIFO structure reverses these annotations
+    std::stack<std::string> ConstArrs;
+    // Have we emitted the string for the base type
+    bool EmittedBase = false;
+    // Have we emitted the name of the variable yet?
+    bool EmittedName = false;
 
-  // If we've set a GenericIndex for void, it means we're converting it into
-  // a generic function so give it the default generic type name.
-  // Add more type names below if we expect to use a lot.
-  std::string BaseTypeName = BaseType;
-  std::regex pattern(R"(struct\s+(\w+))");
-  std::string replacement = "Tstruct $1";
+    bool TaintedFunctionPtr = false;
+    if (!EmitName || IsReturn)
+        EmittedName = true;
+    int TypeIdx = 0;
+
+    // If we've set a GenericIndex for void, it means we're converting it into
+    // a generic function so give it the default generic type name.
+    // Add more type names below if we expect to use a lot.
+    std::string BaseTypeName = BaseType;
+    std::regex pattern(R"(struct\s+(\w+))");
+    std::string replacement = "Tstruct $1";
 
     if (InferredGenericIndex > -1 && isVoidPtr() &&
-      isSolutionTainted(CS.getVariables())) {
-    assert(InferredGenericIndex < 3
-           && "Trying to use an unexpected type variable name");
-    BaseTypeName = std::begin({"T","U","V"})[InferredGenericIndex];
-  }
-
-  auto It = Vars.begin();
-  // Skip over first pointer level if only emitting pointee string.
-  // This is needed when inserting type arguments.
-  if (EmitPointee)
-    ++It;
-  // Iterate through the vars(), but if we have an internal typedef, then stop
-  // once you reach the typedef's level.
-  for (; It != Vars.end() && IMPLIES(TypedefLevelInfo.HasTypedef,
-                                     TypeIdx < TypedefLevelInfo.TypedefLevel);
-         ++It, TypeIdx++) {
-    const auto &V = *It;
-    ConstAtom *C = nullptr;
-    if (ForItypeBase) {
-      C = CS.getWild();
-    } else if (ConstAtom *CA = dyn_cast<ConstAtom>(V)) {
-      C = CA;
-    } else {
-      VarAtom *VA = dyn_cast<VarAtom>(V);
-      assert(VA != nullptr && "Constraint variable can "
-                              "be either constant or VarAtom.");
-      C = CS.getVariables().at(VA).first;
-    }
-    assert(C != nullptr);
-
-    Atom::AtomKind K = C->getKind();
-
-    // If this is not an itype or generic
-    // make this wild as it can hold any pointer type.
-    if (!ForItype && InferredGenericIndex == -1 && isVoidPtr())
-      K = Atom::A_Wild;
-
-    // In a case like `_Ptr<TYPE> p[2]`, the ` p[2]` needs to end up _after_ the
-    // `>`, so we need to push the ` p[2]` onto EndStrs _before_ the code below
-    // pushes the `>`. In general, before we visit a checked pointer level (not
-    // a checked array level), we need to transfer any pending array levels and
-    // emit the name (if applicable).
-    if (K != Atom::A_Wild && ArrSizes.at(TypeIdx).first != O_SizedArray) {
-      addArrayAnnotations(ConstArrs, EndStrs);
-      if (!EmittedName) {
-        EmittedName = true;
-        EndStrs.push_front(" " + UseName);
-      }
+        isSolutionTainted(CS.getVariables())) {
+        assert(InferredGenericIndex < 3
+               && "Trying to use an unexpected type variable name");
+        BaseTypeName = std::begin({"T","U","V"})[InferredGenericIndex];
     }
 
-    switch (K) {
-      case Atom::A_TPtr:
-        getQualString(TypeIdx, Ss);
-        BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
-
-        EmittedBase = false;
-        Ss << "_TPtr<";
-        EndStrs.push_front(">");
-        break;
-      case Atom::A_TArr:
-        // If this is an array.
-        getQualString(TypeIdx, Ss);
-        // If it's an Arr, then the character we substitute should
-        // be [] instead of *, IF, the original type was an array.
-        // And, if the original type was a sized array of size K.
-        // we should substitute [K].
-        if (emitArraySize(ConstArrs, TypeIdx, K))
-          break;
-        EmittedBase = false;
-        Ss << "_TArray_ptr<";
-        EndStrs.push_front(">");
-        break;
-      case Atom::A_TNTArr:
-        // If this is an NTArray.
-        getQualString(TypeIdx, Ss);
-        if (emitArraySize(ConstArrs, TypeIdx, K))
-          break;
-
-        EmittedBase = false;
-        Ss << "_TNt_array_ptr<";
-        EndStrs.push_front(">");
-        break;
-        // If there is no array in the original program, then we fall through to
-        // the case where we write a pointer value.
-      case Atom::A_Wild:
-        if (emitArraySize(ConstArrs, TypeIdx, K))
-          break;
-        // FIXME: This code emits wild pointer levels with the outermost on the
-        // left. The outermost should be on the right
-        // (https://github.com/correctcomputation/checkedc-clang/issues/161).
-        if (FV != nullptr) {
-          FptrInner << "*";
-          getQualString(TypeIdx, FptrInner);
+    // Predicate function that returns true if the atom is not wild.
+    auto isNotWildAtom = [&CS, ForItypeBase](const Atom *A) -> bool {
+        assert(A != nullptr && "Atom pointer cannot be null.");
+        const auto &V = A;
+        // Since A is const-qualified, the resulting pointers from dyn_cast must also be const-qualified.
+        const ConstAtom *C = nullptr;
+        if (const ConstAtom *CA = dyn_cast<ConstAtom>(A)) {
+            C = CA;
         } else {
-          if (!EmittedBase) {
-            assert(!BaseTypeName.empty());
-            EmittedBase = true;
-            Ss << BaseTypeName << " ";
-          }
-          Ss << "*";
-          getQualString(TypeIdx, Ss);
+            // Since A is const-qualified, we have to use a const VarAtom pointer.
+            VarAtom *VA = const_cast<VarAtom *>(dyn_cast<VarAtom>(V));
+            assert(VA != nullptr && "Constraint variable can be either constant or VarAtom.");
+            // Need to perform a const_cast if CS.getVariables().at(VA).first returns a non-const pointer.
+            C = CS.getVariables().at(VA).first;
+        }
+        assert(C != nullptr);
+
+        // Now C is a const pointer, and we can check its kind directly.
+        return C->getKind() != Atom::A_Wild;
+    };
+
+    std::vector<Atom *> SortedVars = Vars;
+    // Reorder elements using stable_partition to move wild atoms to the end.
+    std::stable_partition(SortedVars.begin(), SortedVars.end(), isNotWildAtom);
+
+    auto It = SortedVars.begin();
+    // Skip over first pointer level if only emitting pointee string.
+    // This is needed when inserting type arguments.
+    if (EmitPointee)
+        ++It;
+    // Iterate through the vars(), but if we have an internal typedef, then stop
+    // once you reach the typedef's level.
+    bool AlreadyATaintedPointer = false;
+    for (; It != SortedVars.end();
+           ++It, TypeIdx++) {
+        const auto &V = *It;
+        ConstAtom *C = nullptr;
+
+        if (ForItypeBase) {
+            C = CS.getWild();
+        } else if (ConstAtom *CA = dyn_cast<ConstAtom>(V)) {
+            C = CA;
+        } else {
+            VarAtom *VA = dyn_cast<VarAtom>(V);
+            assert(VA != nullptr && "Constraint variable can "
+                                    "be either constant or VarAtom.");
+            C = CS.getVariables().at(VA).first;
+        }
+        assert(C != nullptr);
+
+        Atom::AtomKind K = C->getKind();
+        VarAtom *VA = dyn_cast<VarAtom>(V);
+        if (VA && VA->getDoNotTaint()) {
+            K = Atom::A_Wild;
         }
 
-        break;
-      case Atom::A_Const:
-      case Atom::A_Var:
-        llvm_unreachable("impossible");
-            break;
+        // If this is not an itype or generic
+        // make this wild as it can hold any pointer type.
+        if (!ForItype && InferredGenericIndex == -1 && isVoidPtr())
+            K = Atom::A_Wild;
+
+        // In a case like `_Ptr<TYPE> p[2]`, the ` p[2]` needs to end up _after_ the
+        // `>`, so we need to push the ` p[2]` onto EndStrs _before_ the code below
+        // pushes the `>`. In general, before we visit a checked pointer level (not
+        // a checked array level), we need to transfer any pending array levels and
+        // emit the name (if applicable).
+        if (K != Atom::A_Wild && !ArrSizes.empty() && ArrSizes.at(TypeIdx).first != O_SizedArray) {
+            addArrayAnnotations(ConstArrs, EndStrs);
+            if (!EmittedName) {
+                EmittedName = true;
+                EndStrs.push_front(" " + UseName);
+            }
+        }
+
+        switch (K) {
+            case Atom::A_Ptr:
+                if (_3COpts.Mode == "typeflexer")
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    // FIXME: This code emits wild pointer levels with the outermost on the
+                    // left. The outermost should be on the right
+                    // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+                    if (FV != nullptr) {
+                        FptrInner << "*";
+                        getQualString(TypeIdx, FptrInner);
+                    } else {
+                        if (!EmittedBase) {
+                            assert(!BaseTypeName.empty());
+                            EmittedBase = true;
+                            Ss << BaseTypeName << " ";
+                        }
+                        Ss << "*";
+                        getQualString(TypeIdx, Ss);
+                    }
+                }
+                else{
+                    getQualString(TypeIdx, Ss);
+
+                    EmittedBase = false;
+                    Ss << "_Ptr<";
+                    EndStrs.push_front(">");
+                }
+                break;
+            case Atom::A_TPtr:
+                if (FV)
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+
+                    FptrInner << "*";
+                    if (!EmittedBase) {
+                        FptrInner << getName() << " ";
+                    }
+
+                    EmittedName = true;
+                    TaintedFunctionPtr = true;
+                    getQualString(TypeIdx, FptrInner);
+                }
+                else if (_3COpts.Mode == "checked-c")
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    // FIXME: This code emits wild pointer levels with the outermost on the
+                    // left. The outermost should be on the right
+                    // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+                    if (FV != nullptr) {
+                        FptrInner << "*";
+                        getQualString(TypeIdx, FptrInner);
+                    } else {
+                        if (!EmittedBase) {
+                            assert(!BaseTypeName.empty());
+                            EmittedBase = true;
+                            Ss << BaseTypeName << " ";
+                        }
+                        Ss << "*";
+                        getQualString(TypeIdx, Ss);
+                    }
+                }
+                else {
+                    getQualString(TypeIdx, Ss);
+                    BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
+
+                    EmittedBase = false;
+                    Ss << "_TPtr<";
+                    EndStrs.push_front(">");
+                    AlreadyATaintedPointer = true;
+                }
+                break;
+            case Atom::A_Arr:
+                if (_3COpts.Mode == "typeflexer")
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    // FIXME: This code emits wild pointer levels with the outermost on the
+                    // left. The outermost should be on the right
+                    // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+                    if (FV != nullptr) {
+                        FptrInner << "*";
+                        getQualString(TypeIdx, FptrInner);
+                    } else {
+                        if (!EmittedBase) {
+                            assert(!BaseTypeName.empty());
+                            EmittedBase = true;
+                            Ss << BaseTypeName << " ";
+                        }
+                        Ss << "*";
+                        getQualString(TypeIdx, Ss);
+                    }
+                }
+                else {
+                    // If this is an array.
+                    getQualString(TypeIdx, Ss);
+                    // If it's an Arr, then the character we substitute should
+                    // be [] instead of *, IF, the original type was an array.
+                    // And, if the original type was a sized array of size K.
+                    // we should substitute [K].
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    EmittedBase = false;
+                    Ss << "_Array_ptr<";
+                    EndStrs.push_front(">");
+                }
+                break;
+            case Atom::A_TArr:
+                if (FV)
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+
+                    FptrInner << "*";
+                    if (!EmittedBase) {
+                        FptrInner << getName() << " ";
+                    }
+
+                    EmittedName = true;
+                    TaintedFunctionPtr = true;
+                    getQualString(TypeIdx, FptrInner);
+                }
+                else if (_3COpts.Mode == "checked-c")
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    // FIXME: This code emits wild pointer levels with the outermost on the
+                    // left. The outermost should be on the right
+                    // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+                    if (FV != nullptr) {
+                        FptrInner << "*";
+                        getQualString(TypeIdx, FptrInner);
+                    } else {
+                        if (!EmittedBase) {
+                            assert(!BaseTypeName.empty());
+                            EmittedBase = true;
+                            Ss << BaseTypeName << " ";
+                        }
+                        Ss << "*";
+                        getQualString(TypeIdx, Ss);
+                    }
+                }
+                else {
+                    // If this is an array.
+                    getQualString(TypeIdx, Ss);
+                    // If it's an Arr, then the character we substitute should
+                    // be [] instead of *, IF, the original type was an array.
+                    // And, if the original type was a sized array of size K.
+                    // we should substitute [K].
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    EmittedBase = false;
+                    Ss << "_TArray_ptr<";
+                    EndStrs.push_front(">");
+                    AlreadyATaintedPointer = true;
+                }
+                break;
+            case Atom::A_NTArr:
+                if (FV)
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+
+                    FptrInner << "*";
+
+                    if (!EmittedBase) {
+                        FptrInner << getName() << " ";
+                    }
+
+                    EmittedName = true;
+                    TaintedFunctionPtr = true;
+
+                    getQualString(TypeIdx, FptrInner);
+                }
+                else if (_3COpts.Mode == "typeflexer")
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    // FIXME: This code emits wild pointer levels with the outermost on the
+                    // left. The outermost should be on the right
+                    // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+                    if (FV != nullptr) {
+                        FptrInner << "*";
+                        getQualString(TypeIdx, FptrInner);
+                    } else {
+                        if (!EmittedBase) {
+                            assert(!BaseTypeName.empty());
+                            EmittedBase = true;
+                            Ss << BaseTypeName << " ";
+                        }
+                        Ss << "*";
+                        getQualString(TypeIdx, Ss);
+                    }
+                }
+                else {
+                    // If this is an NTArray.
+                    getQualString(TypeIdx, Ss);
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+
+                    EmittedBase = false;
+                    Ss << "_Nt_array_ptr<";
+                    EndStrs.push_front(">");
+                }
+                break;
+            case Atom::A_TNTArr:
+                if (_3COpts.Mode == "checked-c")
+                {
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+                    // FIXME: This code emits wild pointer levels with the outermost on the
+                    // left. The outermost should be on the right
+                    // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+                    if (FV != nullptr) {
+                        FptrInner << "*";
+                        getQualString(TypeIdx, FptrInner);
+                    } else {
+                        if (!EmittedBase) {
+                            assert(!BaseTypeName.empty());
+                            EmittedBase = true;
+                            Ss << BaseTypeName << " ";
+                        }
+                        Ss << "*";
+                        getQualString(TypeIdx, Ss);
+                    }
+                }
+                else
+                {
+                    getQualString(TypeIdx, Ss);
+                    if (emitArraySize(ConstArrs, TypeIdx, K))
+                        break;
+
+                    EmittedBase = false;
+                    Ss << "_TNt_array_ptr<";
+                    EndStrs.push_front(">");
+                    AlreadyATaintedPointer = true;
+                }
+                break;
+                // If there is no array in the original program, then we fall through to
+                // the case where we write a pointer value.
+            case Atom::A_Wild:
+                if (emitArraySize(ConstArrs, TypeIdx, K))
+                    break;
+                // FIXME: This code emits wild pointer levels with the outermost on the
+                // left. The outermost should be on the right
+                // (https://github.com/correctcomputation/checkedc-clang/issues/161).
+                if (FV != nullptr) {
+                    FptrInner << "*";
+                    getQualString(TypeIdx, FptrInner);
+                } else {
+                    if (!EmittedBase) {
+                        assert(!BaseTypeName.empty());
+                        EmittedBase = true;
+                        Ss << BaseTypeName << " ";
+                    }
+                    if (!AlreadyATaintedPointer)
+                        Ss << "*";
+                    else
+                        EndStrs.push_back("*");
+                    getQualString(TypeIdx, Ss);
+                }
+
+                break;
+            case Atom::A_Const:
+            case Atom::A_Var:
+                llvm_unreachable("impossible");
+                break;
+        }
     }
-  }
 
-  if (!EmittedBase) {
-    // If we have a FV pointer, then our "base" type is a function pointer type.
-    if (FV) {
-      if (!EmittedName) {
-        FptrInner << UseName;
-        EmittedName = true;
-      }
-      std::deque<std::string> FptrEndStrs;
-      addArrayAnnotations(ConstArrs, FptrEndStrs);
-      for (std::string Str : FptrEndStrs)
-        FptrInner << Str;
-      bool EmitFVName = !FptrInner.str().empty();
-      if (EmitFVName)
-        Ss << FV->mkString(CS, MKSTRING_OPTS(UseName = FptrInner.str(),
-                                             ForItypeBase = ForItypeBase));
-      else
-        Ss << FV->mkString(
-                CS, MKSTRING_OPTS(EmitName = false, ForItypeBase = ForItypeBase));
-    } else if (TypedefLevelInfo.HasTypedef) {
-      std::ostringstream Buf;
-      getQualString(TypedefLevelInfo.TypedefLevel, Buf);
-      auto Name = TypedefLevelInfo.TypedefName;
-      Ss << Buf.str() << Name;
-    } else {
-      Ss << BaseTypeName;
+    if (!EmittedBase) {
+        // If we have a FV pointer, then our "base" type is a function pointer type.
+        if (FV) {
+            if (!EmittedName) {
+                FptrInner << UseName;
+                EmittedName = true;
+            }
+            std::deque<std::string> FptrEndStrs;
+            addArrayAnnotations(ConstArrs, FptrEndStrs);
+            for (std::string Str : FptrEndStrs)
+                FptrInner << Str;
+            bool EmitFVName = !FptrInner.str().empty();
+            if (EmitFVName)
+                Ss << FV->mkString(CS, MKSTRING_OPTS(UseName = FptrInner.str(),
+                                                     ForItypeBase = ForItypeBase));
+            else
+                Ss << FV->mkString(
+                        CS, MKSTRING_OPTS(EmitName = false, ForItypeBase = ForItypeBase));
+        } else if (TypedefLevelInfo.HasTypedef) {
+            std::ostringstream Buf;
+            getQualString(TypedefLevelInfo.TypedefLevel, Buf);
+            auto Name = TypedefLevelInfo.TypedefName;
+            Ss << Buf.str() << Name;
+        } else {
+            Ss << BaseTypeName;
+        }
     }
-  }
 
-  // No space after itype.
-  if (!EmittedName) {
-    if (!StringRef(Ss.str()).endswith("*"))
-      Ss << " ";
-    Ss << UseName;
-  }
+    // No space after itype.
+    if (!EmittedName) {
+        if (!StringRef(Ss.str()).endswith("*"))
+            Ss << " ";
+        Ss << UseName;
+    }
 
-  // Add closing elements to type
-  addArrayAnnotations(ConstArrs, EndStrs);
-  for (std::string Str : EndStrs) {
-    Ss << Str;
-  }
+    // Add closing elements to type
+    if (!TaintedFunctionPtr)
+    {
+        addArrayAnnotations(ConstArrs, EndStrs);
+        for (std::string Str : EndStrs) {
+            Ss << Str;
+        }
+    }
 
-  if (IsReturn && !ForItype && !StringRef(Ss.str()).endswith("*"))
-    Ss << " ";
+    if (IsReturn && !ForItype && !StringRef(Ss.str()).endswith("*"))
+        Ss << " ";
 
-  return Ss.str();
-}
+    return Ss.str();
+ }
 
 bool PVConstraint::addArgumentConstraint(ConstraintVariable *DstCons,
                                          ReasonLoc &Rsn,
@@ -2881,6 +3162,14 @@ void FunctionVariableConstraint::constrainToWild(
     V.ExternalConstraint->constrainToWild(CS, Rsn);
 }
 
+void FunctionVariableConstraint::constrainToTainted(
+        Constraints &CS, const ReasonLoc &Rsn) const {
+    ReturnVar.ExternalConstraint->constrainToTainted(CS, Rsn);
+
+    for (const auto &V : ParamVars)
+        V.ExternalConstraint->constrainToTainted(CS, Rsn);
+}
+
 void TaintedFunctionVariableConstraint::constrainToWild(
         Constraints &CS, const ReasonLoc &Rsn) const {
   ReturnVar.ExternalConstraint->constrainToWild(CS, Rsn);
@@ -3139,6 +3428,27 @@ void TaintedFunctionVariableConstraint::equateArgumentConstraints(ProgramInfo &I
     // Equate arguments and parameters vars.
     this->equateFVConstraintVars(DefnCons, Info, Rsn);
   }
+}
+
+void PointerVariableConstraint::constrainToTainted(Constraints &CS,
+                                                const ReasonLoc &Rsn) const {
+    // Find the first VarAtom. All atoms before this are ConstAtoms, so
+    // constraining them isn't useful;
+    VarAtom *FirstVA = nullptr;
+    for (Atom *A : Vars)
+        if (isa<VarAtom>(A)) {
+            FirstVA = cast<VarAtom>(A);
+            break;
+        }
+
+    // Constrains the outer VarAtom to WILD. All inner pointer levels will also be
+    // implicitly constrained to WILD because of GEQ constraints that exist
+    // between levels of a pointer.
+    if (FirstVA)
+        CS.addConstraint(CS.createGeq(FirstVA, CS.getTaintedPtr(), Rsn, true));
+
+    if (FV)
+        FV->constrainToTainted(CS, Rsn);
 }
 
 void PointerVariableConstraint::constrainToWild(Constraints &CS,
@@ -4600,10 +4910,6 @@ void constrainConsVarGeq(ConstraintVariable *LHS, ConstraintVariable *RHS,
   }
 
   if (RHS->getKind() == LHS->getKind()) {
-      if (RHS->getName() == "heapInt" && LHS->getName() == "alias1") {
-            int i = 10;
-      }
-
     if (FVConstraint *FCLHS = dyn_cast<FVConstraint>(LHS)) {
       if (FVConstraint *FCRHS = dyn_cast<FVConstraint>(RHS)) {
 

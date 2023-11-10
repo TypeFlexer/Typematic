@@ -133,6 +133,34 @@ static ConstAtom *analyzeAllocExpr(CallExpr *CE, Constraints &CS,
   return nullptr;
 }
 
+CVarSet ConstraintResolver::getTaintedCastPVCons(CastExpr *E) {
+  QualType DstType = E->getType();
+  QualType SrcType = E->getSubExpr()->getType();
+
+  QualType SrcTypeTmp = SrcType;
+  bool isSrcTainted = false;
+
+  while (SrcTypeTmp->isPointerType()) {
+    if (SrcTypeTmp->isTaintedPointerType()) {
+        isSrcTainted = true;
+        break;
+    }
+    SrcTypeTmp = SrcTypeTmp->getPointeeType();
+  }
+
+  PVConstraint *P = NULL;
+  if (isSrcTainted)
+    P = reinterpret_cast<PVConstraint *>(new TPVConstraint(E->getSubExpr(), Info, *Context));
+  else
+    P = reinterpret_cast<PVConstraint *>(new TPVConstraint(E, Info, *Context));
+
+  PersistentSourceLoc PL = PersistentSourceLoc::mkPSL(E, *Context);
+  std::string Rsn =
+          "Tainted Cast from " + SrcType.getAsString() + " to " + DstType.getAsString();
+  //P->constrainToTainted(Info.getConstraints(), ReasonLoc(Rsn, PL));
+  return {P};
+}
+
 CVarSet ConstraintResolver::getInvalidCastPVCons(CastExpr *E) {
   QualType DstType = E->getType();
   QualType SrcType = E->getSubExpr()->getType();
@@ -171,6 +199,20 @@ ConstraintVariable *localReturnConstraint(
   } else {
     return FV->getExternalReturn();
   }
+}
+
+bool CallsForCastRewriting(QualType DstType, QualType SrcType)
+{
+  if (!DstType->isTaintedPointerType() && SrcType->isTaintedPointerType())
+    return true;
+
+  QualType DstPtrType = DstType->getPointeeType();
+  QualType SrcPtrType = SrcType->getPointeeType();
+
+  if (DstPtrType->isPointerType() || SrcPtrType->isPointerType())
+    return CallsForCastRewriting(DstPtrType, SrcPtrType);
+
+  return false;
 }
 
 // Returns a pair of set of ConstraintVariables and set of BoundsKey
@@ -263,9 +305,23 @@ CSetBkeyPair ConstraintResolver::getExprConstraintVars(Expr *E) {
       if (!isNULLExpression(ECE, *Context) && TypE->isPointerType() &&
           !isCastSafe(TypE, TmpE->getType()) && !isCastofGeneric(ECE)) {
         CVarSet Vars = getExprConstraintVarsSet(TmpE);
-        Ret = pairWithEmptyBkey(getInvalidCastPVCons(ECE));
-        constrainConsVarGeq(Vars, Ret.first, CS, Rsn, Safe_to_Wild, false,
-                            &Info);
+        QualType DstType = ECE->getType();
+        QualType SrcType = ECE->getSubExpr()->getType();
+        /*
+         * Fill code below to do the following
+         */
+        if (CallsForCastRewriting(DstType, SrcType)) {
+          Ret = pairWithEmptyBkey(getTaintedCastPVCons(ECE));
+          constrainConsVarGeq(Vars, Ret.first, CS, Rsn, Same_to_Same, false,
+                              &Info);
+        }
+        else
+        {
+          Ret = pairWithEmptyBkey(getInvalidCastPVCons(ECE));
+          constrainConsVarGeq(Vars, Ret.first, CS, Rsn, Safe_to_Wild, false,
+                              &Info);
+        }
+
         // NB: Expression ECE itself handled in
         // ConstraintBuilder::FunctionVisitor.
       } else {

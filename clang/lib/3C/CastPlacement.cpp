@@ -20,9 +20,6 @@ using namespace clang;
 //lets create an other pass to rewrite structures to Tstructs or _Decoy Tstructs
 
 bool CastPlacementVisitor::isTstruct(RecordDecl* RD) {
-  bool hasUntaintedPointer = true;
-  bool hasNonTstructStructure = true;
-
   for (auto field: RD->fields()) {
     QualType fieldType = field->getType();
     ASTContext *TmpCtx = const_cast<ASTContext *>(Context);
@@ -30,27 +27,31 @@ bool CastPlacementVisitor::isTstruct(RecordDecl* RD) {
     const RecordType *recordType = fieldType->getAs<RecordType>();
 
     if (cvar.hasValue()) {
-      if (recordType) { // Check if it's a structure
+      if (recordType) { // Check if it's a structure type
         StructureVariableConstraint *SV = dyn_cast<StructureVariableConstraint>(&cvar.getValue());
-        // Check if it's not a Tstruct or a decoy Tstruct
-        if (SV && !SV->isTstructV() && !SV->isDecoyTstruct()) {
-          hasNonTstructStructure = true;
+        // If it is not a Tstruct or a decoy Tstruct, return false.
+        if (!(SV && (SV->isTstructV() || SV->isDecoyTstruct()))) {
+          return false;
         }
-      } else { // It's not a structure, so check if it's a tainted pointer
+      } else { // It's not a structure, check if it's a pointer
         PointerVariableConstraint *PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
         if (PV) {
           ConstAtom *CAtom = Info.getConstraints().getAssignment(PV->getCvars().at(0));
-          // If it's not a tainted pointer, mark it as an untainted pointer
+          // If the pointer is not tainted, return false.
           if (!CAtom->isTainted()) {
-            hasUntaintedPointer = true;
+            return false;
           }
         }
       }
+    } else {
+      // If we have a field with no constraints information, we cannot guarantee
+      // it's a Tstruct or a tainted pointer, so we return false.
+      return false;
     }
   }
-
-  // Return true only if there are no untainted pointers and no non-Tstruct structures
-  return !hasUntaintedPointer && !hasNonTstructStructure;
+  // If we haven't returned false by the end of the loop, all pointers are tainted
+  // and all structures are Tstructs or decoy Tstructs, so we return true.
+  return true;
 }
 
 bool CastPlacementVisitor::VisitRecordDecl(RecordDecl* RD)

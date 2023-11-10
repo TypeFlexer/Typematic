@@ -894,6 +894,7 @@ public:
   void dumpJson(llvm::raw_ostream &O) const override;
 
   void constrainToWild(Constraints &CS, const ReasonLoc &Rsn) const override;
+  void constrainToTainted(Constraints &CS, const ReasonLoc &Rsn) const;
   void constrainOuterTo(Constraints &CS, ConstAtom *C, const ReasonLoc &Rsn,
                         bool DoLB = false, bool Soft = false);
   void constrainIdxTo(Constraints &CS, ConstAtom *C, unsigned int Idx,
@@ -1188,6 +1189,7 @@ public:
     bool hasTainted(const EnvironmentMap &E, int AIdx) const override ;
 
     void constrainToWild(Constraints &CS, const ReasonLoc &Rsn) const override;
+
 
     bool isSolutionChecked(const EnvironmentMap &E) const override;
 
@@ -1720,6 +1722,7 @@ public:
   void dumpJson(llvm::raw_ostream &O) const override;
 
   void constrainToWild(Constraints &CS, const ReasonLoc &Rsn) const override;
+  void constrainToTainted(Constraints &CS, const ReasonLoc &Rsn) const;
   bool anyChanges(const EnvironmentMap &E) const override;
   bool hasWild(const EnvironmentMap &E, int AIdx = -1) const override;
   bool hasTainted(const EnvironmentMap &E, int AIdx = -1) const override;

@@ -344,8 +344,19 @@ static bool castCheck(clang::QualType DstType, clang::QualType SrcType) {
   const clang::PointerType *DstPtrTypePtr =
       dyn_cast<clang::PointerType>(DstTypePtr);
 
+  // if SrcPtrTypePtr is tainted and DstPtrType is not tainted or if DstPtrType is tainted
+  // and SrcPtrTypePtr is not tainted, you should return false
+
+
   // Both are pointers? check their pointee
   if (SrcPtrTypePtr && DstPtrTypePtr) {
+
+    if (SrcPtrTypePtr->isTaintedPointerType() && !DstPtrTypePtr->isTaintedPointerType())
+      return false;
+
+    if (!SrcPtrTypePtr->isTaintedPointerType() && DstPtrTypePtr->isTaintedPointerType())
+      return false;
+
     return castCheck(DstPtrTypePtr->getPointeeType(),
                 SrcPtrTypePtr->getPointeeType());
   }
