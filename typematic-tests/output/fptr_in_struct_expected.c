@@ -4,7 +4,7 @@ typedef Tstruct FunctionalStruct {
         void (*print )(_TPtr<const char>);
 } FunctionalStruct;
 
-_Tainted void say_hello(_TPtr<const char> name) {
+void say_hello(_TPtr<const char> name) {
     printf("Hello, %s!\n", name);
 }
 

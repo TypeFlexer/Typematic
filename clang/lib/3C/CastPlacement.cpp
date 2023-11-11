@@ -43,7 +43,7 @@ bool CastPlacementVisitor::isTstruct(RecordDecl* RD) {
           }
         }
       }
-    } else {
+    } else if (field->getType()->isPointerType()){
       // If we have a field with no constraints information, we cannot guarantee
       // it's a Tstruct or a tainted pointer, so we return false.
       return false;
