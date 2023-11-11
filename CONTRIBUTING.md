@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Contributing to CheckCBox
 
 We welcome contributions to the CheckCBox Project.  Contributions can take many forms depending
@@ -69,3 +70,15 @@ sign a [contribution license agreement (CLA)](https://cla.microsoft.com/) before
 If you already have signed a CLA for another Microsoft-related open-source project, it covers the these repos too.
 You do not need to sign another CLA.
 
+=======
+# Contributing to LLVM
+
+Thank you for your interest in contributing to LLVM! There are many ways to
+contribute, and we appreciate all contributions.
+
+To get started with contributing, please take a look at the
+[Contributing to LLVM](https://llvm.org/docs/Contributing.html) guide. It
+describes how to get involved, raise issues and submit patches. Please note
+that at the moment the LLVM project does not use either Github pull requests
+or Github issues.
+>>>>>>> ebf531a99e507a8ea5ee6c5a032948a0e7f4c159
