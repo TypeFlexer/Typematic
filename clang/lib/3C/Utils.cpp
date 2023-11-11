@@ -350,13 +350,6 @@ static bool castCheck(clang::QualType DstType, clang::QualType SrcType) {
 
   // Both are pointers? check their pointee
   if (SrcPtrTypePtr && DstPtrTypePtr) {
-
-    if (SrcPtrTypePtr->isTaintedPointerType() && !DstPtrTypePtr->isTaintedPointerType())
-      return false;
-
-    if (!SrcPtrTypePtr->isTaintedPointerType() && DstPtrTypePtr->isTaintedPointerType())
-      return false;
-
     return castCheck(DstPtrTypePtr->getPointeeType(),
                 SrcPtrTypePtr->getPointeeType());
   }
