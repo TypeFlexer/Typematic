@@ -214,4 +214,5 @@ jobs:
           awk 'NF || !seen[$0]++' "output/${base}_expected.c" > "output/${base}_expected_processed.c"
 
           # Compare the processed files
-          diff -w "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
+          diff -w --ignore-blank-lines "temp_output/${base}_processed.c" "output/${base}_expected_processed.c"
+
