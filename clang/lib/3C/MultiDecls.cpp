@@ -149,6 +149,10 @@ void ProgramMultiDeclsInfo::findMultiDecls(DeclContext *DC,
         }
       } else {
         // Adding another member to an existing multi-decl.
+        if (!Context.getSourceManager().isBeforeInTranslationUnit(
+                CurrentMultiDecl->Members.back()->getEndLoc(),
+                MMD->getEndLoc()))
+          return;
         assert(Context.getSourceManager().isBeforeInTranslationUnit(
                    CurrentMultiDecl->Members.back()->getEndLoc(),
                    MMD->getEndLoc()) &&

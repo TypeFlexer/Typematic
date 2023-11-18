@@ -302,10 +302,10 @@ doSolve(ConstraintsGraph &CG,
         if (CurrSol->isTainted() && !NeighborA->isTainted())
         {
           // we gotta fix this somehow
-          NeighborA->setKind(CurrSol->getKind());
-          bool Changed = true;
-          assert(Changed);
-          WorkList.push_back(NeighborA);
+//          NeighborA->setKind(CurrSol->getKind());
+//          bool Changed = true;
+//          assert(Changed);
+//          WorkList.push_back(NeighborA);
         }
       }
     }
@@ -963,6 +963,13 @@ bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
       //A checked/unchecked pointer solution can never overwrite a tainted solution
       return true;
   }
+
+  if (!UseChecked && VI->second.second->isTainted() && !C->isTainted())
+  {
+      //A checked/unchecked pointer solution can never overwrite a tainted solution
+      return true;
+  }
+
   if(C->isTainted())
   {
       VI->second.first = C;

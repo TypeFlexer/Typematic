@@ -558,7 +558,7 @@ void DeclRewriter::rewriteMultiDecl(MultiDeclInfo &MDI, RSet &ToRewrite) {
       // as the trailing ";". So we need to include the initializer in the source range.
       // Otherwise, we need to exclude the initializer from the source range.
 
-      if (Replacement->getReplacement().find(";") != std::string::npos) {
+      if (Replacement && Replacement->getReplacement().find(";") != std::string::npos) {
         // We need to include the initializer in the source range.
         ReplaceSR =
                 getDeclSourceRangeWithAnnotations(DL, /*IncludeInitializer=*/true);
