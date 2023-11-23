@@ -298,14 +298,14 @@ doSolve(ConstraintsGraph &CG,
           WorkList.push_back(Neighbor);
         }
       } // ignore ConstAtoms for now; will confirm solution below
-      else {
-        if (CurrSol->isTainted() && !NeighborA->isTainted())
+      else if (StructureAtom* Neighbor = dyn_cast<StructureAtom>(NeighborA)){
+        if (CurrSol->isTainted() && !Neighbor->isTainted())
         {
           // we gotta fix this somehow
-//          NeighborA->setKind(CurrSol->getKind());
-//          bool Changed = true;
-//          assert(Changed);
-//          WorkList.push_back(NeighborA);
+          Neighbor->setKind(CurrSol->getKind());
+          bool Changed = true;
+          assert(Changed);
+          WorkList.push_back(Neighbor);
         }
       }
     }
