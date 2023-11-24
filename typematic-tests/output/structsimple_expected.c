@@ -19,7 +19,7 @@ typedef Tstruct simple {
 
 int main(){
     _TPtr<si> ts = t_malloc<si>(sizeof(si));
-    _TPtr<char> name = __ConstantStringToTainted__("Arunkumar Bhattar", strlen("Arunkumar Bhattar"));
+    _Ptr<char> name = "Arunkumar Bhattar";
 
     _TPtr<int> targ2 = (_TPtr<int>)malloc<int>(10 * sizeof(int));
     for (int i = 0; i < 10; i++) _Checked {
@@ -31,7 +31,7 @@ int main(){
     ts->arg3 = t_malloc<char>((strlen(name) + 1) * sizeof(char));
     strncpy(ts->arg3, name, strlen(name) + 1); // +1 to include the null terminator
 
-    _TPtr<an> as = t_malloc<an>(sizeof(an));
+    _TArray_ptr<an> as = t_malloc<an>(sizeof(an));
     as->arg4 = ts->arg3;
     as->arg5 = ts->arg2;
 

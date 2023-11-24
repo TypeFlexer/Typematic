@@ -1190,46 +1190,46 @@ PointerVariableConstraint::PointerVariableConstraint(
 
       if (Ty->getPointeeType()->isRecordType() && !Ty->getPointeeType()->isTaintedStructureType())
       {
-            RecordDecl* RD = Ty->getPointeeType()->getAsRecordDecl();
-            PersistentSourceLoc PLoc = PersistentSourceLoc::mkPSL(RD, C);
-            //now create a constraint for the structure
-            ASTContext *TmpCtx = const_cast<ASTContext *>(&C);
-            SVarOption CV = I.getStructVariable(RD, TmpCtx);
-            StructureVariableConstraint *Tmp = (StructureVariableConstraint *)(&CV.getValue());
-            Tmp->setTstruct(true);
-            for (const auto &V : Tmp->getCvars())
-            {
-                CS.addConstraint(CS.createGeq(V, CS.getTaintedStruct(),
-                                              ReasonLoc("Tainted Pointer to the Structure",PSL)));
-            }
-            //now iterate through all the fields of the RecordDecl* RD
-//            for (FieldDecl* field : RD->fields()) {
-//              // Now, for each field, you can access its properties.
-//              QualType fieldType = field->getType();
-//              StringRef fieldName = field->getName();
-//              CVarOption cvar = I.getVariable(field, TmpCtx);
-//              ConstAtom *CAtom = nullptr;
-//
-//              if (fieldType->isPointerType() && !fieldType->isTaintedPointerType())
-//              {
-//                  if (cvar.hasValue())
-//                  {
-//                      PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
-//                      for (const auto &V : PV->getCvars())
-//                          CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
-//                                                        ReasonLoc("Pointer within a Tainted Structure",PSL)));
-//                  }
-//                  else
-//                  {
-//                        //create a VarAtom for the pointer
-//                        VarAtom *VA = CS.getFreshTaintedVar(Npre + N + fieldName.str(), VK);
-//                        Vars.push_back(VA);
-//                        SrcVars.push_back(CS.getTaintedPtr());
-//                        CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
-//                                                      ReasonLoc("Pointer within a Tainted Structure",PSL)));
-//                  }
-//              }
-//            }
+        RecordDecl* RD = Ty->getPointeeType()->getAsRecordDecl();
+        PersistentSourceLoc PLoc = PersistentSourceLoc::mkPSL(RD, C);
+        //now create a constraint for the structure
+        ASTContext *TmpCtx = const_cast<ASTContext *>(&C);
+        SVarOption CV = I.getStructVariable(RD, TmpCtx);
+        StructureVariableConstraint *Tmp = (StructureVariableConstraint *)(&CV.getValue());
+        Tmp->setTstruct(true);
+        for (const auto &V : Tmp->getCvars())
+        {
+            CS.addConstraint(CS.createGeq(V, CS.getTaintedStruct(),
+                                          ReasonLoc("Tainted Pointer to the Structure",PSL)));
+        }
+        //now iterate through all the fields of the RecordDecl* RD
+        for (FieldDecl* field : RD->fields()) {
+          // Now, for each field, you can access its properties.
+          QualType fieldType = field->getType();
+          StringRef fieldName = field->getName();
+          CVarOption cvar = I.getVariable(field, TmpCtx);
+          ConstAtom *CAtom = nullptr;
+
+          if (fieldType->isPointerType() && !fieldType->isTaintedPointerType())
+          {
+              if (cvar.hasValue())
+              {
+                  PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                  for (const auto &V : PV->getCvars())
+                      CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
+                                                    ReasonLoc("Pointer within a Tainted Structure",PSL)));
+              }
+              else
+              {
+                    //create a VarAtom for the pointer
+                    VarAtom *VA = CS.getFreshTaintedVar(Npre + N + fieldName.str(), VK);
+                    Vars.push_back(VA);
+                    SrcVars.push_back(CS.getTaintedPtr());
+                    CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
+                                                  ReasonLoc("Pointer within a Tainted Structure",PSL)));
+              }
+          }
+        }
       }
     }
 
