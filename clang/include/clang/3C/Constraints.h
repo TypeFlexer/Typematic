@@ -372,12 +372,19 @@ public:
 
     static bool classof(const Atom *S) { return S->getKind() == A_struct; }
 
-    void print(llvm::raw_ostream &O) const override { O << "struct"; }
+    void print(llvm::raw_ostream &O) const override { O << StructName; }
 
     void dump(void) const override { print(llvm::errs()); }
 
-    void dumpJson(llvm::raw_ostream &O) const override { O << "\"struct\""; }
+    void dumpJson(llvm::raw_ostream &O) const override { O << StructName; }
 
+    std::string getStructName() const {
+        return StructName;
+    }
+
+    void setStructName(std::string &Name) {
+        StructName = Name;
+    }
     bool operator==(const Atom &Other) const override {
         return llvm::isa<StructureAtom>(&Other);
     }
@@ -390,6 +397,7 @@ public:
         return !(llvm::isa<TaintedStructureAtom>(&Other) ||
                  *this == Other);
     }
+    std::string StructName = "struct";
 };
 
 class TaintedStructureAtom : public ConstAtom {
@@ -398,11 +406,19 @@ public:
 
     static bool classof(const Atom *S) { return S->getKind() == A_Tstruct; }
 
-    void print(llvm::raw_ostream &O) const override { O << "Tstruct"; }
+    void print(llvm::raw_ostream &O) const override { O << StructName; }
 
     void dump(void) const override { print(llvm::errs()); }
 
-    void dumpJson(llvm::raw_ostream &O) const override { O << "\"Tstruct\""; }
+    void dumpJson(llvm::raw_ostream &O) const override { O << StructName; }
+
+    std::string getStructName() const {
+        return StructName;
+    }
+
+    void setStructName(std::string &Name) {
+        StructName = Name;
+    }
 
     bool operator==(const Atom &Other) const override {
         return llvm::isa<StructureAtom>(&Other);
@@ -415,6 +431,7 @@ public:
     bool operator<(const Atom &Other) const override {
         return !(*this == Other);
     }
+    std::string StructName = "Tsstruct";
 };
 
 class DecoyTaintedStructureAtom : public ConstAtom {

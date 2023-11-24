@@ -534,13 +534,17 @@ StructureVariableConstraint::StructureVariableConstraint(
         if (Ty->isTaintedStructureType()) {
             ConstAtom *CAtom = nullptr;
             if (D->isDecoyDecl()) {
-                CAtom = CS.getTaintedStruct();
-                CAtom->setExplicit(true);
+                TaintedStructureAtom* Val = CS.getTaintedStruct();
+                Val->setStructName(TyName);
+                Val->setExplicit(true);
+                CAtom = Val;
             }
             else
             {
-                CAtom = CS.getTaintedStruct();
-                CAtom->setExplicit(true);
+                TaintedStructureAtom* Val = CS.getTaintedStruct();
+                Val->setStructName(TyName);
+                Val->setExplicit(true);
+                CAtom = Val;
             }
             VarCreated = true;
             Atom *NewAtom;
@@ -580,17 +584,18 @@ StructureVariableConstraint::StructureVariableConstraint(
         }
         else
         {
-            ConstAtom *CAtom = nullptr;
-            CAtom = CS.getStruct();
-            CAtom->setExplicit(true);
+            StructureAtom *SAtom = nullptr;
+            SAtom = CS.getStruct();
+            SAtom->setStructName(TyName);
+            SAtom->setExplicit(true);
             VarCreated = true;
             Atom *NewAtom;
             if (VarAtomForChecked)
                 NewAtom = CS.getFreshVar(Npre + N, VK);
             else
-                NewAtom = CAtom;
+                NewAtom = SAtom;
             Vars.push_back(NewAtom);
-            SrcVars.push_back(CAtom);
+            SrcVars.push_back(SAtom);
             //all of the record's fields are neighbors to the record, such that, updating the record's type would
             //necessitate visiting all the neighbor's fields as well
             RecordDecl* RD = Ty->getAsRecordDecl();
@@ -915,6 +920,59 @@ PointerVariableConstraint::PointerVariableConstraint(
       ConstAtom *CAtom = nullptr;
       CAtom = CS.getWild();
       SrcVars.push_back(CAtom);
+
+      //create a link between the variableAtom and the structure. Such that, if the structure becomes a Tstruct,
+      //the pointer also becomes a tainted pointer.
+      if (QT->isPointerType() && QT->getPointeeType()->isRecordType() && !QT->getPointeeType()->isTaintedStructureType())
+      {
+           RecordDecl* RD = QT->getPointeeType()->getAsRecordDecl();
+           PersistentSourceLoc PLoc = PersistentSourceLoc::mkPSL(RD, C);
+           //now create a constraint for the structure
+           ASTContext *TmpCtx = const_cast<ASTContext *>(&C);
+           SVarOption CV = I.getStructVariable(RD, TmpCtx);
+           if (CV.hasValue())
+           {
+               StructureVariableConstraint *Tmp = (StructureVariableConstraint *)(&CV.getValue());
+               for (const auto &V : Tmp->getCvars())
+               {
+                   std::string FileName = PSL.getFileName();
+                   bool canWriteFile = canWrite(FileName);
+                   if (canWriteFile)
+                   {
+                       CS.addConstraint(CS.createGeq(V, VA,
+                                                     ReasonLoc("Structure within a pointer(if structure updates, pointer must update as well",PSL)));
+                   }
+                   //now iterate through all the fields of the RecordDecl* RD
+                   for (FieldDecl* field : RD->fields()) {
+                       // Now, for each field, you can access its properties.
+                       QualType fieldType = field->getType();
+                       StringRef fieldName = field->getName();
+                       CVarOption cvar = I.getVariable(field, TmpCtx);
+                       ConstAtom *CAtom = nullptr;
+
+                       if (fieldType->isPointerType() && !fieldType->isTaintedPointerType())
+                       {
+                           if (cvar.hasValue())
+                           {
+                               PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                               for (const auto &V : PV->getCvars())
+                                   CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
+                                                                 ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                           }
+                           else
+                           {
+                               //create a VarAtom for the pointer
+                               VarAtom *VA = CS.getFreshTaintedVar(Npre + N + fieldName.str(), VK);
+                               Vars.push_back(VA);
+                               SrcVars.push_back(CS.getTaintedPtr());
+                               CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
+                                                             ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                           }
+                       }
+                   }
+               }
+           }
+      }
 
       // Incomplete arrays are not given ARR as an upper bound because the
       // transformation int[] -> _Ptr<int> is permitted but int[1] -> _Ptr<int>
@@ -1730,6 +1788,8 @@ bool PointerVariableConstraint::emitArraySize(
     std::stack<std::string> &ConstSizeArrs, uint32_t TypeIdx,
     Atom::AtomKind Kind) const {
   auto I = ArrSizes.find(TypeIdx);
+  if (I == ArrSizes.end())
+    return false;
   assert(I != ArrSizes.end());
   OriginalArrType Oat = I->second.first;
   uint64_t Oas = I->second.second;
@@ -2153,6 +2213,8 @@ PointerVariableConstraint::mkString(Constraints &CS,
               break;
           EmittedBase = false;
           Ss << "_TArray_ptr<";
+          //if BaseTypeName contains "struct ", replace it with "Tstruct "
+          BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
           EndStrs.push_front(">");
           AlreadyATaintedPointer = true;
       }
@@ -2235,6 +2297,7 @@ PointerVariableConstraint::mkString(Constraints &CS,
           EmittedBase = false;
           Ss << "_TNt_array_ptr<";
           EndStrs.push_front(">");
+          BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
           AlreadyATaintedPointer = true;
       }
       break;
@@ -2616,6 +2679,7 @@ TaintedPointerVariableConstraint::mkString(Constraints &CS,
                     EmittedBase = false;
                     Ss << "_TArray_ptr<";
                     EndStrs.push_front(">");
+                    BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
                     AlreadyATaintedPointer = true;
                 }
                 break;
@@ -2697,6 +2761,7 @@ TaintedPointerVariableConstraint::mkString(Constraints &CS,
                     EmittedBase = false;
                     Ss << "_TNt_array_ptr<";
                     EndStrs.push_front(">");
+                    BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
                     AlreadyATaintedPointer = true;
                 }
                 break;

@@ -1,7 +1,6 @@
 #include <stdio.h>
 
-typedef int* (*callback_t)(int* ptr); // Callback accepts and returns int*
-typedef callback_t another_name_for_callback;
+typedef int* (*another_name_for_callback)(int* ptr); // Callback accepts and returns int*
 
 int* my_function(int* ptr) {
     printf("Callback invoked, value: %d\n", *ptr);

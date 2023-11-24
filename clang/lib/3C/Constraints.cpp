@@ -295,6 +295,7 @@ doSolve(ConstraintsGraph &CG,
           else
             Changed = Env.assign(Neighbor, CurrSol);
           assert(Changed);
+          //std::cout<<"A WRKLIST UPDATE Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() << std::endl;
           WorkList.push_back(Neighbor);
         }
       } // ignore ConstAtoms for now; will confirm solution below
@@ -305,6 +306,7 @@ doSolve(ConstraintsGraph &CG,
           Neighbor->setKind(CurrSol->getKind());
           bool Changed = true;
           assert(Changed);
+          //std::cout<<"B WRKLIST UPDATE Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() << std::endl;
           WorkList.push_back(Neighbor);
         }
       }

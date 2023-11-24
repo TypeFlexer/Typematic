@@ -1,15 +1,14 @@
 #include <stdio.h>
 
-typedef _TPtr<int> (*callback_t )(_TPtr<int> ptr); // Callback accepts and returns int*
-typedef _TPtr<int> (*another_name_for_callback )(_TPtr<int>);
+typedef _Ptr<_TPtr<int> (_TPtr<int> ptr)> another_name_for_callback; // Callback accepts and returns int*
 
 _Tainted _TPtr<int> my_function(_TPtr<int> ptr) {
-    printf("Callback invoked, value: %d\n", *ptr);
-    return ptr; // Return is a regular int pointer, not tainted
+printf("Callback invoked, value: %d\n", *ptr);
+return ptr; // Return is a regular int pointer, not tainted
 }
 
 _Tainted void trigger_callback(another_name_for_callback cb, _TPtr<int> ptr) {
-    _TPtr<int> result = cb(ptr);
+_TPtr<int> result = cb(ptr);
 }
 
 _Tainted int main() {
