@@ -3,19 +3,19 @@
 #include <stdlib_tainted.h>
 
 // Function prototypes
-double add(_TPtr<double> a, _TPtr<double> b);
-double subtract(_TPtr<double> a, _TPtr<double> b);
-double multiply(_TPtr<double> a, _TPtr<double> b);
-double divide(_TPtr<double> a, _TPtr<double> b);
+double add(_TArray_ptr<double> a, _Ptr<double> b);
+double subtract(_TArray_ptr<double> a, _Ptr<double> b);
+double multiply(_TArray_ptr<double> a, _Ptr<double> b);
+double divide(_TArray_ptr<double> a, _Ptr<double> b);
 void displayMenu();
-double executeOperation(double (*operation )(_TPtr<double>, _TPtr<double>), _TPtr<double> a, _TPtr<double> b);
+double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b);
 
 int main() {
     int choice;
     _TPtr<double> x = t_malloc<double>(sizeof(double));
-    _TPtr<double> y = t_malloc<double>(sizeof(double));
-    _TPtr<double> result = t_malloc<double>(sizeof(double));
-    double (*operation )(_TPtr<double>, _TPtr<double>) = ((void *)0);
+    _Ptr<double> y = malloc<double>(sizeof(double));
+    _Ptr<double> result = malloc<double>(sizeof(double));
+    _Ptr<double (_TPtr<double>, _Ptr<double>)> operation = ((void *)0);
 
     if (!x || !y || !result) _Checked {
         _Unchecked { printf("Memory allocation failed.\n"); };
@@ -68,26 +68,26 @@ int main() {
     }
 
     t_free<double>(x);
-    t_free<double>(y);
-    t_free<double>(result);
+    free<double>(y);
+    free<double>(result);
 
     return 0;
 }
 
-_Tainted double add(_TPtr<double> a, _TPtr<double> b) {
-    return *a + *b;
+double add(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+return *a + *b;
 }
 
-_Tainted double subtract(_TPtr<double> a, _TPtr<double> b) {
-    return *a - *b;
+double subtract(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+return *a - *b;
 }
 
-_Tainted double multiply(_TPtr<double> a, _TPtr<double> b) {
-    return *a * *b;
+double multiply(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+return *a * *b;
 }
 
-_Tainted double divide(_TPtr<double> a, _TPtr<double> b) {
-    return *a / *b;
+double divide(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+return *a / *b;
 }
 
 _Tainted void displayMenu() {
@@ -100,6 +100,6 @@ _Tainted void displayMenu() {
     printf("Enter your choice: ");
 }
 
-_Tainted double executeOperation(double (*operation )(_TPtr<double>, _TPtr<double>), _TPtr<double> a, _TPtr<double> b) {
-    return operation(a, b);
+double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b) _Checked {
+return operation(a, b);
 }
