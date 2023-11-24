@@ -156,6 +156,9 @@ static bool replaceTextWorkaround(Rewriter &R, const CharSourceRange &Range,
                                   const std::string &NewText) {
   Rewriter::RewriteOptions Opts;
   Opts.IncludeInsertsAtBeginOfRange = false;
+
+  if (R.getRangeSize(Range, Opts) < 0)
+    return true;
   return R.ReplaceText(Range.getBegin(), R.getRangeSize(Range, Opts), NewText);
 }
 
@@ -186,9 +189,10 @@ void rewriteSourceRange(Rewriter &R, const CharSourceRange &Range,
   // likely to be a bug in 3C than an issue with the input, but emitting a
   // diagnostic here with the intended rewriting is much more useful than
   // crashing with an assert fail.
-  if (!RewriteSuccess) {
+  if (!RewriteSuccess && (Range.getBegin() <= Range.getEnd())) {
     clang::DiagnosticsEngine &DE = R.getSourceMgr().getDiagnostics();
     bool ReportError = ErrFail && !_3COpts.AllowRewriteFailures;
+
     reportCustomDiagnostic(
         DE,
         ReportError ? DiagnosticsEngine::Error : DiagnosticsEngine::Warning,

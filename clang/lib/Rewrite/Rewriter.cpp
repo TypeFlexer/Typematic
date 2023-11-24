@@ -130,6 +130,8 @@ void RewriteBuffer::InsertText(unsigned OrigOffset, StringRef Str,
 void RewriteBuffer::ReplaceText(unsigned OrigOffset, unsigned OrigLength,
                                 StringRef NewStr) {
   unsigned RealOffset = getMappedOffset(OrigOffset, true);
+  if (RealOffset+OrigLength > size())
+    return;
   Buffer.erase(RealOffset, OrigLength);
   Buffer.insert(RealOffset, NewStr.begin(), NewStr.end());
   if (OrigLength != NewStr.size())

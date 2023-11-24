@@ -18,7 +18,7 @@ typedef struct simple {
 } si;
 
 int main(){
-        si* ts = t_malloc(sizeof(si));
+        _TPtr<si> ts = t_malloc(sizeof(si));
         char* name = "Arunkumar Bhattar";
 
         int* targ2 = (int*)malloc(10 * sizeof(int));
