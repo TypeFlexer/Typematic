@@ -69,7 +69,9 @@ bool CastPlacementVisitor::VisitRecordDecl(RecordDecl* RD)
         return true;
     }
 
-    bool isTaintedStructure = isTstruct(RD);
+    bool isTaintedStructure  = cvar.getValue().hasTainted(Info.getConstraints().getVariables());
+
+    //bool isTaintedStructure = isTstruct(RD);
     bool isDecoyTStruct = false; //later we need to find a mechanism to find out if the structure is a decoy or not
 
     StructureTypeNeeded StructKind = STRUCT;

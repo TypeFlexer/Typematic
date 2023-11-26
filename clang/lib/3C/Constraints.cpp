@@ -13,6 +13,7 @@
 #include "clang/3C/3CGlobalOptions.h"
 #include "clang/3C/ConstraintVariables.h"
 #include "clang/3C/ConstraintsGraph.h"
+#include "clang/3C/ProgramInfo.h"
 #include <iostream>
 #include <set>
 
@@ -109,13 +110,23 @@ bool Constraints::addConstraint(Constraint *C) {
   editConstraintHook(C);
 
   auto Search = TheConstraints.find(C);
-
   // Check if C is already in the set of constraints.
   if (Search == TheConstraints.end()) {
     TheConstraints.insert(C);
 
     if (Geq *G = dyn_cast<Geq>(C)) {
-      if (G->constraintIsChecked())
+        VarAtom* LHSVar = dyn_cast<VarAtom>(G->getLHS());
+        ConstAtom* LHSConst = dyn_cast<ConstAtom>(G->getLHS());
+        VarAtom* RHSVar = dyn_cast<VarAtom>(G->getRHS());
+        ConstAtom* RHSConst = dyn_cast<ConstAtom>(G->getRHS());
+
+        //if either LHS or RHS is marked as Explicit, then mark the other as Explicit
+        if (LHSVar && RHSVar && LHSVar->isAddr())
+        {
+            std::cout<<"LHS is address > "<< G->getLHS()->getStr()<< std::endl;
+            RHSVar->setDoNotTaint();
+        }
+        if (G->constraintIsChecked())
         ChkCG->addConstraint(G, *this);
       else
         PtrTypCG->addConstraint(G, *this);
@@ -254,7 +265,8 @@ static bool
 doSolve(ConstraintsGraph &CG,
         ConstraintsEnv &Env, Constraints *CS, bool DoLeastSolution,
         std::set<VarAtom *> *InitVs,
-        std::set<std::pair<ConstraintsGraph::EdgeType *, Atom*>> &Conflicts) {
+        std::set<std::pair<ConstraintsGraph::EdgeType *, Atom*>> &Conflicts,
+        std::set<Atom*> &Structs) {
 
   std::vector<Atom *> WorkList;
 
@@ -278,10 +290,22 @@ doSolve(ConstraintsGraph &CG,
     // update each successor's solution.
     //do not assign tainted to neighbors that are allocators or other whitelisted neighbors
 
+    if ((Curr->isStructure() && Structs.find(Curr) == Structs.end())
+        && (!Curr->isTainted()))
+    {
+      //these are unresolved structures, which may become Tstructs later on
+      //store them in a seperate Worklist which we shall visit later once intial constraints are solved.
+      Structs.insert(Curr);
+      //insert log messages
+      std::cout<<"A STRUCTURE FOUND: "<<Curr->getStr()<<std::endl;
+    }
+
     for (auto *NeighborA : Neighbors) {
       if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
         ConstAtom *NghSol = Env.getAssignment(Neighbor);
 
+        if (Neighbor->getStr().find("struct another") != std::string::npos)
+          int i = 10;
         // update solution if doing so would change it
         // checked? --- if sol(Neighbor) <> (sol(Neighbor) JOIN Cur)
         //   else   --- if sol(Neighbor) <> (sol(Neighbor) MEET Cur)
@@ -289,27 +313,93 @@ doSolve(ConstraintsGraph &CG,
             (!DoLeastSolution && *CurrSol < *NghSol)) {
           // ---- set sol(k) := (sol(k) JOIN/MEET Q)
           bool Changed = false;
+          if (CurrSol->isTainted() && NghSol->isTainted())
+          {
+            std::cout<<"Nothing there to update "<<std::endl;
+            std::cout<<"Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() <<std::endl;
+            continue;
+          }
           // give preference to the finegrained solution type and reflect it to the tainted type
           if ((NghSol->getKind() == Atom::A_Arr || NghSol->getKind() == Atom::A_NTArr) && (CurrSol->isTainted()))
+          {
+            std::cout<<"A-1 WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
+                     CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
+                     " ( " << NghSol->reflectToTainted()->getStr() << " )" <<std::endl;
             Changed = Env.assign(Neighbor, NghSol->reflectToTainted());
+            if (Changed)
+                WorkList.push_back(Neighbor);
+          }
           else
-            Changed = Env.assign(Neighbor, CurrSol);
+          {
+            bool NeighborAStruct = Neighbor->isStructure();
+            bool CurrSolAStruct = CurrSol->isStructure();
+            bool CurrSolATaintedStruct = CurrSol->isTaintedStructure();
+            if (CurrSolAStruct && !NeighborAStruct)
+            {
+              std::cout <<"A-2 Ignoring assigning a structure solution to a pointer type"<<std::endl;
+              std::cout <<"A-2 Current: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() <<std::endl;
+              // if the pointer type is marked explicit, mark the structure as explicit as well
+              if (Neighbor->cannotTainted())
+              {
+                std::cout<<"A-2 Marking structure as Explicit cannot Taint"<<std::endl;
+                Curr->setKind(Atom::A_struct);
+                StructureAtom* CurrStruct = dyn_cast<StructureAtom>(Curr);
+                CurrStruct->setExplicit(true);
+              }
+
+              if (!CurrSolATaintedStruct && NghSol->isTainted() && !Neighbor->cannotTainted())
+              {
+                std::cout<<"A-2 WORKLIST [Structure] UPDATE Curr: "<<Curr->getStr()<< "( "<<
+                         CurrSol->getStr() <<" )" << "To Tstruct" <<std::endl;
+                Curr->setKind(Atom::A_Tstruct);
+                WorkList.push_back(Curr);
+              }
+            }
+            else if (CurrSolATaintedStruct && !NeighborAStruct)
+            {
+              std::cout <<"Tainted Structure Impacting Pointer to Tainted"<<std::endl;
+              std::cout<<"A-2 WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
+                       CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
+                       " ( " << NghSol->reflectToTainted()->getStr() << " )" <<std::endl;
+
+              Changed = Env.assign(Neighbor, NghSol->reflectToTainted());
+              if (Changed)
+                WorkList.push_back(Neighbor);
+            }
+            else
+            {
+              std::cout<<"A-2 WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
+                       CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
+                       " ( " << CurrSol->getStr() << " )" <<std::endl;
+              Changed = Env.assign(Neighbor, CurrSol);
+              //std::cout<<"A WORKLIST UPDATE Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() << std::endl;
+              if (Changed)
+                WorkList.push_back(Neighbor);
+            }
+          }
+        }
+        else if (Curr->isTaintedStructure() && !Neighbor->isTainted())
+        {
+          std::cout<<"K WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
+                   CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
+                   " ( " << NghSol->reflectToTainted()->getStr() << " )" <<std::endl;
+          bool Changed = false;
+          Changed = Env.assign(Neighbor, NghSol->reflectToTainted());
           assert(Changed);
-          //std::cout<<"A WRKLIST UPDATE Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() << std::endl;
           WorkList.push_back(Neighbor);
         }
       } // ignore ConstAtoms for now; will confirm solution below
-      else if (StructureAtom* Neighbor = dyn_cast<StructureAtom>(NeighborA)){
-        if (CurrSol->isTainted() && !Neighbor->isTainted())
-        {
-          // we gotta fix this somehow
-          Neighbor->setKind(CurrSol->getKind());
-          bool Changed = true;
-          assert(Changed);
-          //std::cout<<"B WRKLIST UPDATE Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() << std::endl;
-          WorkList.push_back(Neighbor);
-        }
-      }
+//      else if (CurrSol->isTainted() && !NeighborA->isTainted())
+//      {
+//        // we gotta fix this somehow
+//        NeighborA->reflectToTaintedKind();
+//        bool Changed = true;
+//        assert(Changed);
+//        std::cout<<"F WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
+//                 CurrSol->getStr() <<" )" << "Neighbor: "<< NeighborA->getStr() <<
+//                 " ( " << CurrSol->getStr() << " )" <<std::endl;
+//        WorkList.push_back(NeighborA);
+//      }
     }
   }
 
@@ -332,13 +422,36 @@ doSolve(ConstraintsGraph &CG,
             // the taintedness is applied to the constant atom that does not contain the taintedness
             if (Csol->isTainted())
             {
-              Env.assign(VA, Cbound->reflectToTainted());
-              Conflicts.insert({E, Cbound->reflectToTainted()});
+              bool CboundAStructure = Cbound->isStructure();
+              bool CboundATaintedStructure = Cbound->isTaintedStructure();
+              if (CboundAStructure){
+                std::cout <<"C Ignoring assigning a structure solution to a pointer type"<<std::endl;
+                std::cout <<"C Current: "<<VA->getStr()<< " Cbound: "<< Cbound->getStr() <<std::endl;
+                //if the pointer is tainted but the stucture is not a tainted kind, instead assign the opposite way
+                if (!CboundATaintedStructure && Csol->isTainted() && !VA->cannotTainted())
+                {
+                  std::cout<<"C WORKLIST [Structure] UPDATE VA: "<<VA->getStr()<< "( "<<
+                           VA->getKind() <<" )" << "Cbound: "<< Cbound->getStr() <<
+                           " ( " << Cbound->reflectToTainted()->getStr() << " )" <<std::endl;
+                  Cbound->setKind(Atom::A_Tstruct);
+                }
+              }
+              else
+              {
+                std::cout<<"C WORKLIST UPDATE VA : "<<VA->getStr()<< "( "<<
+                         VA->getKind() <<" )" << "Cbound: "<< Cbound->getStr() <<
+                         " ( " << Cbound->reflectToTainted()->getStr() << " )" <<std::endl;
+                Env.assign(VA, Cbound->reflectToTainted());
+                Conflicts.insert({E, Cbound->reflectToTainted()});
+              }
             }
             else
             {
               Env.assign(VA, Csol->reflectToTainted());
               Conflicts.insert({E, Csol->reflectToTainted()});
+              std::cout<<"D WORKLIST UPDATE VA: "<<VA->getStr()<< "( "<<
+                       VA->getKind() <<" )" << "Csol: "<< Csol->getStr() <<
+                       " ( " << Csol->reflectToTainted()->getStr() << " )" <<std::endl;
             }
           }
           else{
@@ -436,17 +549,18 @@ static std::set<VarAtom *> findBounded(ConstraintsGraph &CG,
   return Bounded;
 }
 
-bool Constraints::graphBasedSolve() {
-  std::set<std::pair<ConstraintsGraph::EdgeType *, Atom*>> Conflicts;
+bool Constraints::graphBasedSolve(ProgramInfo &Info) {
+  std::set<std::pair<ConstraintsGraph::EdgeType *, Atom *>> Conflicts;
   ConstraintsGraph SolChkCG;
   ConstraintsGraph SolPtrTypCG;
   ConstraintsEnv &Env = Environment;
+  std::set<Atom *> StructsWorklist;
 
   // Checked well-formedness.
   Environment.checkAssignment(getDefaultSolution());
 
   // Setup the Checked Constraint Graph.
-  for (const auto &C : TheConstraints) {
+  for (const auto &C: TheConstraints) {
     if (Geq *G = dyn_cast<Geq>(C)) {
       if (G->constraintIsChecked())
         SolChkCG.addConstraint(G, *this);
@@ -462,135 +576,230 @@ bool Constraints::graphBasedSolve() {
 
   // Solve Checked/unchecked constraints first.
   Env.doCheckedSolve(true);
+  bool RequiresResolve;
+  bool Res = false;
 
-  bool Res = doSolve(SolChkCG, Env, this, true, nullptr, Conflicts);
+  do
+  {
+    RequiresResolve = false;
+    Res = doSolve(SolChkCG, Env, this, true, nullptr, Conflicts, StructsWorklist);
 
-  // Now solve PtrType constraints
-  if (_3COpts.AllTypes) {
-    Env.doCheckedSolve(false);
-    bool RegularSolve = !(_3COpts.OnlyGreatestSol || _3COpts.OnlyLeastSol);
+    // Now solve PtrType constraints
+    if (_3COpts.AllTypes) {
+      Env.doCheckedSolve(false);
+      bool RegularSolve = !(_3COpts.OnlyGreatestSol || _3COpts.OnlyLeastSol);
 
-    if (_3COpts.OnlyLeastSol) {
-      // Do only least solution.
-      // First reset ptr solution to NTArr.
-      Env.resetSolution(
-          [](VarAtom *VA) -> bool {
-            // We want to reset solution for all pointers.
-            return true;
-          },
-          getNTArr());
-      Res = doSolve(SolPtrTypCG, Env, this, true, nullptr, Conflicts);
-    } else if (_3COpts.OnlyGreatestSol) {
-      // Do only greatest solution
-      Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts);
-    } else {
-      // Regular solve
-      // Step 1: Greatest solution
-      Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts);
-    }
-
-    // Step 2: Reset all solutions but for function params,
-    // and compute the least.
-    if (Res && RegularSolve) {
-
-      // We want to find all local variables with an upper bound that provide a
-      // lower bound for return variables that are not otherwise bounded.
-
-      // 1. Find return vars with a lower bound.
-      std::set<VarAtom *> ParamVars = Env.filterAtoms(IsParam);
-      std::set<VarAtom *> LowerBoundedRet =
-          findBounded(SolPtrTypCG, &ParamVars, true);
-      filter(IsReturn, LowerBoundedRet);
-
-      // 2. Find local vars where one of the return vars is an upper bound.
-      //    Conversely, these are an alternative lower bound for the return var.
-      std::set<VarAtom *> RetUpperBoundedLocals =
-          findBounded(SolPtrTypCG, &LowerBoundedRet, false, false);
-      filter(IsNonParamReturn, RetUpperBoundedLocals);
-
-      // 3. Find local vars upper bounded by a const var.
-      std::set<VarAtom *> ConstUpperBoundedLocals =
-          findBounded(SolPtrTypCG, nullptr, false);
-      filter(IsNonParamReturn, ConstUpperBoundedLocals);
-
-      // 4. Take set difference of 2 and 3 to find bounded vars that do not
-      //    effect an existing lower bound.
-      std::set<VarAtom *> Diff;
-      std::set_difference(
-          ConstUpperBoundedLocals.begin(), ConstUpperBoundedLocals.end(),
-          RetUpperBoundedLocals.begin(), RetUpperBoundedLocals.end(),
-          std::inserter(Diff, Diff.begin()));
-
-      // 5. Reset var to NTArr if not a param var and not in the previous set.
-      std::set<VarAtom *> Rest = Env.resetSolution(
-          [Diff](VarAtom *VA) -> bool {
-            return !(IsParam(VA) || Diff.find(VA) != Diff.end());
-          },
-          getNTArr());
-
-      // Remember which variables have a concrete lower bound. Variables without
-      // a lower bound will be resolved in the final greatest solution.
-      std::set<VarAtom *> LowerBounded = findBounded(SolPtrTypCG, &Rest, true);
-
-      Res = doSolve(SolPtrTypCG, Env, this, true, &Rest, Conflicts);
-
-      // Step 3: Reset local variable solutions, compute greatest
-      if (Res) {
-        Rest.clear();
-
-        Rest = Env.resetSolution(
-            [LowerBounded](VarAtom *VA) -> bool {
-              return IsNonParamReturn(VA) ||
-                     LowerBounded.find(VA) == LowerBounded.end();
-            },
-            getPtr());
-
-        Res = doSolve(SolPtrTypCG, Env, this, false, &Rest, Conflicts);
+      if (_3COpts.OnlyLeastSol) {
+        // Do only least solution.
+        // First reset ptr solution to NTArr.
+        Env.resetSolution(
+                [](VarAtom *VA) -> bool {
+                    // We want to reset solution for all pointers.
+                    return true;
+                },
+                getNTArr());
+        Res = doSolve(SolPtrTypCG, Env, this, true, nullptr, Conflicts, StructsWorklist);
+      } else if (_3COpts.OnlyGreatestSol) {
+        // Do only greatest solution
+        Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
+      } else {
+        // Regular solve
+        // Step 1: Greatest solution
+        Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
       }
-    }
-    // If PtrType solving (partly) failed, make the affected VarAtoms wild.
-    if (!Res) {
-      std::set<VarAtom *> Rest;
-      Env.doCheckedSolve(true);
-      for (auto ConflictPair : Conflicts) {
-        auto Conflict = ConflictPair.first;
-        Atom* ConflictResolve = ConflictPair.second;
-        Atom *ConflictAtom = Conflict->getTargetNode().getData();
-        assert(ConflictAtom != nullptr);
-        ReasonLoc Rsn1 = Conflict->EdgeConstraint->getReason();
-        // Determine a second from the constraints immediately incident to the
-        // conflicting atom. A future improvement should traverse the
-        // constraint graph to find the contradictory constraints to constant
-        // atoms. See correctcomputation/checkedc-clang#680.
-        auto Succs = Conflict->getTargetNode().getEdges();
-        ReasonLoc Rsn2;
-        for (auto *Succ : Succs) {
-          if (auto *SuccGeq = dyn_cast<Geq>(Succ->EdgeConstraint)) {
-            if (Env.getAssignment(ConflictAtom) ==
-                Env.getAssignment(SuccGeq->getLHS()) ||
-                Env.getAssignment(ConflictAtom) ==
-                    Env.getAssignment(SuccGeq->getRHS())) {
-              Rsn2 = Succ->EdgeConstraint->getReason();
-              break;
+
+      // Step 2: Reset all solutions but for function params,
+      // and compute the least.
+      if (Res && RegularSolve) {
+
+        // We want to find all local variables with an upper bound that provide a
+        // lower bound for return variables that are not otherwise bounded.
+
+        // 1. Find return vars with a lower bound.
+        std::set<VarAtom *> ParamVars = Env.filterAtoms(IsParam);
+        std::set<VarAtom *> LowerBoundedRet =
+                findBounded(SolPtrTypCG, &ParamVars, true);
+        filter(IsReturn, LowerBoundedRet);
+
+        // 2. Find local vars where one of the return vars is an upper bound.
+        //    Conversely, these are an alternative lower bound for the return var.
+        std::set<VarAtom *> RetUpperBoundedLocals =
+                findBounded(SolPtrTypCG, &LowerBoundedRet, false, false);
+        filter(IsNonParamReturn, RetUpperBoundedLocals);
+
+        // 3. Find local vars upper bounded by a const var.
+        std::set<VarAtom *> ConstUpperBoundedLocals =
+                findBounded(SolPtrTypCG, nullptr, false);
+        filter(IsNonParamReturn, ConstUpperBoundedLocals);
+
+        // 4. Take set difference of 2 and 3 to find bounded vars that do not
+        //    effect an existing lower bound.
+        std::set<VarAtom *> Diff;
+        std::set_difference(
+                ConstUpperBoundedLocals.begin(), ConstUpperBoundedLocals.end(),
+                RetUpperBoundedLocals.begin(), RetUpperBoundedLocals.end(),
+                std::inserter(Diff, Diff.begin()));
+
+        // 5. Reset var to NTArr if not a param var and not in the previous set.
+        std::set<VarAtom *> Rest = Env.resetSolution(
+                [Diff](VarAtom *VA) -> bool {
+                    return !(IsParam(VA) || Diff.find(VA) != Diff.end());
+                },
+                getNTArr());
+
+        // Remember which variables have a concrete lower bound. Variables without
+        // a lower bound will be resolved in the final greatest solution.
+        std::set<VarAtom *> LowerBounded = findBounded(SolPtrTypCG, &Rest, true);
+
+        Res = doSolve(SolPtrTypCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
+
+        // Step 3: Reset local variable solutions, compute greatest
+        if (Res) {
+          Rest.clear();
+
+          Rest = Env.resetSolution(
+                  [LowerBounded](VarAtom *VA) -> bool {
+                      return IsNonParamReturn(VA) ||
+                             LowerBounded.find(VA) == LowerBounded.end();
+                  },
+                  getPtr());
+
+          Res = doSolve(SolPtrTypCG, Env, this, false, &Rest, Conflicts, StructsWorklist);
+        }
+      }
+      // If PtrType solving (partly) failed, make the affected VarAtoms wild.
+      if (!Res) {
+        std::set<VarAtom *> Rest;
+        Env.doCheckedSolve(true);
+        for (auto ConflictPair: Conflicts) {
+          auto Conflict = ConflictPair.first;
+          Atom *ConflictResolve = ConflictPair.second;
+          Atom *ConflictAtom = Conflict->getTargetNode().getData();
+          assert(ConflictAtom != nullptr);
+          ReasonLoc Rsn1 = Conflict->EdgeConstraint->getReason();
+          // Determine a second from the constraints immediately incident to the
+          // conflicting atom. A future improvement should traverse the
+          // constraint graph to find the contradictory constraints to constant
+          // atoms. See correctcomputation/checkedc-clang#680.
+          auto Succs = Conflict->getTargetNode().getEdges();
+          ReasonLoc Rsn2;
+          for (auto *Succ: Succs) {
+            if (auto *SuccGeq = dyn_cast<Geq>(Succ->EdgeConstraint)) {
+              if (Env.getAssignment(ConflictAtom) ==
+                  Env.getAssignment(SuccGeq->getLHS()) ||
+                  Env.getAssignment(ConflictAtom) ==
+                  Env.getAssignment(SuccGeq->getRHS())) {
+                Rsn2 = Succ->EdgeConstraint->getReason();
+                break;
+              }
             }
           }
+          //if you see conflict because the conflictresolve is either a structure or a tainted pointer.
+          //then they are not conflicts.
+          // you can simply skip them
+          if (ConflictResolve->isStructure())
+          {
+            std::cout<<"Skipping conflict because of structure ["<<std::endl;
+            std::cout<<"Conflict: "<<ConflictAtom->getStr()<<" ConflictResolve: "<<ConflictResolve->getStr()<<std::endl;
+            std::cout<<" ]"<<std::endl;
+            continue;
+          }
+          auto Rsn = ReasonLoc("Inferred conflicting types",
+                               PersistentSourceLoc());
+          Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
+          ConflictConstraint->addReason(Rsn1);
+          ConflictConstraint->addReason(Rsn2);
+          addConstraint(ConflictConstraint);
+          SolChkCG.addConstraint(ConflictConstraint, *this);
+          Rest.insert(cast<VarAtom>(ConflictAtom));
         }
-        auto Rsn = ReasonLoc("Inferred conflicting types",
-                             PersistentSourceLoc());
-        Geq *ConflictConstraint = createGeq(ConflictAtom, getWild(), Rsn);
-        ConflictConstraint->addReason(Rsn1);
-        ConflictConstraint->addReason(Rsn2);
-        addConstraint(ConflictConstraint);
-        SolChkCG.addConstraint(ConflictConstraint, *this);
-        Rest.insert(cast<VarAtom>(ConflictAtom));
+        Conflicts.clear();
+        /* FIXME: Should we propagate the old res? */
+        Res = doSolve(SolChkCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
       }
-      Conflicts.clear();
-      /* FIXME: Should we propagate the old res? */
-      Res = doSolve(SolChkCG, Env, this, true, &Rest, Conflicts);
+      // Final Step: Merge ptyp solution with checked solution.
+      Env.mergePtrTypes();
     }
-    // Final Step: Merge ptyp solution with checked solution.
-    Env.mergePtrTypes();
+
+    std::vector<StructureAtom *> toBeRemoved;
+    for (auto *Curr: StructsWorklist) {
+      StructureAtom *CurrStruct = (StructureAtom *) (Curr);
+      RecordDecl *CurrStructDecl = CurrStruct->getRecordDecl();
+      auto Context = CurrStruct->getASTContext();
+
+      bool allFieldsAreValid = true;
+      bool hasPointerField = false;
+      bool hasStructField = false;
+
+      ASTContext *TmpCtx = const_cast<ASTContext *>(Context);
+      CVarOption const rvar = Info.getVariable(CurrStructDecl, TmpCtx);
+
+      Atom* CurrStructSol = Env.getAssignment(CurrStruct);
+      if (CurrStructSol) {
+        bool isTstruct = CurrStructSol->isTainted();
+
+        if (isTstruct){
+          std::cout << "STRUCTURE WAS RESOLVED AS TAINTED STRUCT: " << CurrStruct->getStr() << std::endl;
+          //The structure was resolved as a tainted structure sometime during the solving process
+          //Hence, we need to rerun the entire solver again, so that all the member pointers/structures
+          //of the Tainted structure are also marked as tainted
+          RequiresResolve = true;
+          toBeRemoved.push_back(CurrStruct);
+          break;
+        }
+      }
+
+      for (FieldDecl *field: CurrStructDecl->fields()) {
+        if (field->getType()->isPointerType()) {
+          hasPointerField = true;
+
+          CVarOption const cvar = Info.getVariable(field, TmpCtx);
+
+          if (cvar.hasValue()) {
+            bool isTainted = cvar.getValue().hasTainted(Environment.getVariables());
+            if (!isTainted) {
+              allFieldsAreValid = false;
+              break;
+            }
+          } else {
+            allFieldsAreValid = false;
+            break;
+          }
+        } else if (field->getType()->isRecordType()) {
+          hasStructField = true;
+          auto rvar = Info.getVariable(field, Context);
+          if (!rvar.hasValue()) {
+            allFieldsAreValid = false;
+            break;
+          }
+
+          auto isTstruct = rvar.getValue().hasTainted(Environment.getVariables());
+          if (!isTstruct) {
+            allFieldsAreValid = false;
+            break;
+          }
+        }
+      }
+
+      if (allFieldsAreValid && (hasPointerField || hasStructField) && !CurrStruct->isExplicit()) {
+        std::cout << "STRUCTURE IS MARKED TAINTED: " << CurrStruct->getStr() << std::endl;
+        CurrStruct->setKind(Atom::A_Tstruct);
+        RequiresResolve = true;
+      }
+
+      if (CurrStruct->isExplicit())
+      {
+        std::cout<<"STRUCTURE IS EXPLICIT CANNOT TAINT: "<<CurrStruct->getStr()<<std::endl;
+      }
+      toBeRemoved.push_back(CurrStruct);
+    }
+
+  // Second pass: Remove processed items from StructsWorklist
+    for (auto *item: toBeRemoved) {
+      StructsWorklist.erase(item);
+    }
   }
+  while (RequiresResolve);
 
   return Res;
 }
@@ -599,12 +808,12 @@ bool Constraints::graphBasedSolve() {
 // the system is solved. If the system is solved, the first position is
 // an empty. If the system could not be solved, the constraints in conflict
 // are returned in the first position.
-void Constraints::solve() {
+void Constraints::solve(ProgramInfo &Info) {
   if (_3COpts.DebugSolver) {
     errs() << "constraints beginning solve\n";
     dump();
   }
-  graphBasedSolve();
+  graphBasedSolve(Info);
 
   if (_3COpts.DebugSolver) {
     errs() << "solution, when done solving\n";
@@ -721,8 +930,12 @@ NTArrAtom *Constraints::getNTArr() const { return PrebuiltNTArr; }
 TNTArrAtom* Constraints::getTaintedNTArr() const { return PrebuiltTNTArr; }
 WildAtom *Constraints::getWild() const { return PrebuiltWild; }
 TaintedPointerAtom *Constraints::getTaintedPtr() const { return PrebuiltTainted; }
-StructureAtom *Constraints::getStruct() const { return PrebuiltStruct; }
-TaintedStructureAtom *Constraints::getTaintedStruct() const { return PrebuiltTaintedStruct; }
+StructureAtom *Constraints::getStruct() const { return new StructureAtom();}
+TaintedStructureAtom *Constraints::getTaintedStruct() const {
+  return new TaintedStructureAtom();
+  //return PrebuiltTaintedStruct;
+
+}
 
 ConstAtom *Constraints::getAssignment(Atom *A) {
   Environment.doCheckedSolve(true);
@@ -959,6 +1172,12 @@ bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
     {
         int a = 10; //wtf
     }
+  if (V->cannotTainted() && C->isTainted())
+  {
+      std::cout<<"C Ignoring assigning a tainted solution to a variable that cannot be tainted"<<std::endl;
+      //if the variable cannot be tainted, then we should not assign a tainted solution to it
+      return false;
+  }
   auto VI = Environment.find(V);
   if (UseChecked && VI->second.first->isTainted() && !C->isTainted())
   {

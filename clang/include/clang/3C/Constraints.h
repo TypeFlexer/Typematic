@@ -128,8 +128,8 @@ public:
     return A->getKind() != A_Var;
   }
   void setExplicit(bool I) { IsExplicit = I; }
-  void setExplicitConstArray(bool I) { IsExplicitCA = I; }
   bool isExplicit() const { return IsExplicit; }
+  void setExplicitConstArray(bool I) { IsExplicitCA = I; }
   bool isExplicitConstArray() const { return IsExplicitCA; }
   virtual ConstAtom* reflectToTainted() {
     // By default, return self.
@@ -186,8 +186,16 @@ public:
       doNotTaint = true;
   }
 
-  bool getDoNotTaint() {
+  bool cannotTainted() {
       return doNotTaint;
+  }
+
+  void setIsAddress() {
+       isAddress = true;
+  }
+
+  bool isAddr() {
+      return isAddress;
   }
 
   bool operator==(const Atom &Other) const override {
@@ -224,6 +232,7 @@ private:
   std::set<Constraint *, PComp<Constraint *>> Constraints;
   std::set<TaintedConstraint *, PComp<TaintedConstraint *>> TaintedConstraints;
   bool doNotTaint = false;
+  bool isAddress = false;
 };
 
 /* ConstAtom ordering is:
@@ -382,9 +391,26 @@ public:
         return StructName;
     }
 
+    void setDecl(clang::RecordDecl *D) {
+        VD = D;
+    }
+
+    clang::RecordDecl *getRecordDecl() {
+        return VD;
+    }
+
     void setStructName(std::string &Name) {
         StructName = Name;
     }
+
+    void setASTContext(clang::ASTContext* C) {
+        Ctx = C;
+    }
+
+    clang::ASTContext* getASTContext() {
+        return Ctx;
+    }
+
     bool operator==(const Atom &Other) const override {
         return llvm::isa<StructureAtom>(&Other);
     }
@@ -398,6 +424,8 @@ public:
                  *this == Other);
     }
     std::string StructName = "struct";
+    clang::RecordDecl *VD = nullptr;
+    clang::ASTContext* Ctx = nullptr;
 };
 
 class TaintedStructureAtom : public ConstAtom {
@@ -420,6 +448,14 @@ public:
         StructName = Name;
     }
 
+    void setDecl(clang::VarDecl *D) {
+        VD = D;
+    }
+
+    clang::VarDecl *getRecordDecl() {
+        return VD;
+    }
+
     bool operator==(const Atom &Other) const override {
         return llvm::isa<StructureAtom>(&Other);
     }
@@ -431,7 +467,8 @@ public:
     bool operator<(const Atom &Other) const override {
         return !(*this == Other);
     }
-    std::string StructName = "Tsstruct";
+    std::string StructName = "Tstruct";
+    clang::VarDecl *VD = nullptr;
 };
 
 class DecoyTaintedStructureAtom : public ConstAtom {
@@ -514,6 +551,10 @@ public:
   bool operator<(const Atom &Other) const override {
     return !(llvm::isa<ArrAtom>(&Other) || llvm::isa<NTArrAtom>(&Other) ||
              llvm::isa<PtrAtom>(&Other) || *this == Other);
+  }
+
+  ConstAtom* reflectToTainted() override {
+        return new TaintedPointerAtom();
   }
 };
 
@@ -929,6 +970,8 @@ public:
 
     VarAtom *getFreshStructVar(std::string Name, VarAtom::VarKind VK);
 
+    void solve(ProgramInfo &Info);
+
 private:
   ConstraintSet TheConstraints;
   //TaintedConstraintSet TheTaintedConstraints;
@@ -975,6 +1018,8 @@ private:
     TaintedVarSolTy getDefaultTaintedStructureSolution();
 
     VarSolTy getDefaultStructureSolution();
+
+    bool graphBasedSolve(ProgramInfo &Info);
 };
 
 #endif

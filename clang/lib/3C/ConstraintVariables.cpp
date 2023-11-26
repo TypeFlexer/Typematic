@@ -16,6 +16,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include <sstream>
 #include <regex>
+#include <iostream>
 
 using namespace clang;
 // Macro for boolean implication.
@@ -167,6 +168,8 @@ PointerVariableConstraint *PointerVariableConstraint::addAtomPVConstraint(
   std::vector<ConstAtom *> &SrcVars = Copy->SrcVars;
 
   VarAtom *NewA = CS.getFreshVar("&" + Copy->Name, VarAtom::V_Other);
+  NewA->setIsAddress();
+  std::cout<<"Making NewA do not taint"<< NewA->getStr()<<"\n";
   CS.addConstraint(CS.createGeq(NewA, PtrTyp, Rsn, false));
 
   //TODO: How do we handle for tainted pointers, cuz you cannot take addresses right?
@@ -536,14 +539,12 @@ StructureVariableConstraint::StructureVariableConstraint(
             if (D->isDecoyDecl()) {
                 TaintedStructureAtom* Val = CS.getTaintedStruct();
                 Val->setStructName(TyName);
-                Val->setExplicit(true);
                 CAtom = Val;
             }
             else
             {
                 TaintedStructureAtom* Val = CS.getTaintedStruct();
                 Val->setStructName(TyName);
-                Val->setExplicit(true);
                 CAtom = Val;
             }
             VarCreated = true;
@@ -586,8 +587,10 @@ StructureVariableConstraint::StructureVariableConstraint(
         {
             StructureAtom *SAtom = nullptr;
             SAtom = CS.getStruct();
+            RecordDecl* RD = Ty->getAsRecordDecl();
+            SAtom->setDecl(RD);
             SAtom->setStructName(TyName);
-            SAtom->setExplicit(true);
+            SAtom->setASTContext(const_cast<ASTContext *>(&C));
             VarCreated = true;
             Atom *NewAtom;
             if (VarAtomForChecked)
@@ -598,7 +601,7 @@ StructureVariableConstraint::StructureVariableConstraint(
             SrcVars.push_back(SAtom);
             //all of the record's fields are neighbors to the record, such that, updating the record's type would
             //necessitate visiting all the neighbor's fields as well
-            RecordDecl* RD = Ty->getAsRecordDecl();
+
             //now iterate through all the fields of the RecordDecl* RD
             for (FieldDecl* field : RD->fields()) {
                 // Now, for each field, you can access its properties.
@@ -615,7 +618,7 @@ StructureVariableConstraint::StructureVariableConstraint(
                         PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
                         for (const auto &V : PV->getCvars())
                             CS.addConstraint(CS.createGeq(NewAtom, V,
-                                                          ReasonLoc("Pointer within a Structure",PSL)));
+                                                          ReasonLoc("Pointer within a Structure",PSL), false));
                     }
                     else
                     {
@@ -940,7 +943,9 @@ PointerVariableConstraint::PointerVariableConstraint(
                    if (canWriteFile)
                    {
                        CS.addConstraint(CS.createGeq(V, VA,
-                                                     ReasonLoc("Structure within a pointer(if structure updates, pointer must update as well",PSL)));
+                                                     ReasonLoc("Structure within a pointer(if structure updates, pointer must update as well",PSL), false));
+                       CS.addConstraint(CS.createGeq(VA, V,
+                                                     ReasonLoc("Structure within a pointer(if pointer updates, structure must update as well",PSL), false));
                    }
                    //now iterate through all the fields of the RecordDecl* RD
                    for (FieldDecl* field : RD->fields()) {
@@ -952,22 +957,17 @@ PointerVariableConstraint::PointerVariableConstraint(
 
                        if (fieldType->isPointerType() && !fieldType->isTaintedPointerType())
                        {
-                           if (cvar.hasValue())
+                           PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                           for (const auto &V : PV->getCvars())
                            {
-                               PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
-                               for (const auto &V : PV->getCvars())
-                                   CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
-                                                                 ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                               //with this relation in place, if even one field of a structure is becoming tainted. the structure pointer itself
+                               //is becoming tainted. this is unacceptable. We need a seprate resolution of structures becoming Tstructs
+//                               CS.addConstraint(CS.createGeq(V, VA,
+//                                                             ReasonLoc("Pointer within a Structure to which a pointer is taken",PSL)));
+//                               CS.addConstraint(CS.createGeq(VA, V,
+//                                                             ReasonLoc("Pointer within a Structure to which a pointer is taken",PSL)));
                            }
-                           else
-                           {
-                               //create a VarAtom for the pointer
-                               VarAtom *VA = CS.getFreshTaintedVar(Npre + N + fieldName.str(), VK);
-                               Vars.push_back(VA);
-                               SrcVars.push_back(CS.getTaintedPtr());
-                               CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
-                                                             ReasonLoc("Pointer within a Tainted Structure",PSL)));
-                           }
+
                        }
                    }
                }
@@ -1214,11 +1214,9 @@ PointerVariableConstraint::PointerVariableConstraint(
       if (Ty->isTaintedPointerNtArrayType()) {
         // This is an NT array type.
         CAtom = CS.getTaintedNTArr();
-        CAtom->setExplicit(true);
       } else if (Ty->isTaintedPointerArrayType()) {
         // This is an array type.
         CAtom = CS.getTaintedArr();
-        CAtom->setExplicit(true);
         // In CheckedC, a pointer can be freely converted to a size 0 array
         // pointer, but our constraint system does not allow this. To enable
         // converting calls to functions with types similar to free, size 0
@@ -1233,7 +1231,6 @@ PointerVariableConstraint::PointerVariableConstraint(
       } else if (Ty->isTaintedPointerPtrType()) {
         // This is a regular checked pointer.
         CAtom = CS.getTaintedPtr();
-        CAtom->setExplicit(true);
       }
       VarCreated = true;
       assert(CAtom != nullptr && "Unable to find the type "
@@ -1257,7 +1254,9 @@ PointerVariableConstraint::PointerVariableConstraint(
         Tmp->setTstruct(true);
         for (const auto &V : Tmp->getCvars())
         {
-            CS.addConstraint(CS.createGeq(V, CS.getTaintedStruct(),
+            auto StructureVal =  CS.getTaintedStruct();
+            StructureVal->setStructName(TyName);
+            CS.addConstraint(CS.createGeq(V, StructureVal,
                                           ReasonLoc("Tainted Pointer to the Structure",PSL)));
         }
         //now iterate through all the fields of the RecordDecl* RD
@@ -2035,9 +2034,9 @@ PointerVariableConstraint::mkString(Constraints &CS,
 
     Atom::AtomKind K = C->getKind();
     VarAtom *VA = dyn_cast<VarAtom>(V);
-    if (VA && VA->getDoNotTaint()) {
-        K = Atom::A_Wild;
-    }
+//    if (VA && VA->cannotTainted()) {
+//        K = Atom::A_Wild;
+//    }
 
     // If this is not an itype or generic
     // make this wild as it can hold any pointer type.
@@ -2500,7 +2499,7 @@ TaintedPointerVariableConstraint::mkString(Constraints &CS,
 
         Atom::AtomKind K = C->getKind();
         VarAtom *VA = dyn_cast<VarAtom>(V);
-        if (VA && VA->getDoNotTaint()) {
+        if (VA && VA->cannotTainted()) {
             K = Atom::A_Wild;
         }
 
@@ -4758,6 +4757,8 @@ static void createAtomGeq(Constraints &CS, Atom *L, Atom *R,
       CS.addConstraint(CS.createGeq(R, L, Rsn, true));
       // Not for ptyp.
       CS.addConstraint(CS.createGeq(L, R, Rsn, false));
+      //DANGER: This is for tests
+      CS.addConstraint(CS.createGeq(R, L, Rsn, false));
       // Unless indicated.
       if (DoEqType)
         CS.addConstraint(CS.createGeq(R, L, Rsn, false));
@@ -4765,6 +4766,8 @@ static void createAtomGeq(Constraints &CS, Atom *L, Atom *R,
     case Safe_to_Wild:
       CS.addConstraint(CS.createGeq(L, R, Rsn, true));
       CS.addConstraint(CS.createGeq(L, R, Rsn, false));
+      //DANGER: This is for typedef.c test
+      CS.addConstraint(CS.createGeq(R, L, Rsn, false));
       if (DoEqType) {
         CS.addConstraint(CS.createGeq(R, L, Rsn, true));
         CS.addConstraint(CS.createGeq(R, L, Rsn, false));
@@ -4774,6 +4777,7 @@ static void createAtomGeq(Constraints &CS, Atom *L, Atom *R,
       if (!_3COpts.DisableRDs) {
         // Note: reversal.
         CS.addConstraint(CS.createGeq(R, L, Rsn, true));
+        CS.addConstraint(CS.createGeq(R, L, Rsn, false));
       } else {
         // Add edges both ways.
         CS.addConstraint(CS.createGeq(L, R, Rsn, true));

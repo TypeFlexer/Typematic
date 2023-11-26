@@ -328,7 +328,7 @@ void runSolver(ProgramInfo &Info, std::set<std::string> &SourceFiles) {
   dumpConstraintOutputJson(INITIAL_OUTPUT_SUFFIX, Info);
 
   clock_t StartTime = clock();
-  CS.solve();
+  CS.solve(Info);
   if (_3COpts.Verbose) {
     errs() << "Solver time:" << getTimeSpentInSeconds(StartTime) << "\n";
   }

@@ -15,8 +15,8 @@ int main()_Checked {
     name_tptr1 = name_tptr2;  // Contravariant propagation
     tainted_scores1 = tainted_scores2;  // Contravariant propagation
 
-    _TNt_array_ptr<char> alias_name = name1;  // Aliasing of pointer
-    _TArray_ptr<int> alias_scores = __ConstantArrayToTainted__(scores1, 5);  // Aliasing of pointer
+    _TPtr<char> alias_name = name1;  // Aliasing of pointer
+    _Array_ptr<int> alias_scores : count(5) = scores1;  // Aliasing of pointer
 
     alias_name_tptr = name_tptr2;  // Covariant propagation
     alias_scores_tptr = tainted_scores2;  // Covariant propagation

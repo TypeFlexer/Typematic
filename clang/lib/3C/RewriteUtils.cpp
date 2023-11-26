@@ -419,53 +419,59 @@ public:
     return true;
   }
 
-  bool VisitVarDecl(VarDecl *varDecl) {
-    if (varDecl->hasInit()) {
-      Expr *initExpr = varDecl->getInit()->IgnoreImplicit();
-      ConstAtom *CAtom = nullptr;
+    bool VisitVarDecl(VarDecl *varDecl) {
+        if (varDecl->hasInit()) {
+            Expr *initExpr = varDecl->getInit()->IgnoreImplicit();
+            ConstAtom *CAtom = nullptr;
 
-      if (CHKCBindTemporaryExpr *tempExpr = dyn_cast<CHKCBindTemporaryExpr>(initExpr)) {
-        initExpr = tempExpr->getSubExpr()->IgnoreImplicit();
-      }
-
-      if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(initExpr)) {
-        VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
-        if (referredVar) {
-          QualType referredVarType = referredVar->getType();
-          if (const ConstantArrayType *constArrType = dyn_cast<ConstantArrayType>(referredVarType.getTypePtr())) {
-            unsigned numElements = static_cast<unsigned>(constArrType->getSize().getZExtValue());
-
-            // Get the source location of the initializer
-            SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
-            SourceLocation endLoc = varDecl->getInit()->getEndLoc();
-
-            const clang::Type *baseTypePtr = constArrType->getElementType()->getBaseElementTypeUnsafe();
-            QualType baseType = QualType::getFromOpaquePtr(baseTypePtr);
-            std::string baseTypeStr = baseType.getAsString();
-
-            if (constArrType->getElementType()->isArrayType()) {
-              // Multi-dimensional array case
-              const ConstantArrayType *innerConstArrType =
-                      dyn_cast<ConstantArrayType>(constArrType->getElementType().getTypePtr());
-              unsigned innerNumElements = static_cast<unsigned>(innerConstArrType->getSize().getZExtValue());
-
-              // Build the replacement text
-              std::string replacementText = "__ConstantNonLinearbufferToTainted__(" + referredVar->getName().str()
-                      + ", " + std::to_string(numElements) + ", " + std::to_string(innerNumElements) +
-                      ", sizeof("+ baseTypeStr + "))";
-
-              // Replace the initializer in the source code
-              Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+            if (CHKCBindTemporaryExpr *tempExpr = dyn_cast<CHKCBindTemporaryExpr>(initExpr)) {
+                initExpr = tempExpr->getSubExpr()->IgnoreImplicit();
             }
-            else {
-              // One-dimensional array case
-              std::string replacementText = "__ConstantArrayToTainted__(" + referredVar->getName().str() + ", " + std::to_string(numElements) + ", " + baseTypeStr + ")";
-              Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+
+            if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(initExpr)) {
+                VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
+                if (referredVar) {
+                    QualType referredVarType = referredVar->getType();
+                    if (const ConstantArrayType *constArrType = dyn_cast<ConstantArrayType>(referredVarType.getTypePtr())) {
+                        unsigned numElements = static_cast<unsigned>(constArrType->getSize().getZExtValue());
+                        CVarOption const cvar = Info.getVariable(varDecl, Context);
+
+                        bool isVarDeclResolvedAsTainted = false;
+                        if (cvar.hasValue())
+                            isVarDeclResolvedAsTainted = cvar.getValue().hasTainted(Info.getConstraints().getVariables());
+                        // Check if LHS type of the initializer is a tainted pointer type
+                        if ((varDecl->getType()->isTaintedPointerType()) || isVarDeclResolvedAsTainted) {
+                            // Get the source location of the initializer
+                            SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
+                            SourceLocation endLoc = varDecl->getInit()->getEndLoc();
+
+                            const clang::Type *baseTypePtr = constArrType->getElementType()->getBaseElementTypeUnsafe();
+                            QualType baseType = QualType::getFromOpaquePtr(baseTypePtr);
+                            std::string baseTypeStr = baseType.getAsString();
+
+                            std::string replacementText;
+                            if (constArrType->getElementType()->isArrayType()) {
+                                // Multi-dimensional array case
+                                const ConstantArrayType *innerConstArrType =
+                                        dyn_cast<ConstantArrayType>(constArrType->getElementType().getTypePtr());
+                                unsigned innerNumElements = static_cast<unsigned>(innerConstArrType->getSize().getZExtValue());
+                                replacementText = "__ConstantNonLinearbufferToTainted__(" + referredVar->getName().str()
+                                                  + ", " + std::to_string(numElements) + ", " + std::to_string(innerNumElements) +
+                                                  ", sizeof("+ baseTypeStr + "))";
+                            }
+                            else {
+                                // One-dimensional array case
+                                replacementText = "__ConstantArrayToTainted__(" + referredVar->getName().str() + ", " + std::to_string(numElements) + ", " + baseTypeStr + ")";
+                            }
+
+                            // Replace the initializer in the source code
+                            Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
+                        }
+                    }
+                }
             }
-          }
-        }
-      } else if (UnaryOperator *unaryOp = dyn_cast<UnaryOperator>(initExpr)) {
-          if (unaryOp->getOpcode() == UO_AddrOf) {
+            else if (UnaryOperator *unaryOp = dyn_cast<UnaryOperator>(initExpr)) {
+            if (unaryOp->getOpcode() == UO_AddrOf) {
               Expr *subExpr = unaryOp->getSubExpr();
               if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(subExpr)) {
                   VarDecl *referredVar = dyn_cast<VarDecl>(declRef->getDecl());
@@ -474,12 +480,16 @@ public:
                       SourceLocation startLoc = varDecl->getInit()->getBeginLoc();
                       SourceLocation endLoc = varDecl->getInit()->getEndLoc();
 
-                      // Now you would check if 'seed' should be tainted based on your specific criteria.
-                      // This is where you would integrate with your tainting mechanism.
+                      // Check if the type of the referredVar is a pointer
+                      bool isPointer = referredVar->getType()->isPointerType();
 
-                      // For demonstration purposes, let's say we have a function that taints integer pointers.
-                      // We will replace the original expression with a call to this function.
-                      std::string replacementText = "__Marshall__T2C(" + referredVar->getNameAsString() + ")";
+                      // Form the replacement text
+                      std::string replacementText;
+                      if (isPointer) {
+                          replacementText = "__Marshall__T2C(" + referredVar->getNameAsString() + ")";
+                      } else {
+                          replacementText = "__Marshall__T2C(&" + referredVar->getNameAsString() + ")";
+                      }
 
                       // Replace the initializer in the source code
                       Writer.ReplaceText(SourceRange(startLoc, endLoc), replacementText);
@@ -612,6 +622,19 @@ public:
   explicit TypeArgumentAdder(ASTContext *C, ProgramInfo &I, Rewriter &R)
       : Context(C), Info(I), Writer(R) {}
 
+    void inspectAndModifyExpr(Expr *expression) {
+      if (!expression) return;
+
+      if (auto *CE = dyn_cast<CallExpr>(expression->IgnoreParenImpCasts())) {
+        modifyCallExpr(CE);
+      } else if (auto *CSE = dyn_cast<CStyleCastExpr>(expression->IgnoreParenImpCasts())) {
+        inspectAndModifyExpr(CSE->getSubExpr());
+      } else if (auto *CBTE = dyn_cast<CHKCBindTemporaryExpr>(expression->IgnoreParenImpCasts())) {
+        inspectAndModifyExpr(CBTE->getSubExpr());
+      }
+      // Add more cases as necessary for other expression types
+    }
+
     bool VisitDeclStmt(DeclStmt *DS) {
       for (auto I = DS->decl_begin(), E = DS->decl_end(); I != E; ++I) {
         if (auto VarD = dyn_cast<VarDecl>(*I)) {
@@ -619,9 +642,7 @@ public:
           if (VarDInfo.hasValue() && VarDInfo.getValue().hasTainted(Info.getConstraints().getVariables())) {
             if (VarD->hasInit()) {
               Expr *rhs = VarD->getInit();
-              if (CallExpr *CE = dyn_cast<CallExpr>(rhs->IgnoreParenImpCasts())) {
-                modifyCallExpr(CE);
-              }
+              inspectAndModifyExpr(rhs);
             }
           }
         }

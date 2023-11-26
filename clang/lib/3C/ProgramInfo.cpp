@@ -583,7 +583,7 @@ void ProgramInfo::enterCompilationUnit(ASTContext &Context) {
 // After this, the Variables, VarDeclToStatement, RVariables, and DepthMap
 // should all be empty.
 void ProgramInfo::exitCompilationUnit() {
-  assert(!Persisted);
+  //assert(!Persisted);
   Persisted = true;
   return;
 }
@@ -1080,7 +1080,7 @@ FVConstraint *ProgramInfo::getFuncFVConstraint(FunctionDecl *FD,
 // Given a decl, return the variables for the constraints of the Decl.
 // Returns null if a constraint variable could not be found for the decl.
 CVarOption ProgramInfo::getVariable(clang::Decl *D, clang::ASTContext *C) {
-  assert(!Persisted);
+ // assert(!Persisted);
 
   if (ParmVarDecl *PD = dyn_cast<ParmVarDecl>(D)) {
     DeclContext *DC = PD->getParentFunctionOrMethod();

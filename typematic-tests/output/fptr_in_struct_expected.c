@@ -1,7 +1,7 @@
 #include <stdio.h>
 
-typedef Tstruct FunctionalStruct {
-        void (*print )(_TPtr<const char>);
+typedef struct FunctionalStruct {
+    _Ptr<void (_TPtr<const char>)> print;
 } FunctionalStruct;
 
 void say_hello(_TPtr<const char> name) {

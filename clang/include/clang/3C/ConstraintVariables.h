@@ -963,7 +963,6 @@ public:
 
         ConstAtom *CAtom = CS.getTaintedStruct(); // Retrieve the tainted struct.
         if (CAtom) {  // Check if CAtom is not nullptr.
-            CAtom->setExplicit(true);
             SrcVars.push_back(CAtom);
         }
     }
