@@ -495,9 +495,10 @@ void DeclRewriter::rewriteMultiDecl(MultiDeclInfo &MDI, RSet &ToRewrite) {
 
   if (MDI.TagDefToSplit != nullptr) {
     TagDecl *TD = MDI.TagDefToSplit;
-
+    MultiDeclMemberDecl *DL = *MDI.Members.begin();
+    auto TRIt = ToRewrite.find(DL);
     // Check if the TagDecl is a RecordDecl
-    if (isa<RecordDecl>(TD)) {
+    if (isa<RecordDecl>(TD)  && TRIt->second->getReplacement() == "Tstruct ") {
       SourceLocation StructBeginLoc = TD->getBeginLoc();
       SourceLocation StructEndLoc = Lexer::getLocForEndOfToken(StructBeginLoc, 0, A.getSourceManager(), A.getLangOpts());
 
