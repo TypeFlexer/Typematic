@@ -493,21 +493,25 @@ void DeclRewriter::rewriteMultiDecl(MultiDeclInfo &MDI, RSet &ToRewrite) {
     }
   }
 
-  if (MDI.TagDefToSplit != nullptr && MDI.Members.size() == 1) {
+  if (MDI.TagDefToSplit != nullptr) {
     TagDecl *TD = MDI.TagDefToSplit;
-    MultiDeclMemberDecl *DL = *MDI.Members.begin();
-    auto TRIt = ToRewrite.find(DL);
-    // Check if the single member is a RecordDecl
-    if (isa<RecordDecl>(TD) && TRIt->second->getReplacement() == "Tstruct ") {
 
-      // `struct T { ... } x;` -> `Tstruct T { ... }; static Tstruct T x;`
-      // ... rest of the code ...
+    // Check if the TagDecl is a RecordDecl
+    if (isa<RecordDecl>(TD)) {
+      SourceLocation StructBeginLoc = TD->getBeginLoc();
+      SourceLocation StructEndLoc = Lexer::getLocForEndOfToken(StructBeginLoc, 0, A.getSourceManager(), A.getLangOpts());
 
-      // Find the text to be replaced, assumed to be "struct" here
-      std::string ExistingToken = getSourceText(SourceRange(TD->getBeginLoc()), A);
-      if (ExistingToken == "struct") {
-        // Replace with "Tstruct"
-        rewriteSourceRange(R, TD->getBeginLoc(), "Tstruct");
+      // Extract the text from the beginning of the struct to the end of the 'struct' token
+      std::string StructText = getSourceText(CharSourceRange::getTokenRange(SourceRange(StructBeginLoc, StructEndLoc)), A);
+
+      // Check if the text is exactly "struct" and if the struct is anonymous
+      if (StructText == "struct" && TD->getName().empty()) {
+        // Replace "struct" with "Tstruct {"
+        rewriteSourceRange(R, SourceRange(StructBeginLoc, StructEndLoc), "Tstruct ");
+      }
+      else if (StructText == "struct") {
+        // Replace "struct" with "Tstruct"
+        rewriteSourceRange(R, SourceRange(StructBeginLoc, StructEndLoc), "Tstruct ");
       }
     }
   }
@@ -742,18 +746,18 @@ RewrittenDecl DeclRewriter::buildTaintedDecl(PVConstraint *pConstraint, Declarat
 
 bool FunctionDeclBuilder::VisitRecordDecl(RecordDecl* RD){
     //get the struct constraint variable for the structure
-    auto structName = RD->getNameAsString();
-
-    SVarOption Sval = Info.getStructVariable(RD, Context);
-    if (!Sval.hasValue())
-        return true;
-
-    StructureVariableConstraint* SV = (StructureVariableConstraint *) (&Sval.getValue());
-
-    this->buildTstructDecl(SV, RD,
-                           RD->getNameAsString(),
-                           RD->isTaintedStruct(), RD->isDecoyDecl());
-
+//    auto structName = RD->getNameAsString();
+//
+//    SVarOption Sval = Info.getStructVariable(RD, Context);
+//    if (!Sval.hasValue())
+//        return true;
+//
+//    StructureVariableConstraint* SV = (StructureVariableConstraint *) (&Sval.getValue());
+//
+//    this->buildTstructDecl(SV, RD,
+//                           RD->getNameAsString(),
+//                           RD->isTaintedStruct(), RD->isDecoyDecl());
+  return true;
 }
 // This function checks how to re-write a function declaration.
 bool FunctionDeclBuilder::VisitFunctionDecl(FunctionDecl *FD) {

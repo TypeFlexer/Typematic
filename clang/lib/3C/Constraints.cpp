@@ -123,7 +123,9 @@ bool Constraints::addConstraint(Constraint *C) {
         //if either LHS or RHS is marked as Explicit, then mark the other as Explicit
         if (LHSVar && RHSVar && LHSVar->isAddr())
         {
+#ifdef DEBUG
             std::cout<<"LHS is address > "<< G->getLHS()->getStr()<< std::endl;
+#endif
             RHSVar->setDoNotTaint();
         }
         if (G->constraintIsChecked())
@@ -288,24 +290,20 @@ doSolve(ConstraintsGraph &CG,
     std::set<Atom *> Neighbors;
     CG.getNeighbors(Curr, Neighbors, DoLeastSolution);
     // update each successor's solution.
-    //do not assign tainted to neighbors that are allocators or other whitelisted neighbors
-
     if ((Curr->isStructure() && Structs.find(Curr) == Structs.end())
         && (!Curr->isTainted()))
     {
       //these are unresolved structures, which may become Tstructs later on
       //store them in a seperate Worklist which we shall visit later once intial constraints are solved.
       Structs.insert(Curr);
-      //insert log messages
-      std::cout<<"A STRUCTURE FOUND: "<<Curr->getStr()<<std::endl;
+#ifdef DEBUG
+      std::cout<<"TRACKING STRUCTURE : "<<Curr->getStr()<<std::endl;
+#endif
     }
 
     for (auto *NeighborA : Neighbors) {
       if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
         ConstAtom *NghSol = Env.getAssignment(Neighbor);
-
-        if (Neighbor->getStr().find("struct another") != std::string::npos)
-          int i = 10;
         // update solution if doing so would change it
         // checked? --- if sol(Neighbor) <> (sol(Neighbor) JOIN Cur)
         //   else   --- if sol(Neighbor) <> (sol(Neighbor) MEET Cur)
@@ -315,16 +313,20 @@ doSolve(ConstraintsGraph &CG,
           bool Changed = false;
           if (CurrSol->isTainted() && NghSol->isTainted())
           {
+#ifdef DEBUG
             std::cout<<"Nothing there to update "<<std::endl;
             std::cout<<"Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() <<std::endl;
+#endif
             continue;
           }
           // give preference to the finegrained solution type and reflect it to the tainted type
           if ((NghSol->getKind() == Atom::A_Arr || NghSol->getKind() == Atom::A_NTArr) && (CurrSol->isTainted()))
           {
+#ifdef DEBUG
             std::cout<<"A-1 WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
                      CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
                      " ( " << NghSol->reflectToTainted()->getStr() << " )" <<std::endl;
+#endif
             Changed = Env.assign(Neighbor, NghSol->reflectToTainted());
             if (Changed)
                 WorkList.push_back(Neighbor);
@@ -336,8 +338,10 @@ doSolve(ConstraintsGraph &CG,
             bool CurrSolATaintedStruct = CurrSol->isTaintedStructure();
             if (CurrSolAStruct && !NeighborAStruct)
             {
+#ifdef DEBUG
               std::cout <<"A-2 Ignoring assigning a structure solution to a pointer type"<<std::endl;
               std::cout <<"A-2 Current: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() <<std::endl;
+#endif
               // if the pointer type is marked explicit, mark the structure as explicit as well
               if (Neighbor->cannotTainted())
               {
@@ -349,30 +353,34 @@ doSolve(ConstraintsGraph &CG,
 
               if (!CurrSolATaintedStruct && NghSol->isTainted() && !Neighbor->cannotTainted())
               {
+#ifdef DEBUG
                 std::cout<<"A-2 WORKLIST [Structure] UPDATE Curr: "<<Curr->getStr()<< "( "<<
                          CurrSol->getStr() <<" )" << "To Tstruct" <<std::endl;
+#endif
                 Curr->setKind(Atom::A_Tstruct);
                 WorkList.push_back(Curr);
               }
             }
             else if (CurrSolATaintedStruct && !NeighborAStruct)
             {
+#ifdef DEBUG
               std::cout <<"Tainted Structure Impacting Pointer to Tainted"<<std::endl;
               std::cout<<"A-2 WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
                        CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
                        " ( " << NghSol->reflectToTainted()->getStr() << " )" <<std::endl;
-
+#endif
               Changed = Env.assign(Neighbor, NghSol->reflectToTainted());
               if (Changed)
                 WorkList.push_back(Neighbor);
             }
             else
             {
+#ifdef DEBUG
               std::cout<<"A-2 WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
                        CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
                        " ( " << CurrSol->getStr() << " )" <<std::endl;
+#endif
               Changed = Env.assign(Neighbor, CurrSol);
-              //std::cout<<"A WORKLIST UPDATE Curr: "<<Curr->getStr()<< " Neighbor: "<< Neighbor->getStr() << std::endl;
               if (Changed)
                 WorkList.push_back(Neighbor);
             }
@@ -380,26 +388,17 @@ doSolve(ConstraintsGraph &CG,
         }
         else if (Curr->isTaintedStructure() && !Neighbor->isTainted())
         {
+#ifdef DEBUG
           std::cout<<"K WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
                    CurrSol->getStr() <<" )" << "Neighbor: "<< Neighbor->getStr() <<
                    " ( " << NghSol->reflectToTainted()->getStr() << " )" <<std::endl;
+#endif
           bool Changed = false;
           Changed = Env.assign(Neighbor, NghSol->reflectToTainted());
           assert(Changed);
           WorkList.push_back(Neighbor);
         }
       } // ignore ConstAtoms for now; will confirm solution below
-//      else if (CurrSol->isTainted() && !NeighborA->isTainted())
-//      {
-//        // we gotta fix this somehow
-//        NeighborA->reflectToTaintedKind();
-//        bool Changed = true;
-//        assert(Changed);
-//        std::cout<<"F WORKLIST UPDATE Curr: "<<Curr->getStr()<< "( "<<
-//                 CurrSol->getStr() <<" )" << "Neighbor: "<< NeighborA->getStr() <<
-//                 " ( " << CurrSol->getStr() << " )" <<std::endl;
-//        WorkList.push_back(NeighborA);
-//      }
     }
   }
 
@@ -425,22 +424,27 @@ doSolve(ConstraintsGraph &CG,
               bool CboundAStructure = Cbound->isStructure();
               bool CboundATaintedStructure = Cbound->isTaintedStructure();
               if (CboundAStructure){
+#ifdef DEBUG
                 std::cout <<"C Ignoring assigning a structure solution to a pointer type"<<std::endl;
                 std::cout <<"C Current: "<<VA->getStr()<< " Cbound: "<< Cbound->getStr() <<std::endl;
-                //if the pointer is tainted but the stucture is not a tainted kind, instead assign the opposite way
+#endif
                 if (!CboundATaintedStructure && Csol->isTainted() && !VA->cannotTainted())
                 {
+#ifdef DEBUG
                   std::cout<<"C WORKLIST [Structure] UPDATE VA: "<<VA->getStr()<< "( "<<
                            VA->getKind() <<" )" << "Cbound: "<< Cbound->getStr() <<
                            " ( " << Cbound->reflectToTainted()->getStr() << " )" <<std::endl;
+#endif
                   Cbound->setKind(Atom::A_Tstruct);
                 }
               }
               else
               {
+#ifdef DEBUG
                 std::cout<<"C WORKLIST UPDATE VA : "<<VA->getStr()<< "( "<<
                          VA->getKind() <<" )" << "Cbound: "<< Cbound->getStr() <<
                          " ( " << Cbound->reflectToTainted()->getStr() << " )" <<std::endl;
+#endif
                 Env.assign(VA, Cbound->reflectToTainted());
                 Conflicts.insert({E, Cbound->reflectToTainted()});
               }
@@ -449,9 +453,11 @@ doSolve(ConstraintsGraph &CG,
             {
               Env.assign(VA, Csol->reflectToTainted());
               Conflicts.insert({E, Csol->reflectToTainted()});
+#ifdef DEBUG
               std::cout<<"D WORKLIST UPDATE VA: "<<VA->getStr()<< "( "<<
                        VA->getKind() <<" )" << "Csol: "<< Csol->getStr() <<
                        " ( " << Csol->reflectToTainted()->getStr() << " )" <<std::endl;
+#endif
             }
           }
           else{
@@ -699,9 +705,11 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
           // you can simply skip them
           if (ConflictResolve->isStructure())
           {
+#ifdef DEBUG
             std::cout<<"Skipping conflict because of structure ["<<std::endl;
             std::cout<<"Conflict: "<<ConflictAtom->getStr()<<" ConflictResolve: "<<ConflictResolve->getStr()<<std::endl;
             std::cout<<" ]"<<std::endl;
+#endif
             continue;
           }
           auto Rsn = ReasonLoc("Inferred conflicting types",
@@ -739,7 +747,9 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         bool isTstruct = CurrStructSol->isTainted();
 
         if (isTstruct){
+#ifdef DEBUG
           std::cout << "STRUCTURE WAS RESOLVED AS TAINTED STRUCT: " << CurrStruct->getStr() << std::endl;
+#endif
           //The structure was resolved as a tainted structure sometime during the solving process
           //Hence, we need to rerun the entire solver again, so that all the member pointers/structures
           //of the Tainted structure are also marked as tainted
@@ -782,14 +792,18 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
       }
 
       if (allFieldsAreValid && (hasPointerField || hasStructField) && !CurrStruct->isExplicit()) {
+#ifdef DEBUG
         std::cout << "STRUCTURE IS MARKED TAINTED: " << CurrStruct->getStr() << std::endl;
+#endif
         CurrStruct->setKind(Atom::A_Tstruct);
         RequiresResolve = true;
       }
 
       if (CurrStruct->isExplicit())
       {
+#ifdef DEBUG
         std::cout<<"STRUCTURE IS EXPLICIT CANNOT TAINT: "<<CurrStruct->getStr()<<std::endl;
+#endif
       }
       toBeRemoved.push_back(CurrStruct);
     }
@@ -1168,13 +1182,11 @@ bool ConstraintsEnv::checkTaintedAssignment(TaintedVarSolTy Sol) {
 }
 
 bool ConstraintsEnv::assign(VarAtom *V, ConstAtom *C) {
-    if (!V->isTainted() && C->isTainted())
-    {
-        int a = 10; //wtf
-    }
   if (V->cannotTainted() && C->isTainted())
   {
+#ifdef DEBUG
       std::cout<<"C Ignoring assigning a tainted solution to a variable that cannot be tainted"<<std::endl;
+#endif
       //if the variable cannot be tainted, then we should not assign a tainted solution to it
       return false;
   }

@@ -324,17 +324,23 @@ void CastPlacementVisitor::TaintedStructureResolution(StructureTypeNeeded Struct
     return;
   }
 
-  auto CastStrs = getTaintedStructString(StructKind);  // Assuming this returns "Tstruct"
+  const SourceManager &SM = Context->getSourceManager();
+  Lexer TheLexer(SM.getExpansionLoc(BeginLoc), Context->getLangOpts(),
+                 SM.getBufferData(SM.getFileID(BeginLoc)).data(),
+                 SM.getCharacterData(BeginLoc),
+                 SM.getCharacterData(SM.getExpansionRange(BeginLoc).getEnd()));
 
-  bool FrontRewritable = Writer.isRewritable(BeginLoc);
-  bool EndRewritable = Writer.isRewritable(RD->getEndLoc());
-  if (FrontRewritable && EndRewritable) {
-    // Get the source text range of the word "struct"
-    SourceRange structRange(BeginLoc, BeginLoc.getLocWithOffset(strlen("struct")));
-    // Replace the entire range of text that contains the word "struct"
-    bool BFail = Writer.ReplaceText(structRange, CastStrs);
-    updateRewriteStats(StructKind);
-    assert("Locations were rewritable, fail should not be possible." && !BFail);
+  Token TheToken;
+  if (!TheLexer.LexFromRawLexer(TheToken)) {
+    if (TheToken.is(tok::kw_struct)) {
+      SourceLocation StructLoc = TheToken.getLocation();
+      SourceLocation StructEndLoc = Lexer::getLocForEndOfToken(StructLoc, 0, SM, Context->getLangOpts());
+
+      if (Writer.isRewritable(StructLoc) && Writer.isRewritable(StructEndLoc)) {
+        std::string CastStrs = "Tstruct";
+        Writer.ReplaceText(SourceRange(StructLoc, StructEndLoc), CastStrs);
+      }
+    }
   }
 }
 

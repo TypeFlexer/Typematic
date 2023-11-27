@@ -169,7 +169,9 @@ PointerVariableConstraint *PointerVariableConstraint::addAtomPVConstraint(
 
   VarAtom *NewA = CS.getFreshVar("&" + Copy->Name, VarAtom::V_Other);
   NewA->setIsAddress();
-  std::cout<<"Making NewA do not taint"<< NewA->getStr()<<"\n";
+#ifdef DEBUG
+  std::cout<<"Making \"Address\" --> do not taint"<< NewA->getStr()<<"\n";
+#endif
   CS.addConstraint(CS.createGeq(NewA, PtrTyp, Rsn, false));
 
   //TODO: How do we handle for tainted pointers, cuz you cannot take addresses right?
@@ -3852,7 +3854,6 @@ std::string StructureVariableConstraint::gatherQualStrings(void) const {
 std::string
 StructureVariableConstraint::mkString(Constraints &CS,
                                            const MkStringOpts &Opts) const {
-//  return "Need to think on this!!";
 
     bool IsReturn = getName() == RETVAR;
 
