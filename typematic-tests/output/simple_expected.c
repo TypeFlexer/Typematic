@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdlib_tainted.h>
 
-_Tainted _TPtr<int> simple(_TPtr<int> a, _TNt_array_ptr<int> b)
+_Tainted _TPtr<int> simple(_TPtr<int> a, _TPtr<int> b)
 {
         *b = *a + *b;
         return b;

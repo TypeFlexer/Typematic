@@ -345,7 +345,9 @@ doSolve(ConstraintsGraph &CG,
               // if the pointer type is marked explicit, mark the structure as explicit as well
               if (Neighbor->cannotTainted())
               {
+#ifdef DEBUG
                 std::cout<<"A-2 Marking structure as Explicit cannot Taint"<<std::endl;
+#endif
                 Curr->setKind(Atom::A_struct);
                 StructureAtom* CurrStruct = dyn_cast<StructureAtom>(Curr);
                 CurrStruct->setExplicit(true);

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdlib_tainted.h>
 
-typedef Tstruct Dataval{
+typedef struct Dataval{
     _TPtr<double> taintedValue;
     double normalValue;
 } Data;
