@@ -11,7 +11,7 @@ typedef struct simple{
 	_Ptr<an> simp2;
 } si;
 
-int main()_Checked {
+int main() _Checked {
 	si s = {};
 	_Ptr<si> ts = ((void *)0);
 	_TPtr<int> targ2;

@@ -8,9 +8,9 @@ typedef Tstruct Dataval{
 } Data;
 
 
-_Tainted void displayData(_TPtr<Data> data) {
-    printf("Tainted Value: %lf\n", *(data->taintedValue));
-    printf("Normal Value: %lf\n", data->normalValue);
+void displayData(_Ptr<Data> data) _Checked {
+    _Unchecked { printf("Tainted Value: %lf\n", *(data->taintedValue)); };
+    _Unchecked { printf("Normal Value: %lf\n", data->normalValue); };
 }
 
 int main() {

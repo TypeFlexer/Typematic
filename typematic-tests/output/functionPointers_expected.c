@@ -3,12 +3,12 @@
 #include <stdlib_tainted.h>
 
 // Function prototypes
-double add(_TArray_ptr<double> a, _Ptr<double> b);
-double subtract(_TArray_ptr<double> a, _Ptr<double> b);
-double multiply(_TArray_ptr<double> a, _Ptr<double> b);
-double divide(_TArray_ptr<double> a, _Ptr<double> b);
+double add(_TPtr<double> a, _Ptr<double> b);
+double subtract(_TPtr<double> a, _Ptr<double> b);
+double multiply(_TPtr<double> a, _Ptr<double> b);
+double divide(_TPtr<double> a, _Ptr<double> b);
 void displayMenu();
-double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b);
+double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TPtr<double> a, _Ptr<double> b);
 
 int main() {
     int choice;
@@ -74,19 +74,19 @@ int main() {
     return 0;
 }
 
-double add(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+double add(_TPtr<double> a, _Ptr<double> b) _Checked {
 return *a + *b;
 }
 
-double subtract(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+double subtract(_TPtr<double> a, _Ptr<double> b) _Checked {
 return *a - *b;
 }
 
-double multiply(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+double multiply(_TPtr<double> a, _Ptr<double> b) _Checked {
 return *a * *b;
 }
 
-double divide(_TArray_ptr<double> a, _Ptr<double> b) _Checked {
+double divide(_TPtr<double> a, _Ptr<double> b) _Checked {
 return *a / *b;
 }
 
@@ -100,6 +100,6 @@ _Tainted void displayMenu() {
     printf("Enter your choice: ");
 }
 
-double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b) _Checked {
+double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TPtr<double> a, _Ptr<double> b) _Checked {
 return operation(a, b);
 }
