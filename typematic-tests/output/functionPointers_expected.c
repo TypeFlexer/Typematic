@@ -8,14 +8,14 @@ double subtract(_TArray_ptr<double> a, _Ptr<double> b);
 double multiply(_TArray_ptr<double> a, _Ptr<double> b);
 double divide(_TArray_ptr<double> a, _Ptr<double> b);
 void displayMenu();
-double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b);
+double executeOperation(_Ptr<double (_TArray_ptr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b);
 
 int main() {
     int choice;
     _TPtr<double> x = t_malloc<double>(sizeof(double));
     _Ptr<double> y = malloc<double>(sizeof(double));
     _Ptr<double> result = malloc<double>(sizeof(double));
-    _Ptr<double (_TPtr<double>, _Ptr<double>)> operation = ((void *)0);
+    _Ptr<double (_TArray_ptr<double>, _Ptr<double>)> operation = ((void *)0);
 
     if (!x || !y || !result) _Checked {
         _Unchecked { printf("Memory allocation failed.\n"); };
@@ -100,6 +100,6 @@ _Tainted void displayMenu() {
     printf("Enter your choice: ");
 }
 
-double executeOperation(_Ptr<double (_TPtr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b) _Checked {
+double executeOperation(_Ptr<double (_TArray_ptr<double>, _Ptr<double>)> operation, _TArray_ptr<double> a, _Ptr<double> b) _Checked {
 return operation(a, b);
 }

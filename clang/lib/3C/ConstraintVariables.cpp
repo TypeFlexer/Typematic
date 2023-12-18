@@ -921,6 +921,13 @@ PointerVariableConstraint::PointerVariableConstraint(
       VarAtom *VA = CS.getFreshVar(Npre + N, VK);
       if (DoNotTaint)
         VA->setDoNotTaint();
+
+      if (QT->getPointeeType()->isTaintedStructureType())
+      {
+        //add constraint to make this pointer tainted
+        CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
+                                      ReasonLoc("Pointer to a Tainted Structure",PSL), true));
+      }
       Vars.push_back(VA);
       ConstAtom *CAtom = nullptr;
       CAtom = CS.getWild();
@@ -5981,9 +5988,22 @@ FVComponentVariable::FVComponentVariable(const QualType &QT,
     }
     else
     {
-        ExternalConstraint =
-                new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
-                                 nullptr, ITypeT);
+        QualType BaseType = QT;
+        while (BaseType->isPointerType() || BaseType->isArrayType()) {
+            BaseType = BaseType->getPointeeType();
+        }
+
+        if (BaseType->isRecordType() && BaseType->isTaintedStructureType()) {
+            ExternalConstraint =
+                    reinterpret_cast<PVConstraint *>(new TPVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric,
+                                                                       HasItype,
+                                                                       nullptr, ITypeT));
+        } else {
+            ExternalConstraint =
+                    new PVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric, HasItype,
+                                     nullptr, ITypeT);
+        }
+
         if (!HasItype && QT->isVoidPointerType()) {
             InternalConstraint = ExternalConstraint;
         } else {
