@@ -244,6 +244,51 @@ bool Constraints::removeReasonBasedConstraint(TaintedConstraint *C) {
   return false;
 }
 
+void calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited,
+                        std::map<VarAtom *, int> &Scores, ConstraintsGraph &CG) {
+    if (Visited.find(Current) != Visited.end()) {
+        return; // Avoid cycles and revisiting nodes
+    }
+
+    Visited.insert(Current); // Mark Current as visited
+
+    std::set<Atom *> Neighbors;
+    CG.getNeighbors(Current, Neighbors, true); // Assuming true for least solution
+
+    // Initialize the score for Current
+    int score = 1; // Counting Current itself
+
+    for (auto *NeighborA : Neighbors) {
+        if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
+            if (Visited.find(Neighbor) == Visited.end()) {
+                calculateInfluence(Neighbor, Visited, Scores, CG);
+                score += Scores[Neighbor]; // Accumulate scores from neighbors
+            }
+        }
+    }
+
+    // Assign the accumulated score to Current
+    Scores[Current] = score;
+}
+
+void assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, int> &InfluenceScores) {
+    for (auto &AtomNode : CG.getAllConstAtoms()) {
+        if (ConstAtom *CA = dyn_cast<ConstAtom>(AtomNode)) {
+            if (CA->isTainted()) {
+                std::set<Atom *> Neighbors;
+                CG.getNeighbors(CA, Neighbors, true); // Assuming true for least solution
+
+                for (auto *NeighborA : Neighbors) {
+                    if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
+                        std::set<VarAtom *> Visited;
+                        calculateInfluence(Neighbor, Visited, InfluenceScores, CG);
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Make a graph G:
 //- with nodes for each variable k and each qualifier constant q.
 //- with edges Q --> Q’ for each constraint Q <: Q’
@@ -978,8 +1023,12 @@ Geq *Constraints::createGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,
       Rsn.Location = PersistentSourceLoc();
   }
   assert("Shouldn't be constraining WILD >= VAR" && Lhs != getWild());
-
+  if (dyn_cast<ConstAtom>(Rhs) != NULL)
+  {
+      return new Geq(Rhs, Lhs, Rsn, IsCheckedConstraint, Soft);
+  }
   return new Geq(Lhs, Rhs, Rsn, IsCheckedConstraint, Soft);
+
 }
 
 TGeq *Constraints::createTaintedGeq(Atom *Lhs, Atom *Rhs, ReasonLoc Rsn,

@@ -922,7 +922,7 @@ PointerVariableConstraint::PointerVariableConstraint(
       if (DoNotTaint)
         VA->setDoNotTaint();
 
-      if (QT->getPointeeType()->isTaintedStructureType())
+      if (QT->isPointerType() && QT->getPointeeType()->isTaintedStructureType())
       {
         //add constraint to make this pointer tainted
         CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
