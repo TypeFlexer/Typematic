@@ -18,7 +18,6 @@
 #include <set>
 
 using namespace llvm;
-
 // Remove the constraint from the global constraint set.
 bool Constraints::removeConstraint(Constraint *C) {
   bool RetVal = false;
@@ -244,8 +243,15 @@ bool Constraints::removeReasonBasedConstraint(TaintedConstraint *C) {
   return false;
 }
 
-void calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited,
-                        std::map<VarAtom *, int> &Scores, ConstraintsGraph &CG) {
+void InitializeEnvironmentInfluenceMap(const EnvironmentMap& envMap, InfluenceMap& influenceMap) {
+    for (const auto& pair : envMap) {
+        VarAtom* key = pair.first;
+        influenceMap[key] = -1.0;
+    }
+}
+
+void Constraints::calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited,
+                        std::map<VarAtom *, double> &Scores, ConstraintsGraph &CG) {
     if (Visited.find(Current) != Visited.end()) {
         return; // Avoid cycles and revisiting nodes
     }
@@ -260,7 +266,9 @@ void calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited,
 
     for (auto *NeighborA : Neighbors) {
         if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
-            if (Visited.find(Neighbor) == Visited.end()) {
+            auto isVarResolvedAsTainted = (this->getVariables().at(Neighbor).first->isTainted() ||
+                                           this->getVariables().at(Neighbor).second->isTainted());
+            if ((Visited.find(Neighbor) == Visited.end()) && isVarResolvedAsTainted) {
                 calculateInfluence(Neighbor, Visited, Scores, CG);
                 score += Scores[Neighbor]; // Accumulate scores from neighbors
             }
@@ -271,12 +279,12 @@ void calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited,
     Scores[Current] = score;
 }
 
-void assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, int> &InfluenceScores) {
+void Constraints::assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, double> &InfluenceScores) {
     for (auto &AtomNode : CG.getAllConstAtoms()) {
         if (ConstAtom *CA = dyn_cast<ConstAtom>(AtomNode)) {
             if (CA->isTainted()) {
                 std::set<Atom *> Neighbors;
-                CG.getNeighbors(CA, Neighbors, true); // Assuming true for least solution
+                CG.getNeighbors(CA, Neighbors, false); // Assuming true for least solution
 
                 for (auto *NeighborA : Neighbors) {
                     if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
@@ -606,6 +614,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
   std::set<std::pair<ConstraintsGraph::EdgeType *, Atom *>> Conflicts;
   ConstraintsGraph SolChkCG;
   ConstraintsGraph SolPtrTypCG;
+
   ConstraintsEnv &Env = Environment;
   std::set<Atom *> StructsWorklist;
 
@@ -632,9 +641,12 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
   bool RequiresResolve;
   bool Res = false;
 
+  InitializeEnvironmentInfluenceMap(Env.getVariables(), Env.SolChkCG_InfluenceMap);
+  InitializeEnvironmentInfluenceMap(Env.getVariables(), Env.SolPtrTypCG_InfluenceMap);
   do
   {
     RequiresResolve = false;
+    assignInfluenceScores(SolChkCG, Env.SolChkCG_InfluenceMap);
     Res = doSolve(SolChkCG, Env, this, true, nullptr, Conflicts, StructsWorklist);
 
     // Now solve PtrType constraints
@@ -651,14 +663,17 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
                     return true;
                 },
                 getNTArr());
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
         Res = doSolve(SolPtrTypCG, Env, this, true, nullptr, Conflicts, StructsWorklist);
       } else if (_3COpts.OnlyGreatestSol) {
         // Do only greatest solution
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
         Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
       } else {
         // Regular solve
         // Step 1: Greatest solution
         Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
       }
 
       // Step 2: Reset all solutions but for function params,
@@ -704,6 +719,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         // a lower bound will be resolved in the final greatest solution.
         std::set<VarAtom *> LowerBounded = findBounded(SolPtrTypCG, &Rest, true);
 
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
         Res = doSolve(SolPtrTypCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
 
         // Step 3: Reset local variable solutions, compute greatest
@@ -716,7 +732,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
                              LowerBounded.find(VA) == LowerBounded.end();
                   },
                   getPtr());
-
+          assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
           Res = doSolve(SolPtrTypCG, Env, this, false, &Rest, Conflicts, StructsWorklist);
         }
       }
@@ -770,6 +786,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         }
         Conflicts.clear();
         /* FIXME: Should we propagate the old res? */
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
         Res = doSolve(SolChkCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
       }
       // Final Step: Merge ptyp solution with checked solution.
@@ -889,6 +906,11 @@ void Constraints::print(raw_ostream &O) const {
     O << "\n";
   }
   Environment.print(O);
+}
+
+void Constraints::printISTM(raw_ostream &O) const {
+    O << "ISTM Constraints: \n";
+    Environment.printISTM(O);
 }
 
 void Constraints::dump(void) const { print(errs()); }
@@ -1086,32 +1108,73 @@ Constraints::~Constraints() {
 void ConstraintsEnv::dump(void) const { print(errs()); }
 
 void ConstraintsEnv::print(raw_ostream &O) const {
-  O << "ENVIRONMENT: \n";
-  for (const auto &V : Environment) {
-    V.first->print(O);
-    O << " = [";
-    O << "Checked=";
-    V.second.first->print(O);
-    O << ", PtrType=";
-    V.second.second->print(O);
-    O << "]";
-    O << "\n";
-  }
+    O << "ENVIRONMENT: \n";
+    for (const auto &V : Environment) {
+        double CheckedGraphInfluence = -1 ;
+        if (SolChkCG_InfluenceMap.find(V.first) != SolChkCG_InfluenceMap.end())
+            CheckedGraphInfluence = SolChkCG_InfluenceMap.at(V.first);
+        double PtrTyGraphInfluence = -1 ;
+        if (SolPtrTypCG_InfluenceMap.find(V.first) != SolPtrTypCG_InfluenceMap.end())
+            PtrTyGraphInfluence = SolPtrTypCG_InfluenceMap.at(V.first);
+
+        V.first->print(O);
+        O << " = [";
+        O << "Checked=";
+        V.second.first->print(O);
+        O << "[ " <<CheckedGraphInfluence<<" ]";
+        O << ", PtrType=";
+        V.second.second->print(O);
+        O << "[ " <<PtrTyGraphInfluence<<" ]";
+        O << "]";
+        O << "\n";
+    }
+}
+
+void ConstraintsEnv::printISTM(raw_ostream &O) const {
+    O << "ISTM ENVIRONMENT: \n";
+    for (const auto &V : Environment) {
+        double CheckedGraphInfluence = -1 ;
+        if (SolChkCG_InfluenceMap.find(V.first) != SolChkCG_InfluenceMap.end())
+            CheckedGraphInfluence = SolChkCG_InfluenceMap.at(V.first);
+        double PtrTyGraphInfluence = -1 ;
+        if (SolPtrTypCG_InfluenceMap.find(V.first) != SolPtrTypCG_InfluenceMap.end())
+            PtrTyGraphInfluence = SolPtrTypCG_InfluenceMap.at(V.first);
+        if (CheckedGraphInfluence != -1 || PtrTyGraphInfluence != -1)
+        {
+            V.first->print(O);
+            O << " = [";
+            O << "Checked=";
+            O << "[ " <<CheckedGraphInfluence<<" ]";
+            O << ", PtrType=";
+            O << "[ " <<PtrTyGraphInfluence<<" ]";
+            O << "]";
+            O << "\n";
+        }
+    }
 }
 
 void ConstraintsEnv::dumpJson(llvm::raw_ostream &O) const {
   bool AddComma = false;
   O << "\"Environment\":[";
   for (const auto &V : Environment) {
+    double CheckedGraphInfluence = -1 ;
+    if (SolChkCG_InfluenceMap.find(V.first) != SolChkCG_InfluenceMap.end())
+        CheckedGraphInfluence = SolChkCG_InfluenceMap.at(V.first);
+    double PtrTyGraphInfluence = -1 ;
+    if (SolPtrTypCG_InfluenceMap.find(V.first) != SolPtrTypCG_InfluenceMap.end())
+        PtrTyGraphInfluence = SolPtrTypCG_InfluenceMap.at(V.first);
+
     if (AddComma) {
       O << ",\n";
     }
     O << "{\"var\":";
     V.first->dumpJson(O);
     O << ", \"value:\":{\"checked\":";
+    O << "[ " <<CheckedGraphInfluence<<" ]";
     V.second.first->dumpJson(O);
     O << ", \"PtrType\":";
     V.second.second->dumpJson(O);
+    O << "[ " <<PtrTyGraphInfluence<<" ]";
     O << "}}";
     AddComma = true;
   }

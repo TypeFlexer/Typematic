@@ -53,6 +53,7 @@ template <typename T> struct PComp {
 
 class VarAtom;
 
+typedef std::map<VarAtom*, double> InfluenceMap;
 // Represents atomic values that can occur at positions in constraints.
 class Atom {
 public:
@@ -881,15 +882,21 @@ VarAtom *getOrCreateTaintedStructVar(ConstraintKey V, TaintedVarSolTy InitC, std
 
     VarAtom *getFreshStructVar(TaintedVarSolTy InitV, std::string Name, VarAtom::VarKind VK);
 
+    InfluenceMap SolPtrTypCG_InfluenceMap;
+    InfluenceMap SolChkCG_InfluenceMap;
+
+    void printISTM(llvm::raw_ostream &O) const;
+
 private:
   EnvironmentMap Environment; // Solution map: Var --> Sol
-//  TaintedEnvironmentMap TaintedEnvironment; // Solution map: TaintedVar --> TaintedSol
+    //  TaintedEnvironmentMap TaintedEnvironment; // Solution map: TaintedVar --> TaintedSol
   uint32_t ConsFreeKey;       // Next available integer to assign to a Var
   bool UseChecked;            // Which solution map to use -- checked (vs. ptyp)
   bool assignTainted(VarAtom *V, ConstAtom *C);
   VarAtom *getTaintedVar(ConstraintKey V) const;
 
     VarAtom *getFreshStructVar(ConstraintKey V, TaintedVarSolTy InitC, std::string Name, VarAtom::VarKind VK);
+
 };
 
 class ConstraintVariable;
@@ -972,6 +979,8 @@ public:
 
     void solve(ProgramInfo &Info);
 
+    void printISTM(llvm::raw_ostream &O) const;
+
 private:
   ConstraintSet TheConstraints;
   //TaintedConstraintSet TheTaintedConstraints;
@@ -1020,6 +1029,12 @@ private:
     VarSolTy getDefaultStructureSolution();
 
     bool graphBasedSolve(ProgramInfo &Info);
+
+    void assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, double> &InfluenceScores);
+
+    void calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited, std::map<VarAtom *, double> &Scores,
+                            ConstraintsGraph &CG);
+
 };
 
 #endif

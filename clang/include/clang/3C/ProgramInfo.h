@@ -189,6 +189,8 @@ public:
 
     SVarOption getStructVariable(Decl *D, ASTContext *C);
 
+    void dumpISTM();
+
 private:
   // List of constraint variables for declarations, indexed by their location in
   // the source. This information persists across invocations of the constraint
@@ -291,6 +293,8 @@ private:
     void StructureconstrainWildIfMacro(StructureConstraintVariable *SV, SourceLocation Location, const ReasonLoc &Rsn);
 
     StructConstraint *getStructConstraint(RecordDecl *D, ASTContext *C) const;
+
+    void printISTM(raw_ostream &O) const;
 };
 
 #endif

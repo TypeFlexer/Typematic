@@ -104,6 +104,11 @@ void ProgramInfo::print(raw_ostream &O) const {
   dumpStaticFuncMap(StaticFunctionFVCons, O);
 }
 
+void ProgramInfo::printISTM(raw_ostream &O) const {
+  CS.printISTM(O);
+  O << "\n";
+}
+
 void ProgramInfo::dumpJson(llvm::raw_ostream &O) const {
   O << "{\"Setup\":";
   CS.dumpJson(O);
@@ -1411,4 +1416,8 @@ void ProgramInfo::registerTranslationUnits(
     TranslationUnitIdxMap[&(AST->getASTContext())] = Idx;
     Idx++;
   }
+}
+
+void ProgramInfo::dumpISTM() {
+  printISTM(llvm::errs());
 }
