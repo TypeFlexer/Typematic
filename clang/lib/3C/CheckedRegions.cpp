@@ -567,10 +567,11 @@ void CheckedRegionFinder::markChecked(CompoundStmt *S, int Localwild) {
 void CheckedRegionFinder::markTainted(CompoundStmt *S, int Localwild) {
   llvm::FoldingSetNodeID Id;
   S->Profile(Id, *Context, true);
-
+  auto FD = getFunctionDeclOfBody(Context, S);
 
   bool IsTainted = !hasUncheckedParameters(S) && hasTaintedParameters(S) &&
-                   Localwild == 0 ;
+                    FD->getName() != "main" &&
+                    Localwild == 0 ;
 
   Map[Id] = IsTainted ? IS_TAINTED : Map[Id] ;
 }

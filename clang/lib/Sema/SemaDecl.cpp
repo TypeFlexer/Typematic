@@ -10122,7 +10122,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
          */
         if(D.getDeclSpec().isTaintedSpecified() || IsTaintedScope()){
           NewFD->setTaintedDecl(true);
-          if(!CheckTaintedFunctionIntegrity(Param)){
+          if(!getLangOpts()._3C && !CheckTaintedFunctionIntegrity(Param)){
             NewFD->setInvalidDecl();
           }
         }

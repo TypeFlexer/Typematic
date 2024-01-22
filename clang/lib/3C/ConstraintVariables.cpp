@@ -1218,8 +1218,8 @@ PointerVariableConstraint::PointerVariableConstraint(
     }
 
     //we gonna wanna duplicate it for the tainted types as well
-    if (Ty->isTaintedPointerType()) {
-      ConstAtom *CAtom = nullptr;
+    if (Ty->isTaintedPointerType() || VarAtomForTainted) {
+      ConstAtom *CAtom = CS.getTaintedPtr();
       if (Ty->isTaintedPointerNtArrayType()) {
         // This is an NT array type.
         CAtom = CS.getTaintedNTArr();
@@ -1245,10 +1245,7 @@ PointerVariableConstraint::PointerVariableConstraint(
       assert(CAtom != nullptr && "Unable to find the type "
                                  "of the checked pointer.");
       Atom *NewAtom;
-      if (VarAtomForTainted)
-        NewAtom = CS.getFreshTaintedVar(Npre + N, VK);
-      else
-        NewAtom = CAtom;
+      NewAtom = CAtom;
       Vars.push_back(NewAtom);
       SrcVars.push_back(CAtom);
 
@@ -3020,7 +3017,7 @@ FunctionVariableConstraint::FunctionVariableConstraint(
       QualType QT = FT->getParamType(J);
       QualType ITypeT;
       bool ParamHasItype = FT->getParamAnnots(J).getInteropTypeExpr();
-      bool ParamIsTainted = QT->isTaintedPointerType();
+      bool ParamIsTainted = QT->isTaintedPointerType() || (FD && FD->isTainted());
       if (ParamHasItype)
         ITypeT = FT->getParamAnnots(J).getInteropTypeExpr()->getType();
 
@@ -5942,7 +5939,7 @@ FVComponentVariable::FVComponentVariable(const QualType &QT,
     {
         ExternalConstraint =
                 reinterpret_cast<PVConstraint *>(new TPVConstraint(QT, D, N, I, C, InFunc, -1, PotentialGeneric,
-                                                                   HasItype,
+                                                                   IsTaintedFunctionPointer,
                                                                    nullptr, ITypeT));
         if (!HasItype && QT->isVoidPointerType()) {
             InternalConstraint = ExternalConstraint;
