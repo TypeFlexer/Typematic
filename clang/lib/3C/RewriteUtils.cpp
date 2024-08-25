@@ -888,6 +888,9 @@ SourceLocation FunctionDeclReplacement::getDeclEnd(SourceManager &SM) const {
 std::string ArrayBoundsRewriter::getBoundsString(const PVConstraint *PV,
                                                  Decl *D, bool Isitype,
                                                  bool OmitLowerBound) {
+
+  if ( _3COpts.Mode == "typeflexer")
+      return "";
   auto &ABInfo = Info.getABoundsInfo();
 
   // Try to find a bounds key for the constraint variable. If we can't,

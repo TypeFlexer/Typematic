@@ -52,14 +52,14 @@ bool CheckedRegionAdder::VisitCompoundStmt(CompoundStmt *S) {
 
   switch (Map[Id]) {
   case IS_UNCHECKED:
-    if (isParentChecked(DTN) && getFunctionDeclOfBody(Context, S) == nullptr) {
+    if (isParentChecked(DTN) && (_3COpts.Mode != "typeflexer") && getFunctionDeclOfBody(Context, S) == nullptr) {
       auto Loc = S->getBeginLoc();
       Writer.InsertTextBefore(Loc, "_Unchecked ");
       PState.incrementNumUnCheckedRegions();
     }
     break;
   case IS_CHECKED:
-    if (!isParentChecked(DTN)) {
+    if (!isParentChecked(DTN) && (_3COpts.Mode != "typeflexer")) {
       auto Loc = S->getBeginLoc();
       Writer.InsertTextBefore(Loc, "_Checked ");
       PState.incrementNumCheckedRegions();
@@ -378,24 +378,32 @@ bool CheckedRegionFinder::hasUncheckedParameters(CompoundStmt *S) {
 }
 
 bool CheckedRegionFinder::hasTaintedParameters(CompoundStmt *S) {
-  const auto &Parents = Context->getParents(*S);
-  if (Parents.empty()) {
-    return false;
-  }
+    const auto &Parents = Context->getParents(*S);
+    if (Parents.empty()) {
+        return false;
+    }
 
-  const auto *Parent = Parents[0].get<FunctionDecl>();
-  if (!Parent) {
-    return false;
-  }
+    const auto *Parent = Parents[0].get<FunctionDecl>();
+    if (!Parent) {
+        return false;
+    }
 
-  bool Tainted = true;
-  for (auto *Child : Parent->parameters()) {
-    CheckedRegionFinder Sub(Context, Writer, Info, Seen, Map, EmitWarnings);
-    Sub.TraverseParmVarDecl(Child);
-    Tainted &= Sub.Tainted;
-  }
+    bool Tainted = true;
+    for (auto *Child : Parent->parameters()) {
+        QualType ParamType = Child->getType();
 
-  return Tainted;
+        // Check if the type is a pointer type
+        if (const auto *PtrType = ParamType->getAs<clang::PointerType>()) {
+
+            // Determine if the outermost pointer is a tainted pointer type
+            if (PtrType->isPointerType() && !PtrType->isTaintedPointerType()) {
+                Tainted = false;
+                break;
+            }
+        }
+    }
+
+    return Tainted;
 }
 
 bool CheckedRegionFinder::isInStatementPosition(CallExpr *C) {

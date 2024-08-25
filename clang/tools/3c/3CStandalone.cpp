@@ -102,7 +102,7 @@ static cl::opt<std::string> OptMode(
                  "typeflexer, only tainted annotations are added, if mode is mixed, both checked-c and "
                  "tainted annotations are added (In mixed mode, tainted pointer anntotation overwrites a non-user "
                  "annotated checked-c pointer"),
-        cl::init("mixed"), cl::cat(_3CCategory));
+        cl::init("typeflexer"), cl::cat(_3CCategory));
 
 
 static cl::opt<std::string> OptOutputDir(

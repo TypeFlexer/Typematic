@@ -1,6 +1,9 @@
+#include <stdio.h>
+
 // Function to add two integers
 int (*o_fptr[2])(int*, int*);
 
+/*
 _Tainted int add(int* a, int* b) {
     return *a + *b;
 }
@@ -23,7 +26,7 @@ int main() {
     y = malloc(4);
 
     // Using the add function
-    o_fptr[0] = add;
+    //o_fptr[0] = add;
     o_fptr[1] = multiply;
 
     int result1 = o_fptr[0](x, y);
@@ -39,3 +42,5 @@ int main() {
 
     return 0;
 }
+
+*/

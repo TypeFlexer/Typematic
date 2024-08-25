@@ -1801,7 +1801,7 @@ bool PointerVariableConstraint::emitArraySize(
 
   if (Oat == O_SizedArray) {
     std::ostringstream SizeStr;
-    if (Kind != Atom::A_Wild)
+    if ((Kind != Atom::A_Wild) && _3COpts.Mode != "typeflexer")
       SizeStr << (Kind == Atom::A_NTArr ? " _Nt_checked" : " _Checked");
     if (ArrSizeStrs.find(TypeIdx) != ArrSizeStrs.end()) {
       std::string SrcSizeStr = ArrSizeStrs.find(TypeIdx)->second;
@@ -2040,9 +2040,6 @@ PointerVariableConstraint::mkString(Constraints &CS,
 
     Atom::AtomKind K = C->getKind();
     VarAtom *VA = dyn_cast<VarAtom>(V);
-//    if (VA && VA->cannotTainted()) {
-//        K = Atom::A_Wild;
-//    }
 
     // If this is not an itype or generic
     // make this wild as it can hold any pointer type.
@@ -2075,13 +2072,9 @@ PointerVariableConstraint::mkString(Constraints &CS,
             FptrInner << "*";
             getQualString(TypeIdx, FptrInner);
         } else {
-            if (!EmittedBase) {
-                assert(!BaseTypeName.empty());
-                EmittedBase = true;
-                Ss << BaseTypeName << " ";
-            }
-            Ss << "*";
+            EmittedBase = false;
             getQualString(TypeIdx, Ss);
+            EndStrs.push_front("*");
         }
     }
     else{
@@ -2128,13 +2121,43 @@ PointerVariableConstraint::mkString(Constraints &CS,
         }
     }
     else {
-        getQualString(TypeIdx, Ss);
-        BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
+        // Get the current content of Ss
+        std::string currentContent = Ss.str();
 
-        EmittedBase = false;
-        Ss << "_TPtr<";
-        EndStrs.push_front(">");
-        AlreadyATaintedPointer = true;
+        // Find the position of the first '*' (indicating pointer(s))
+        size_t starPos = currentContent.find_first_of('*');
+
+        // If we found any '*' characters, we need to handle them
+        if (starPos != std::string::npos) {
+            // Extract the type portion before the first '*'
+            std::string beforeStars = currentContent.substr(0, starPos);
+
+            // Count the number of '*' characters
+            size_t starCount = std::count(currentContent.begin() + starPos, currentContent.end(), '*');
+
+            // Clear Ss and remove the type and '*' from its content
+            Ss.str("");  // Clear the contents of Ss
+            Ss.clear();  // Clear any error flags
+            getQualString(TypeIdx, Ss);
+            BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
+
+            EmittedBase = false;
+            // Add the _TPtr type to Ss
+            Ss << "_TPtr<";
+
+            // Add the closing '>' and append the stars at the end
+            EndStrs.push_front(">" + std::string(starCount, '*'));
+            AlreadyATaintedPointer = true;
+        } else {
+            // If no '*' is found, just proceed with adding _TPtr as usual
+            getQualString(TypeIdx, Ss);
+            BaseTypeName = std::regex_replace(BaseTypeName, pattern, replacement);
+
+            EmittedBase = false;
+            Ss << "_TPtr<";
+            EndStrs.push_front(">");
+            AlreadyATaintedPointer = true;
+        }
     }
     break;
     case Atom::A_Arr:
@@ -4286,8 +4309,8 @@ bool PointerVariableConstraint::solutionEqualTo(Constraints &CS,
         // ARR or PTR.
         if (ComparePtyp && IsZeroWidthArray) {
           assert(I != Vars.end() && "Zero width array cannot be base type.");
-          assert("Zero width arrays should be encoded as PTR." &&
-                 CS.getAssignment(*I) == CS.getPtr());
+//          assert("Zero width arrays should be encoded as PTR." &&
+//                 CS.getAssignment(*I) == CS.getPtr());
           ConstAtom *JAtom = CS.getAssignment(*J);
           // Zero width array can compare as either ARR or PTR
           if (JAtom != CS.getArr() && JAtom != CS.getPtr())

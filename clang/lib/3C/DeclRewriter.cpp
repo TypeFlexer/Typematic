@@ -319,6 +319,13 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
         std::vector<std::string> SDecl;
         MultiDeclMemberDecl *MMD = getAsMultiDeclMember(D);
         RewrittenDecl RRD = buildTstructDecl(SV, dyn_cast<RecordDecl>(D), "", Info);
+
+        // Check if RRD.Type is "struct " and skip rewriting if it is
+        if (RRD.Type == "struct ") {
+          // Skip the rewrite process since the type is "struct "
+          return;
+        }
+
         RewriteTheseStructures.insert(std::make_pair(
                 MMD, new MultiDeclMemberReplacement(MMD, RRD.Type, SDecl)));
         DeclRewriter DeclRS(R, Info, Context);
@@ -789,8 +796,8 @@ bool FunctionDeclBuilder::VisitFunctionDecl(FunctionDecl *FD) {
   // when -infer-types-for-undef is not passed. This assumption could be
   // transformed into an assertion if we're confident it won't fail in too many
   // places.
-  if (!_3COpts.InferTypesForUndefs && !FDConstraint->hasBody())
-    return true;
+//  if (!_3COpts.InferTypesForUndefs && !FDConstraint->hasBody())
+//    return true;
 
   // RewriteParams and RewriteReturn track if we will need to rewrite the
   // parameter and return type declarations on this function. They are first
