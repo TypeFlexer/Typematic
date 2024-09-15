@@ -1185,9 +1185,9 @@ bool CompilerInvocation::ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args,
     Opts.ExplicitEmulatedTLS = true;
   }
 
-  if (Args.hasArg(OPT_fdrymatic))
+  if (Args.hasArg(OPT_fdrymatic)) {
     Opts.drymatic = true;
-
+  }
   if (Arg *A = Args.getLastArg(OPT_fdenormal_fp_math_EQ)) {
     StringRef Val = A->getValue();
     Opts.FPDenormalMode = llvm::parseDenormalFPAttribute(Val);
@@ -2178,6 +2178,12 @@ void CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
                                        InputKind IK, const llvm::Triple &T,
                                        std::vector<std::string> &Includes,
                                        DiagnosticsEngine &Diags) {
+
+  if (const Arg *A = Args.getLastArg(OPT_fdrymatic))
+  {
+    Opts.drymatic = true;
+  }
+
   // FIXME: Cleanup per-file based stuff.
   LangStandard::Kind LangStd = LangStandard::lang_unspecified;
   if (const Arg *A = Args.getLastArg(OPT_std_EQ)) {

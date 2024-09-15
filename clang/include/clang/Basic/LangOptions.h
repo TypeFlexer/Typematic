@@ -311,6 +311,7 @@ public:
   /// changes during compilation to reflect the current module.
   std::string CurrentModule;
 
+  bool drymatic;
   /// The names of any features to enable in module 'requires' decls
   /// in addition to the hard-coded list in Module.cpp and the target features.
   ///

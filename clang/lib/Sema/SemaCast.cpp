@@ -2995,7 +2995,7 @@ void CastOperation::CheckCStyleCast(bool IsCheckedScope, bool IsTaintedScope,
   if(S != nullptr && !S->isFunctionScope())
     S = this->RecursiveScopeResolve(S);
 
-  if(S != nullptr && !((S->isTaintedFunctionScope() || IsTaintedScope)
+  if(!Self.getLangOpts().drymatic && S != nullptr && !((S->isTaintedFunctionScope() || IsTaintedScope)
                         || (S->isTLIBFunctionScope() || IsTLIBScope))) {
     if (DestType->isTaintedPointerType()) {
       if ((!SrcType->isTaintedPointerType())) {
@@ -3008,7 +3008,7 @@ void CastOperation::CheckCStyleCast(bool IsCheckedScope, bool IsTaintedScope,
     }
 
     // CheckCBox - Tainted Pointers Cannot be Cast to Un-Tainted Pointers
-    if (DestType->isPointerType() && (!DestType->isTaintedPointerType())) {
+    if (!Self.getLangOpts().drymatic && DestType->isPointerType() && (!DestType->isTaintedPointerType())) {
       if (!Self.getLangOpts().drymatic && (SrcType->isTaintedPointerType())) {
         Self.Diag(SrcExpr.get()->getExprLoc(),
                   diag::err_tainted_cast_to_untainted)

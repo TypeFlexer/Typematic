@@ -619,8 +619,12 @@ StructureVariableConstraint::StructureVariableConstraint(
                     {
                         PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
                         for (const auto &V : PV->getCvars())
+                        {
                             CS.addConstraint(CS.createGeq(NewAtom, V,
                                                           ReasonLoc("Pointer within a Structure",PSL), false));
+                            V->setRoot(reinterpret_cast<DeclaratorDecl *>(RD));
+                        }
+
                     }
                     else
                     {
@@ -1249,7 +1253,7 @@ PointerVariableConstraint::PointerVariableConstraint(
       Vars.push_back(NewAtom);
       SrcVars.push_back(CAtom);
 
-      if (Ty->getPointeeType()->isRecordType() && !Ty->getPointeeType()->isTaintedStructureType())
+      if (_3COpts.GenTstructs && Ty->getPointeeType()->isRecordType() && !Ty->getPointeeType()->isTaintedStructureType())
       {
         RecordDecl* RD = Ty->getPointeeType()->getAsRecordDecl();
         PersistentSourceLoc PLoc = PersistentSourceLoc::mkPSL(RD, C);
@@ -1278,9 +1282,34 @@ PointerVariableConstraint::PointerVariableConstraint(
               if (cvar.hasValue())
               {
                   PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
-                  for (const auto &V : PV->getCvars())
+                  for (const auto &V : PV->getCvars()) {
                       CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
-                                                    ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                                                    ReasonLoc("Pointer within a Tainted Structure", PSL)));
+                      //check if field is a pointer to a structure, then we need to create a relationship
+                      //between the structure and the pointer as well
+
+                      if (fieldType->isPointerType() && fieldType->getCoreTypeInternal()->isRecordType())
+                      {
+                          auto recordDecl = fieldType->getCoreTypeInternal()->getAsRecordDecl();
+                          SVarOption Svar = I.getStructVariable(recordDecl, TmpCtx);
+
+                          if (Svar.hasValue())
+                          {
+                              StructureVariableConstraint *InternalDecl = (StructureVariableConstraint *)(&Svar.getValue());
+
+                              if (RD != recordDecl)
+                              {
+                                  //taint to propagate into another structure
+                                  for (const auto &VI : InternalDecl->getCvars()) {
+                                      VI->setRoot(reinterpret_cast<DeclaratorDecl *>(recordDecl));
+                                      CS.addConstraint(CS.createGeq(VI, V,
+                                                                    ReasonLoc("Pointer to structure with a Tstruct", PSL)));
+                                  }
+                              }
+                          }
+                      }
+                      V->setRoot(D);
+                  }
               }
               else
               {
@@ -1290,6 +1319,29 @@ PointerVariableConstraint::PointerVariableConstraint(
                     SrcVars.push_back(CS.getTaintedPtr());
                     CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
                                                   ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                    VA->setRoot(D);
+                  //check if field is a pointer to a structure, then we need to create a relationship
+                  //between the structure and the pointer as well
+
+                  if (fieldType->isPointerType() && fieldType->getCoreTypeInternal()->isRecordType())
+                  {
+                      auto recordDecl = fieldType->getCoreTypeInternal()->getAsRecordDecl();
+                      SVarOption Svar = I.getStructVariable(recordDecl, TmpCtx);
+
+                      if (Svar.hasValue())
+                      {
+                          StructureVariableConstraint *InternalDecl = (StructureVariableConstraint *)(&Svar.getValue());
+
+                          if (RD != recordDecl)
+                          {
+                              //taint to propagate into another structure
+                              for (const auto &VI : InternalDecl->getCvars()) {
+                                  CS.addConstraint(CS.createGeq(VI, VA,
+                                                                ReasonLoc("Pointer to structure with a Tstruct", PSL)));
+                              }
+                          }
+                      }
+                  }
               }
           }
         }

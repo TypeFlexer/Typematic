@@ -54,6 +54,7 @@ template <typename T> struct PComp {
 class VarAtom;
 
 typedef std::map<VarAtom*, double> InfluenceMap;
+typedef std::map<VarAtom*, clang::DeclaratorDecl*> InfluenceRootMap;
 // Represents atomic values that can occur at positions in constraints.
 class Atom {
 public:
@@ -61,6 +62,7 @@ public:
 
 private:
   AtomKind Kind;
+  clang::DeclaratorDecl *D = nullptr;
 
 public:
   Atom(AtomKind K) : Kind(K) {}
@@ -70,6 +72,16 @@ public:
 
   void setKind(AtomKind aK) {
       Kind = aK;
+  }
+
+  void setRoot(clang::DeclaratorDecl* decl)
+  {
+      D = decl;
+  }
+
+  clang::DeclaratorDecl* getRoot()
+  {
+        return D;
   }
 
   void reflectToTaintedKind()
@@ -880,12 +892,13 @@ VarAtom *getOrCreateTaintedStructVar(ConstraintKey V, TaintedVarSolTy InitC, std
   bool checkTaintedAssignment(TaintedVarSolTy C);
   std::set<VarAtom *> filterAtoms(VarAtomPred Pred);
 
-    VarAtom *getFreshStructVar(TaintedVarSolTy InitV, std::string Name, VarAtom::VarKind VK);
+  VarAtom *getFreshStructVar(TaintedVarSolTy InitV, std::string Name, VarAtom::VarKind VK);
 
-    InfluenceMap SolPtrTypCG_InfluenceMap;
-    InfluenceMap SolChkCG_InfluenceMap;
+  InfluenceMap SolPtrTypCG_InfluenceMap;
+  InfluenceRootMap SolPtrTypCG_Root_InfluenceMap;
+  InfluenceMap SolChkCG_InfluenceMap;
 
-    void printISTM(llvm::raw_ostream &O) const;
+  void printISTM(llvm::raw_ostream &O) const;
 
 private:
   EnvironmentMap Environment; // Solution map: Var --> Sol
@@ -1030,11 +1043,12 @@ private:
 
     bool graphBasedSolve(ProgramInfo &Info);
 
-    void assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, double> &InfluenceScores);
 
     void calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited, std::map<VarAtom *, double> &Scores,
-                            ConstraintsGraph &CG);
+                            InfluenceRootMap &influence_root_map, ConstraintsGraph &CG, ProgramInfo *Info);
 
+    void assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, double> &InfluenceScores,
+                               InfluenceRootMap &Influence_root_map, ProgramInfo *Info);
 };
 
 #endif

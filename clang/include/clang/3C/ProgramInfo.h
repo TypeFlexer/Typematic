@@ -191,6 +191,11 @@ public:
 
     void dumpISTM();
 
+// For each pointer type in the declaration of D, add a variable to the
+// constraint system for that pointer type.
+void addVariable(clang::DeclaratorDecl *D,
+                 clang::ASTContext *AstContext) override;
+
 private:
   // List of constraint variables for declarations, indexed by their location in
   // the source. This information persists across invocations of the constraint
@@ -279,12 +284,7 @@ private:
   void insertCVAtoms(ConstraintVariable *CV,
                      std::map<ConstraintKey, ConstraintVariable *> &AtomMap);
 
-  // For each pointer type in the declaration of D, add a variable to the
-  // constraint system for that pointer type.
-  void addVariable(clang::DeclaratorDecl *D,
-                   clang::ASTContext *AstContext) override;
-
-  void linkFunction(FunctionVariableConstraint *FV);
+    void linkFunction(FunctionVariableConstraint *FV);
 
     void unifyIfTypedef(const QualType &QT, ASTContext &Context, TPVConstraint *P, ConsAction CA);
 

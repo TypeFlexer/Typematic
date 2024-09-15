@@ -206,6 +206,12 @@ bool CallsForCastRewriting(QualType DstType, QualType SrcType)
   if (!DstType->isTaintedPointerType() && SrcType->isTaintedPointerType())
     return true;
 
+  if (!DstType->isPointerType())
+    return true;
+
+  if (!SrcType->isPointerType())
+    return true;
+
   QualType DstPtrType = DstType->getPointeeType();
   QualType SrcPtrType = SrcType->getPointeeType();
 

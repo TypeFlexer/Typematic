@@ -66,17 +66,24 @@ bool CheckedRegionAdder::VisitCompoundStmt(CompoundStmt *S) {
     }
     break;
   case IS_TAINTED:
-    if (!isParentTainted(DTN)) {
-      auto *FD = getFunctionDeclOfBody(Context, S);
-      if (FD != nullptr) {
-        SourceRange range(FD->getBeginLoc(), FD->getBeginLoc().getLocWithOffset(8));
-        std::string funcDeclStart = getSourceText(range, Context->getSourceManager(), Context->getLangOpts());
-        if (funcDeclStart != "_Tainted") {
-          Writer.InsertTextBefore(FD->getBeginLoc(), "_Tainted ");
-          PState.incrementNumTaintedRegions();
-        }
-      }
-    }
+
+    /*
+     * I am removing this as I want to leave this to the responsibility of the developer.
+     * Marking a function tainted means all its member function calls must be to tainted functions,
+     * Similar it must be single in/out, no global access. All this requires full program analysis seperately
+     * on a fully annotated program. It is possible, but will do it later.
+     */
+//    if (!isParentTainted(DTN)) {
+//      auto *FD = getFunctionDeclOfBody(Context, S);
+//      if (FD != nullptr) {
+//        SourceRange range(FD->getBeginLoc(), FD->getBeginLoc().getLocWithOffset(8));
+//        std::string funcDeclStart = getSourceText(range, Context->getSourceManager(), Context->getLangOpts());
+//        if (funcDeclStart != "_Tainted") {
+//          Writer.InsertTextBefore(FD->getBeginLoc(), "_Tainted ");
+//          PState.incrementNumTaintedRegions();
+//        }
+//      }
+//    }
     break;
   default:
     llvm_unreachable("Bad flag in CheckedRegionAdder");

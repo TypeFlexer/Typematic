@@ -45,6 +45,8 @@ struct _3COptions {
   bool ItypesForExtern;
   bool InferTypesForUndefs;
   bool DebugSolver;
+  bool AnalyzeTaintChoke;
+  bool GenTstructs;
   bool OnlyGreatestSol;
   bool OnlyLeastSol;
   bool DisableRDs;

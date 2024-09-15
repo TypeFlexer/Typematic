@@ -262,6 +262,16 @@ static cl::opt<bool> OptDebugSolver(
     cl::desc("Dump intermediate solver state"),
     cl::init(false), cl::cat(_3CCategory));
 
+static cl::opt<bool> OptAnalyzeTaintChoke(
+        "analyze-choke",
+        cl::desc("Analyze Taint explosion"),
+        cl::init(false), cl::cat(_3CCategory));
+
+static cl::opt<bool> OptGenTstructs(
+        "add-tstructs",
+        cl::desc("S_ALL sandbox type propagation"),
+        cl::init(true), cl::cat(_3CCategory));
+
 static cl::opt<bool> OptOnlyGreatestSol(
     "only-g-sol",
     cl::desc("Perform only greatest solution for Pty Constrains."),
@@ -367,6 +377,8 @@ int main(int argc, const char **argv) {
   CcOptions.ItypesForExtern = OptItypesForExtern;
   CcOptions.InferTypesForUndefs = OptInferTypesForUndef;
   CcOptions.DebugSolver = OptDebugSolver;
+  CcOptions.AnalyzeTaintChoke = OptAnalyzeTaintChoke;
+  CcOptions.GenTstructs = OptGenTstructs;
   CcOptions.OnlyGreatestSol = OptOnlyGreatestSol;
   CcOptions.OnlyLeastSol = OptOnlyLeastSol;
   CcOptions.DisableRDs = OptDisableRDs;

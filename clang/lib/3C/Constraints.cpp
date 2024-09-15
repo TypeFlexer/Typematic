@@ -243,20 +243,23 @@ bool Constraints::removeReasonBasedConstraint(TaintedConstraint *C) {
   return false;
 }
 
-void InitializeEnvironmentInfluenceMap(const EnvironmentMap& envMap, InfluenceMap& influenceMap) {
+void InitializeEnvironmentInfluenceMap(const EnvironmentMap& envMap, InfluenceMap& influenceMap,
+                                       InfluenceRootMap& influence_root_Map) {
     for (const auto& pair : envMap) {
         VarAtom* key = pair.first;
         influenceMap[key] = -1.0;
+        influence_root_Map[key] = nullptr;
     }
 }
 
 void Constraints::calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visited,
-                        std::map<VarAtom *, double> &Scores, ConstraintsGraph &CG) {
+                        std::map<VarAtom *, double> &Scores, InfluenceRootMap& influence_root_map, ConstraintsGraph &CG, ProgramInfo* Info) {
     if (Visited.find(Current) != Visited.end()) {
         return; // Avoid cycles and revisiting nodes
     }
 
     Visited.insert(Current); // Mark Current as visited
+    Decl* Current_decl = Current->getRoot();
 
     std::set<Atom *> Neighbors;
     CG.getNeighbors(Current, Neighbors, true); // Assuming true for least solution
@@ -269,17 +272,53 @@ void Constraints::calculateInfluence(VarAtom *Current, std::set<VarAtom *> &Visi
             auto isVarResolvedAsTainted = (this->getVariables().at(Neighbor).first->isTainted() ||
                                            this->getVariables().at(Neighbor).second->isTainted());
             if ((Visited.find(Neighbor) == Visited.end()) && isVarResolvedAsTainted) {
-                calculateInfluence(Neighbor, Visited, Scores, CG);
+                calculateInfluence(Neighbor, Visited, Scores, influence_root_map, CG, Info);
                 score += Scores[Neighbor]; // Accumulate scores from neighbors
             }
         }
-    }
 
+        if (NeighborA->getKind() == Atom::A_Tstruct)
+        {
+            StructureAtom* StructureNbr = (StructureAtom*)(NeighborA);
+            //fetch the decl for the structure
+            //iterate through all the fields of the structure and then visit each field one by one -->
+            DeclaratorDecl* RecDecl =  StructureNbr->getRoot();
+            if (RecDecl)
+            {
+                RecordDecl* RD = reinterpret_cast<RecordDecl *>(RecDecl);
+                auto &Ctx = RD->getASTContext();
+
+                for (FieldDecl* field : RD->fields()) {
+
+
+                    CVarOption cvar = Info->getVariable(field, &Ctx);
+                    if (cvar.hasValue())
+                    {
+                        PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                        for (const auto &V : PV->getCvars())
+                        {
+                            RecordDecl* RD_of_field = reinterpret_cast<RecordDecl *>(V->getRoot());
+                            if (VarAtom *SV = dyn_cast<VarAtom>(V)) {
+                                auto isVarResolvedAsTainted = (this->getVariables().at(SV).first->isTainted() ||
+                                                               this->getVariables().at(SV).second->isTainted());
+                                if ((Visited.find(SV) == Visited.end()) && isVarResolvedAsTainted
+                                        && (RD_of_field != Current_decl)) {
+                                    calculateInfluence(SV, Visited, Scores, influence_root_map, CG, Info);
+                                    score += Scores[SV]; // Accumulate scores from neighbors
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     // Assign the accumulated score to Current
     Scores[Current] = score;
 }
 
-void Constraints::assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, double> &InfluenceScores) {
+void Constraints:: assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, double> &InfluenceScores,
+                                         InfluenceRootMap & Influence_root_map, ProgramInfo* Info) {
     for (auto &AtomNode : CG.getAllConstAtoms()) {
         if (ConstAtom *CA = dyn_cast<ConstAtom>(AtomNode)) {
             if (CA->isTainted()) {
@@ -288,8 +327,9 @@ void Constraints::assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *
 
                 for (auto *NeighborA : Neighbors) {
                     if (VarAtom *Neighbor = dyn_cast<VarAtom>(NeighborA)) {
+                        //we assign declarator decl to every assigning varatom
                         std::set<VarAtom *> Visited;
-                        calculateInfluence(Neighbor, Visited, InfluenceScores, CG);
+                        calculateInfluence(Neighbor, Visited, InfluenceScores, Influence_root_map, CG, Info);
                     }
                 }
             }
@@ -641,12 +681,11 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
   bool RequiresResolve;
   bool Res = false;
 
-  InitializeEnvironmentInfluenceMap(Env.getVariables(), Env.SolChkCG_InfluenceMap);
-  InitializeEnvironmentInfluenceMap(Env.getVariables(), Env.SolPtrTypCG_InfluenceMap);
+  InitializeEnvironmentInfluenceMap(Env.getVariables(), Env.SolChkCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap);
+  InitializeEnvironmentInfluenceMap(Env.getVariables(), Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap);
   do
   {
     RequiresResolve = false;
-    assignInfluenceScores(SolChkCG, Env.SolChkCG_InfluenceMap);
     Res = doSolve(SolChkCG, Env, this, true, nullptr, Conflicts, StructsWorklist);
 
     // Now solve PtrType constraints
@@ -663,17 +702,17 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
                     return true;
                 },
                 getNTArr());
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolPtrTypCG, Env, this, true, nullptr, Conflicts, StructsWorklist);
       } else if (_3COpts.OnlyGreatestSol) {
         // Do only greatest solution
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
       } else {
         // Regular solve
         // Step 1: Greatest solution
         Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
       }
 
       // Step 2: Reset all solutions but for function params,
@@ -719,7 +758,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         // a lower bound will be resolved in the final greatest solution.
         std::set<VarAtom *> LowerBounded = findBounded(SolPtrTypCG, &Rest, true);
 
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolPtrTypCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
 
         // Step 3: Reset local variable solutions, compute greatest
@@ -732,7 +771,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
                              LowerBounded.find(VA) == LowerBounded.end();
                   },
                   getPtr());
-          assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
+          assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
           Res = doSolve(SolPtrTypCG, Env, this, false, &Rest, Conflicts, StructsWorklist);
         }
       }
@@ -786,7 +825,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         }
         Conflicts.clear();
         /* FIXME: Should we propagate the old res? */
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap);
+        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolChkCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
       }
       // Final Step: Merge ptyp solution with checked solution.
@@ -1131,24 +1170,39 @@ void ConstraintsEnv::print(raw_ostream &O) const {
 }
 
 void ConstraintsEnv::printISTM(raw_ostream &O) const {
-    O << "ISTM ENVIRONMENT: \n";
     for (const auto &V : Environment) {
-        double CheckedGraphInfluence = -1 ;
+        double CheckedGraphInfluence = -1.0;
         if (SolChkCG_InfluenceMap.find(V.first) != SolChkCG_InfluenceMap.end())
             CheckedGraphInfluence = SolChkCG_InfluenceMap.at(V.first);
-        double PtrTyGraphInfluence = -1 ;
+
+        double PtrTyGraphInfluence = -1.0;
         if (SolPtrTypCG_InfluenceMap.find(V.first) != SolPtrTypCG_InfluenceMap.end())
             PtrTyGraphInfluence = SolPtrTypCG_InfluenceMap.at(V.first);
-        if (CheckedGraphInfluence != -1 || PtrTyGraphInfluence != -1)
-        {
+
+        DeclaratorDecl* D = nullptr;
+
+        if (V.first->getRoot())
+            D = V.first->getRoot();
+
+        if (CheckedGraphInfluence != -1.0 || PtrTyGraphInfluence != -1.0) {
             V.first->print(O);
             O << " = [";
-            O << "Checked=";
-            O << "[ " <<CheckedGraphInfluence<<" ]";
-            O << ", PtrType=";
-            O << "[ " <<PtrTyGraphInfluence<<" ]";
-            O << "]";
-            O << "\n";
+
+            if (D) {
+                O << "Root Structure: ";
+
+                // Instead of D->dump(), extract and format the useful details.
+                // Get the type and location (source range) without dumping the pointer address.
+                O << D->getType().getAsString(); // Print the type (e.g., _TPtr<si>)
+                O << " at " << D->getLocation().printToString(D->getASTContext().getSourceManager());
+
+                O << ", PtrType=" << llvm::format("%.2f", PtrTyGraphInfluence);
+            } else {
+                if (PtrTyGraphInfluence != -1.0) {
+                    O << "PtrType=" << llvm::format("%.2f", PtrTyGraphInfluence);
+                }
+            }
+            O << "]\n";
         }
     }
 }

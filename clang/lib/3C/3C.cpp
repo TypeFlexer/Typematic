@@ -587,7 +587,8 @@ bool _3CInterface::solveConstraints() {
   if (_3COpts.Verbose)
     errs() << "Constraints solved\n";
 
-  GlobalProgramInfo.dumpISTM();
+  if (_3COpts.AnalyzeTaintChoke)
+    GlobalProgramInfo.dumpISTM();
 
   if (_3COpts.WarnRootCause)
     GlobalProgramInfo.computeInterimConstraintState(FilePaths);

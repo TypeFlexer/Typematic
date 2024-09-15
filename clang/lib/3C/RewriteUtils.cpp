@@ -9,6 +9,7 @@
 // classes of RewriteUtils.h
 //===----------------------------------------------------------------------===//
 
+#include <fstream>
 #include "clang/3C/RewriteUtils.h"
 #include "clang/3C/3CGlobalOptions.h"
 #include "clang/3C/CastPlacement.h"
@@ -702,24 +703,61 @@ public:
                 auto *DRE = llvm::dyn_cast<DeclRefExpr>(arg);
                 ValueDecl* VD = nullptr;
                 Decl* D = nullptr;
-                if (DRE == nullptr && (arg->getReferencedDeclOfCallee() != nullptr))
-                {
-                  VD = dyn_cast<ValueDecl>(arg->getReferencedDeclOfCallee());
-                }
-                else if (DRE != nullptr)
-                  VD = DRE->getDecl();
-                else
+                if (DRE == nullptr && (arg->getReferencedDeclOfCallee() != nullptr)) {
+                    VD = dyn_cast<ValueDecl>(arg->getReferencedDeclOfCallee());
+                } else if (DRE != nullptr) {
+                    VD = DRE->getDecl();
+                } else {
                     return true;
+                }
 
                 auto VarDInfo = Info.getVariable(VD, Context);
-                if (VarDInfo.hasValue()
-                && VarDInfo.getValue().hasTainted(Info.getConstraints().getVariables())){
+                if (VarDInfo.hasValue() && VarDInfo.getValue().hasTainted(Info.getConstraints().getVariables())) {
                     SourceLocation loc = CE->getBeginLoc();
                     // Get the source manager from the context
                     SourceManager &SM = Context->getSourceManager();
                     std::string FilePath = SM.getFilename(loc).str();
-                    // Check if the location belongs to the main file
+
+                    // Check if the location belongs to the main file and if it's writable
                     if ((SM.getFileID(loc) == SM.getMainFileID()) && canWrite(FilePath)) {
+                        // Search for "stdlib_tainted.h" in the file
+                        bool includeExists = false;
+                        std::ifstream sourceFile(FilePath);
+                        std::string line;
+                        while (std::getline(sourceFile, line)) {
+                            // Check if the line contains "stdlib_tainted.h"
+                            if (line.find("stdlib_tainted.h") != std::string::npos) {
+                                includeExists = true;
+                                break;
+                            }
+                        }
+                        sourceFile.close();
+
+                        // If the include directive is missing, insert it at the top or appropriate location
+                        if (!includeExists) {
+                            // Find the best location to insert the include directive
+                            SourceLocation insertLoc = SM.getLocForStartOfFile(SM.getMainFileID());
+                            const char* bufStart = SM.getCharacterData(insertLoc);
+                            const char* bufEnd = bufStart + SM.getFileIDSize(SM.getMainFileID());
+                            const char* pos = bufStart;
+
+                            while (pos < bufEnd) {
+                                // Create a std::string from the current position to the next newline
+                                std::string line(pos, strchr(pos, '\n') - pos);
+
+                                // Check if the line contains an #include directive
+                                if (line.find("#include ") != std::string::npos) {
+                                    // Move the insertion point to the line after the current include
+                                    insertLoc = SM.translateLineCol(SM.getMainFileID(), SM.getSpellingLineNumber(insertLoc) + 1, 1);
+                                }
+
+                                // Move to the next line
+                                pos = strchr(pos, '\n') + 1;
+                            }
+                            // Insert the #include directive
+                            Writer.InsertText(insertLoc, "#include <stdlib_tainted.h>;\n", true, true);
+                        }
+
                         // Modify the callee name
                         std::string newCalleeName = "t_" + funcName;
                         Writer.ReplaceText(loc, funcName.length(), newCalleeName);
