@@ -702,17 +702,16 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
                     return true;
                 },
                 getNTArr());
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
+        //assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolPtrTypCG, Env, this, true, nullptr, Conflicts, StructsWorklist);
       } else if (_3COpts.OnlyGreatestSol) {
         // Do only greatest solution
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
+        //assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
       } else {
         // Regular solve
         // Step 1: Greatest solution
         Res = doSolve(SolPtrTypCG, Env, this, false, nullptr, Conflicts, StructsWorklist);
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
       }
 
       // Step 2: Reset all solutions but for function params,
@@ -758,7 +757,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         // a lower bound will be resolved in the final greatest solution.
         std::set<VarAtom *> LowerBounded = findBounded(SolPtrTypCG, &Rest, true);
 
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
+        //assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolPtrTypCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
 
         // Step 3: Reset local variable solutions, compute greatest
@@ -771,7 +770,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
                              LowerBounded.find(VA) == LowerBounded.end();
                   },
                   getPtr());
-          assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
+          //assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
           Res = doSolve(SolPtrTypCG, Env, this, false, &Rest, Conflicts, StructsWorklist);
         }
       }
@@ -825,7 +824,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         }
         Conflicts.clear();
         /* FIXME: Should we propagate the old res? */
-        assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
+        //assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
         Res = doSolve(SolChkCG, Env, this, true, &Rest, Conflicts, StructsWorklist);
       }
       // Final Step: Merge ptyp solution with checked solution.
@@ -841,15 +840,16 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
       bool allFieldsAreValid = true;
       bool hasPointerField = false;
       bool hasStructField = false;
+      bool isCurrStruct_A_Tstruct = false;
 
       ASTContext *TmpCtx = const_cast<ASTContext *>(Context);
       CVarOption const rvar = Info.getVariable(CurrStructDecl, TmpCtx);
 
       Atom* CurrStructSol = Env.getAssignment(CurrStruct);
       if (CurrStructSol) {
-        bool isTstruct = CurrStructSol->isTainted();
+        isCurrStruct_A_Tstruct = CurrStructSol->isTainted();
 
-        if (isTstruct){
+        if (isCurrStruct_A_Tstruct){
 #ifdef DEBUG
           std::cout << "STRUCTURE WAS RESOLVED AS TAINTED STRUCT: " << CurrStruct->getStr() << std::endl;
 #endif
@@ -858,7 +858,6 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
           //of the Tainted structure are also marked as tainted
           RequiresResolve = true;
           toBeRemoved.push_back(CurrStruct);
-          break;
         }
       }
 
@@ -894,6 +893,41 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
         }
       }
 
+      if (isCurrStruct_A_Tstruct)
+      {
+          for (FieldDecl *field: CurrStructDecl->fields()) {
+              if (field->getType()->isPointerType() && !field->getType()->isTaintedPointerType()) {
+                  CVarOption const cvar = Info.getVariable(field, TmpCtx);
+
+                  if (cvar.hasValue()) {
+                      bool isTainted = cvar.getValue().hasTainted(Environment.getVariables());
+                      if (!isTainted) {
+                          //assign field as
+                          PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                          for (const auto &V : PV->getCvars()) {
+                              if (VarAtom* V_VarAtom = (VarAtom*)(V))
+                              {
+                                  auto CurrAssignment = Env.getAssignment(V_VarAtom);
+                                  Env.assign(V_VarAtom, CurrAssignment->reflectToTainted());
+                              }
+                          }
+                      }
+                  }
+              } else if (field->getType()->isRecordType()) {
+                  auto rvar = Info.getVariable(field, Context);
+                  if (rvar.hasValue()) {
+                      auto isTstruct = rvar.getValue().hasTainted(Environment.getVariables());
+                      if (!isTstruct) {
+                          StructureVariableConstraint *TstructDecl = (StructureVariableConstraint *)(&rvar.getValue());
+                          for (const auto &VI : TstructDecl->getCvars()) {
+                              VI->setKind(Atom::A_Tstruct);
+                          }
+                      }
+                  }
+              }
+          }
+      }
+
       if (allFieldsAreValid && (hasPointerField || hasStructField) && !CurrStruct->isExplicit()) {
 #ifdef DEBUG
         std::cout << "STRUCTURE IS MARKED TAINTED: " << CurrStruct->getStr() << std::endl;
@@ -917,7 +951,7 @@ bool Constraints::graphBasedSolve(ProgramInfo &Info) {
     }
   }
   while (RequiresResolve);
-
+  assignInfluenceScores(SolPtrTypCG, Env.SolPtrTypCG_InfluenceMap, Env.SolPtrTypCG_Root_InfluenceMap, &Info);
   return Res;
 }
 
@@ -1184,24 +1218,16 @@ void ConstraintsEnv::printISTM(raw_ostream &O) const {
         if (V.first->getRoot())
             D = V.first->getRoot();
 
-        if (CheckedGraphInfluence != -1.0 || PtrTyGraphInfluence != -1.0) {
+        if (D && (CheckedGraphInfluence != -1.0 || PtrTyGraphInfluence != -1.0)
+                && (V.second.second->isTainted() || V.second.first->isTainted())) {
             V.first->print(O);
             O << " = [";
-
-            if (D) {
-                O << "Root Structure: ";
-
-                // Instead of D->dump(), extract and format the useful details.
-                // Get the type and location (source range) without dumping the pointer address.
-                O << D->getType().getAsString(); // Print the type (e.g., _TPtr<si>)
-                O << " at " << D->getLocation().printToString(D->getASTContext().getSourceManager());
-
-                O << ", PtrType=" << llvm::format("%.2f", PtrTyGraphInfluence);
-            } else {
-                if (PtrTyGraphInfluence != -1.0) {
-                    O << "PtrType=" << llvm::format("%.2f", PtrTyGraphInfluence);
-                }
-            }
+            // Instead of D->dump(), extract and format the useful details.
+            // Get the type and location (source range) without dumping the pointer address.
+            O << "Root Structure: ";
+            O << D->getType().getAsString(); // Print the type (e.g., _TPtr<si>)
+            O << " at " << D->getLocation().printToString(D->getASTContext().getSourceManager());
+            O << ", PtrType=" << llvm::format("%.2f", PtrTyGraphInfluence);
             O << "]\n";
         }
     }

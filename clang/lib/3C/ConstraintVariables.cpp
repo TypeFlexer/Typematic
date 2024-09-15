@@ -555,6 +555,8 @@ StructureVariableConstraint::StructureVariableConstraint(
                 NewAtom = CS.getFreshVar(Npre + N, VK);
             else
                 NewAtom = CAtom;
+
+            NewAtom->setRoot(reinterpret_cast<DeclaratorDecl *>(D));
             Vars.push_back(NewAtom);
             SrcVars.push_back(CAtom);
             //all of the record's fields are neighbors to the record, such that, updating the record's type would
@@ -571,12 +573,14 @@ StructureVariableConstraint::StructureVariableConstraint(
 
                 if (fieldType->isPointerType() && !fieldType->isTaintedPointerType())
                 {
-                    if (cvar.hasValue())
-                    {
-                        PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
-                        for (const auto &V : PV->getCvars())
+                    if (cvar.hasValue()) {
+                        PointerVariableConstraint *PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
+                        for (const auto &V: PV->getCvars())
+                        {
                             CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
                                                           ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                            V->setRoot(reinterpret_cast<DeclaratorDecl *>(RD));
+                        }
                     }
                     else
                     {
@@ -620,9 +624,9 @@ StructureVariableConstraint::StructureVariableConstraint(
                         PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
                         for (const auto &V : PV->getCvars())
                         {
-                            CS.addConstraint(CS.createGeq(NewAtom, V,
-                                                          ReasonLoc("Pointer within a Structure",PSL), false));
-                            V->setRoot(reinterpret_cast<DeclaratorDecl *>(RD));
+//                            CS.addConstraint(CS.createGeq(NewAtom, V,
+//                                                          ReasonLoc("Pointer within a Structure",PSL), false));
+                            V->setRoot(reinterpret_cast<DeclaratorDecl *>(field));
                         }
 
                     }
@@ -641,6 +645,7 @@ StructureVariableConstraint::StructureVariableConstraint(
         // This type is not a constant atom. We need to create a VarAtom for this.
         if (!VarCreated) {
             VarAtom *VA = CS.getFreshStructVar(Npre + N, VK);
+            VA->setRoot(D);
             Vars.push_back(VA);
             SrcVars.push_back(CS.getWild());
             CS.addConstraint(CS.createGeq(VA, CS.getStruct(), ReasonLoc("Generic C Struct",PSL), false));
@@ -923,6 +928,7 @@ PointerVariableConstraint::PointerVariableConstraint(
     // This type is not a constant atom. We need to create a VarAtom for this.
     if (!VarCreated) {
       VarAtom *VA = CS.getFreshVar(Npre + N, VK);
+      VA->setRoot(D);
       if (DoNotTaint)
         VA->setDoNotTaint();
 
@@ -932,6 +938,8 @@ PointerVariableConstraint::PointerVariableConstraint(
         CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
                                       ReasonLoc("Pointer to a Tainted Structure",PSL), true));
       }
+
+      VA->setRoot(D);
       Vars.push_back(VA);
       ConstAtom *CAtom = nullptr;
       CAtom = CS.getWild();
@@ -1250,6 +1258,7 @@ PointerVariableConstraint::PointerVariableConstraint(
                                  "of the checked pointer.");
       Atom *NewAtom;
       NewAtom = CAtom;
+      NewAtom->setRoot(D);
       Vars.push_back(NewAtom);
       SrcVars.push_back(CAtom);
 
@@ -1265,6 +1274,7 @@ PointerVariableConstraint::PointerVariableConstraint(
         for (const auto &V : Tmp->getCvars())
         {
             auto StructureVal =  CS.getTaintedStruct();
+            V->setRoot(reinterpret_cast<DeclaratorDecl *>(RD));
             StructureVal->setStructName(TyName);
             CS.addConstraint(CS.createGeq(V, StructureVal,
                                           ReasonLoc("Tainted Pointer to the Structure",PSL)));
@@ -1302,45 +1312,11 @@ PointerVariableConstraint::PointerVariableConstraint(
                                   //taint to propagate into another structure
                                   for (const auto &VI : InternalDecl->getCvars()) {
                                       VI->setRoot(reinterpret_cast<DeclaratorDecl *>(recordDecl));
-                                      CS.addConstraint(CS.createGeq(VI, V,
-                                                                    ReasonLoc("Pointer to structure with a Tstruct", PSL)));
                                   }
                               }
                           }
                       }
                       V->setRoot(D);
-                  }
-              }
-              else
-              {
-                    //create a VarAtom for the pointer
-                    VarAtom *VA = CS.getFreshTaintedVar(Npre + N + fieldName.str(), VK);
-                    Vars.push_back(VA);
-                    SrcVars.push_back(CS.getTaintedPtr());
-                    CS.addConstraint(CS.createGeq(VA, CS.getTaintedPtr(),
-                                                  ReasonLoc("Pointer within a Tainted Structure",PSL)));
-                    VA->setRoot(D);
-                  //check if field is a pointer to a structure, then we need to create a relationship
-                  //between the structure and the pointer as well
-
-                  if (fieldType->isPointerType() && fieldType->getCoreTypeInternal()->isRecordType())
-                  {
-                      auto recordDecl = fieldType->getCoreTypeInternal()->getAsRecordDecl();
-                      SVarOption Svar = I.getStructVariable(recordDecl, TmpCtx);
-
-                      if (Svar.hasValue())
-                      {
-                          StructureVariableConstraint *InternalDecl = (StructureVariableConstraint *)(&Svar.getValue());
-
-                          if (RD != recordDecl)
-                          {
-                              //taint to propagate into another structure
-                              for (const auto &VI : InternalDecl->getCvars()) {
-                                  CS.addConstraint(CS.createGeq(VI, VA,
-                                                                ReasonLoc("Pointer to structure with a Tstruct", PSL)));
-                              }
-                          }
-                      }
                   }
               }
           }
@@ -1416,6 +1392,7 @@ PointerVariableConstraint::PointerVariableConstraint(
     // This type is not a constant atom. We need to create a VarAtom for this.
     if (!VarCreated) {
       VarAtom *VA = CS.getFreshVar(Npre + N, VK);
+      VA->setRoot(D);
       Vars.push_back(VA);
       SrcVars.push_back(CS.getPtr());
 

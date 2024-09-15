@@ -17,7 +17,7 @@ int main() {
 
     _TPtr<int> seed_t = seed;
 
-    trigger_callback(my_function, seed);
+    trigger_callback(my_function, seed_t);
 
     return 0;
 }

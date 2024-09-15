@@ -323,7 +323,7 @@ void DeclRewriter::rewriteDecls(ASTContext &Context, ProgramInfo &Info,
         // Check if RRD.Type is "struct " and skip rewriting if it is
         if (RRD.Type == "struct ") {
           // Skip the rewrite process since the type is "struct "
-          return;
+          continue;
         }
 
         RewriteTheseStructures.insert(std::make_pair(
