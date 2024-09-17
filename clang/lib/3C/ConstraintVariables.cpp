@@ -577,8 +577,17 @@ StructureVariableConstraint::StructureVariableConstraint(
                         PointerVariableConstraint *PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
                         for (const auto &V: PV->getCvars())
                         {
+
+                            // Assuming `RD` is a pointer to the RecordDecl (structure declaration).
+                            std::string structureName = RD->getNameAsString();
+
+                            // Create a new reason string by including the structure name.
+                            std::string reasonStr = "Pointer within a Tainted Structure \"" + structureName + "\"";
+
+                            // Use the modified reason in the constraint.
                             CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
-                                                          ReasonLoc("Pointer within a Tainted Structure",PSL)));
+                                                          ReasonLoc(reasonStr, PSL)));
+
                             V->setRoot(reinterpret_cast<DeclaratorDecl *>(RD));
                         }
                     }
@@ -963,10 +972,19 @@ PointerVariableConstraint::PointerVariableConstraint(
                    bool canWriteFile = canWrite(FileName);
                    if (canWriteFile)
                    {
+                       // Retrieve the name of the structure
+                       std::string structureName = RD->getNameAsString();
+
+                       // Construct the reason string
+                       std::string reasonStr = "Structure within a pointer \"" + structureName + "\"";
+
+                       // Add the taint constraint for V -> VA
                        CS.addConstraint(CS.createGeq(V, VA,
-                                                     ReasonLoc("Structure within a pointer(if structure updates, pointer must update as well",PSL), false));
+                                                     ReasonLoc(reasonStr, PSL), false));
+
+                       // Add the taint constraint for VA -> V
                        CS.addConstraint(CS.createGeq(VA, V,
-                                                     ReasonLoc("Structure within a pointer(if pointer updates, structure must update as well",PSL), false));
+                                                     ReasonLoc(reasonStr, PSL), false));
                    }
                    //now iterate through all the fields of the RecordDecl* RD
                    for (FieldDecl* field : RD->fields()) {
@@ -1276,8 +1294,16 @@ PointerVariableConstraint::PointerVariableConstraint(
             auto StructureVal =  CS.getTaintedStruct();
             V->setRoot(reinterpret_cast<DeclaratorDecl *>(RD));
             StructureVal->setStructName(TyName);
+            // Assuming `RD` is a pointer to the RecordDecl (structure declaration).
+            std::string structureName = RD->getNameAsString();
+
+            // Create a new reason string by including the structure name.
+            std::string reasonStr = "Tainted Pointer to the Structure \"" + structureName + "\"";
+
+            // Use the modified reason in the constraint.
             CS.addConstraint(CS.createGeq(V, StructureVal,
-                                          ReasonLoc("Tainted Pointer to the Structure",PSL)));
+                                          ReasonLoc(reasonStr, PSL)));
+
         }
         //now iterate through all the fields of the RecordDecl* RD
         for (FieldDecl* field : RD->fields()) {
@@ -1293,8 +1319,17 @@ PointerVariableConstraint::PointerVariableConstraint(
               {
                   PointerVariableConstraint* PV = dyn_cast<PointerVariableConstraint>(&cvar.getValue());
                   for (const auto &V : PV->getCvars()) {
+
+                      // Assuming `RD` is a pointer to the RecordDecl (structure declaration).
+                      std::string structureName = RD->getNameAsString();
+
+                        // Create a new reason string by including the structure name.
+                      std::string reasonStr = "Pointer within a Tainted Structure \"" + structureName + "\"";
+
+                        // Use the modified reason in the constraint.
                       CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
-                                                    ReasonLoc("Pointer within a Tainted Structure", PSL)));
+                                                    ReasonLoc(reasonStr, PSL)));
+
                       //check if field is a pointer to a structure, then we need to create a relationship
                       //between the structure and the pointer as well
 
