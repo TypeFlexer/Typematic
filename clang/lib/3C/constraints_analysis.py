@@ -117,7 +117,7 @@ def parse_constraints_iterative(file_path):
                 # Determine edge addition based on Reason
                 if 'Pointer within a Tainted Structure' in reason:
                     # Extract the structure name
-                    struct_match = re.search(r'Pointer within a Tainted Structure\s*"(.+?)\"', reason)
+                    struct_match = re.search(r'Pointer within a Tainted Structure\s*"(.+?)"', reason)
                     if struct_match:
                         struct_name = f'struct {struct_match.group(1)}'
                         # Add edge from from_node to struct_name
@@ -142,7 +142,7 @@ def parse_constraints_iterative(file_path):
 
                 elif 'Tainted Pointer to the Structure' in reason:
                     # Extract the structure name and the special _TPtr node
-                    struct_match = re.search(r'Tainted Pointer to the Structure\s*"(.+?)\"', reason)
+                    struct_match = re.search(r'Tainted Pointer to the Structure\s*"(.+?)"', reason)
                     # Updated regex to capture _TPtr<si> correctly from the constraint
                     struct_name = f'struct {struct_match.group(1)}'
                     special_tptr = from_node
@@ -170,7 +170,7 @@ def parse_constraints_iterative(file_path):
                     continue  # Skip the default edge addition below
                 elif 'Structure within a pointer' in reason:
                     # Extract the structure name
-                    struct_match = re.search(r'Structure within a pointer\s*"(.+?)\"', reason)
+                    struct_match = re.search(r'Structure within a pointer\s*"(.+?)"', reason)
                     if struct_match:
                         struct_name = f'struct {struct_match.group(1)}'
                         # Add edge from struct_name to to_node

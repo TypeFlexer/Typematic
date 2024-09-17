@@ -9,6 +9,7 @@ set(LLVM_LINK_COMPONENTS
 # which it does: clang/CMakeLists.txt does add_subdirectory(lib) before
 # add_subdirectory(tools).
 get_directory_property(FIVE_C DIRECTORY ../../lib/3C DEFINITION FIVE_C)
+find_package(Python3 REQUIRED COMPONENTS Development)
 
 if (FIVE_C)
   add_compile_definitions(FIVE_C)
@@ -28,6 +29,7 @@ target_link_libraries(3c
   clangRewriteFrontend
   clangStaticAnalyzerFrontend
   clangTooling
+  ${Python3_LIBRARIES}
   )
 
 install(TARGETS 3c
