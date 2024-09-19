@@ -1,4 +1,3 @@
-# Python code begins
 import re
 import networkx as nx
 from graphviz import Digraph
@@ -16,6 +15,7 @@ def parse_environment(file_path):
         print(f"Error: The file '{file_path}' was not found.")
         return tainted_nodes
 
+    print("Parsing environment file...\n")
     # Process each line in the environment file
     for line in content:
         line = line.strip()
@@ -38,6 +38,7 @@ def parse_environment(file_path):
                 tainted_nodes[node_name] = False
         else:
             print(f"Warning: Unable to parse environment line: '{line}'")
+    print("Environment parsing completed.\n")
     return tainted_nodes
 
 def parse_constraints_iterative(file_path, tainted_nodes):
@@ -67,8 +68,13 @@ def parse_constraints_iterative(file_path, tainted_nodes):
     print(f"Total constraints to process: {len(all_constraints)}\n")
 
     added_new = True
-    while added_new:
+    iteration = 0
+    max_iterations = 1000  # Prevent infinite loops
+
+    while added_new and iteration < max_iterations:
         added_new = False
+        iteration += 1
+        print(f"--- Iteration {iteration} ---")
         for idx, constraint in enumerate(all_constraints, 1):
             if '>=' not in constraint:
                 continue
@@ -78,6 +84,11 @@ def parse_constraints_iterative(file_path, tainted_nodes):
                 from_node = match.group(1).strip()
                 to_node = match.group(2).strip()
                 reason = match.group(3).strip()
+
+                print(f"Processing Constraint {idx}: '{constraint}'")
+                print(f"  From Node: '{from_node}'")
+                print(f"  To Node: '{to_node}'")
+                print(f"  Reason: '{reason}'")
 
                 # Identify if from_node or to_node is a structure
                 if from_node.startswith('struct '):
@@ -91,22 +102,27 @@ def parse_constraints_iterative(file_path, tainted_nodes):
                     struct_match = re.search(r'Pointer within a Tainted Structure\s*"(.+?)"', reason)
                     if struct_match:
                         struct_name = f'struct {struct_match.group(1)}'
+                        print(f"  Extracted Structure Name: '{struct_name}'")
                         # Only add edge if the member is tainted
                         if tainted_nodes.get(to_node, False):
                             # Add edge from from_node to struct_name
                             if struct_name not in discovered:
                                 edges.append((from_node, struct_name))
                                 discovered.add(struct_name)
+                                print(f"  Added edge: '{from_node}' -> '{struct_name}'")
+                                added_new = True
                             # Add edge from struct_name to to_node
                             if (struct_name, to_node) not in edges:
                                 edges.append((struct_name, to_node))
                                 discovered.add(to_node)
-                            added_new = True
+                                print(f"  Added edge: '{struct_name}' -> '{to_node}'")
+                                added_new = True
                     else:
                         # If structure name not found, add direct edge if to_node is tainted
                         if from_node in discovered and to_node not in discovered and tainted_nodes.get(to_node, False):
                             edges.append((from_node, to_node))
                             discovered.add(to_node)
+                            print(f"  Added edge: '{from_node}' -> '{to_node}'")
                             added_new = True
 
                 elif 'Tainted Pointer to the Structure' in reason:
@@ -115,21 +131,27 @@ def parse_constraints_iterative(file_path, tainted_nodes):
                     if struct_match:
                         struct_name = f'struct {struct_match.group(1)}'
                         special_tptr = from_node
+                        print(f"  Extracted Structure Name: '{struct_name}'")
+                        print(f"  Special TPtr Node: '{special_tptr}'")
 
                         # Remove the edge between TPTR and struct if it exists
                         if ('TPTR', struct_name) in edges:
                             edges.remove(('TPTR', struct_name))
+                            discovered.discard(struct_name)
+                            print(f"  Removed edge: 'TPTR' -> '{struct_name}'")
 
                         # Connect TPTR to the special _TPtr node
                         if ('TPTR', special_tptr) not in edges:
                             edges.append(('TPTR', special_tptr))
                             discovered.add(special_tptr)
+                            print(f"  Added edge: 'TPTR' -> '{special_tptr}'")
                             added_new = True
 
                         # Connect the special _TPtr node to the structure
                         if (special_tptr, struct_name) not in edges:
                             edges.append((special_tptr, struct_name))
                             discovered.add(struct_name)
+                            print(f"  Added edge: '{special_tptr}' -> '{struct_name}'")
                             added_new = True
 
                         continue  # Skip the default edge addition below
@@ -139,21 +161,28 @@ def parse_constraints_iterative(file_path, tainted_nodes):
                     struct_match = re.search(r'Structure within a pointer\s*"(.+?)"', reason)
                     if struct_match:
                         struct_name = f'struct {struct_match.group(1)}'
+                        print(f"  Extracted Structure Name: '{struct_name}'")
                         # Only add edge if to_node is tainted
                         if tainted_nodes.get(to_node, False):
                             # Add edge from struct_name to to_node
                             if (struct_name, to_node) not in edges:
                                 edges.append((struct_name, to_node))
                                 discovered.add(to_node)
+                                print(f"  Added edge: '{struct_name}' -> '{to_node}'")
                                 added_new = True
                 else:
                     # Default behavior: add direct edge if to_node is tainted
                     if from_node in discovered and to_node not in discovered and tainted_nodes.get(to_node, False):
                         edges.append((from_node, to_node))
                         discovered.add(to_node)
+                        print(f"  Added edge: '{from_node}' -> '{to_node}'")
                         added_new = True
             else:
-                continue
+                print(f"  Warning: Unable to parse constraint: '{constraint}'")
+        print(f"--- End of Iteration {iteration} ---\n")
+
+    if iteration >= max_iterations:
+        print(f"Warning: Reached maximum iterations ({max_iterations}). Possible infinite loop.\n")
 
     return edges, structure_nodes
 
@@ -236,7 +265,7 @@ def visualize_graph(G, scores, tainted_nodes, output_path='graph'):
         dot.edge(from_node, to_node)
 
     dot.render(output_path, view=False)
-    print(f"Graph has been saved to {output_path}.png")
+    print(f"Graph has been saved to {output_path}.png\n")
 
 def main():
     # Paths to the constraints and environment files
@@ -249,6 +278,7 @@ def main():
     for node, tainted in tainted_nodes.items():
         status = 'Tainted' if tainted else 'Not Tainted'
         print(f"{node}: {status}")
+    print()
 
     # Parse constraints iteratively to get edges and identify structure nodes
     edges, structure_nodes = parse_constraints_iterative(constraints_file, tainted_nodes)
@@ -256,23 +286,26 @@ def main():
     print("\nParsed Edges:")
     for edge in edges:
         print(edge)
+    print()
 
-    print("\nIdentified Structure Nodes:")
+    print("Identified Structure Nodes:")
     for struct in structure_nodes:
         print(struct)
+    print()
 
     # Build the graph
     G = build_graph(edges, structure_nodes)
 
     # Identify leaf nodes, excluding structures
     leaf_nodes = identify_leaf_nodes(G, structure_nodes)
-    print("\nLeaf Nodes:", leaf_nodes)
+    print("\nLeaf Nodes:", leaf_nodes, "\n")
 
     # Assign scores
     scores = assign_scores(G, leaf_nodes)
     print("\nNode Scores:")
     for node, score in scores.items():
         print(f"{node}: {score}")
+    print()
 
     # Visualize the graph
     visualize_graph(G, scores, tainted_nodes)

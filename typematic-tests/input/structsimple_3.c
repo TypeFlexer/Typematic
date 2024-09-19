@@ -40,7 +40,7 @@ int main(){
     ts->arg3 = t_malloc((strlen(name) + 1) * sizeof(char));
     strncpy(ts->arg3, name, strlen(name) + 1); // +1 to include the null terminator
 
-    an* as = t_malloc(sizeof(an));
+    an* as ;//= t_malloc(sizeof(an));
     as->arg4 = ts->arg3;
     as->arg5 = ts->arg2;
 

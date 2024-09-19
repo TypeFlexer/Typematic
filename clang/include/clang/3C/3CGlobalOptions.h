@@ -46,6 +46,7 @@ struct _3COptions {
   bool InferTypesForUndefs;
   bool DebugSolver;
   bool AnalyzeTaintChoke;
+  std::string taint_analysis_script;
   bool GenTstructs;
   bool OnlyGreatestSol;
   bool OnlyLeastSol;

@@ -1328,7 +1328,7 @@ PointerVariableConstraint::PointerVariableConstraint(
 
                         // Use the modified reason in the constraint.
                       CS.addConstraint(CS.createGeq(V, CS.getTaintedPtr(),
-                                                    ReasonLoc(reasonStr, PSL)));
+                                                    ReasonLoc(reasonStr, PSL), false));
 
                       //check if field is a pointer to a structure, then we need to create a relationship
                       //between the structure and the pointer as well

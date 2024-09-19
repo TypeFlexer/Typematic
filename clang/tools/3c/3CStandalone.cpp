@@ -179,6 +179,12 @@ static cl::opt<std::string> OptBaseDir(
       "those of libraries outside your control."),
     cl::init(""), cl::cat(_3CCategory));
 
+static cl::opt<std::string> Opttaint_analysis_script(
+        "taint_script",
+        cl::desc(
+                "taint analysis script"),
+        cl::init(""), cl::cat(_3CCategory));
+
 static cl::opt<bool> OptAllowSourcesOutsideBaseDir(
     "allow-sources-outside-base-dir",
     cl::desc("When a source file is outside the base directory, issue a "
@@ -354,6 +360,7 @@ int main(int argc, const char **argv) {
   // Setup options.
   struct _3COptions CcOptions;
   CcOptions.BaseDir = OptBaseDir.getValue();
+  CcOptions.taint_analysis_script = Opttaint_analysis_script.getValue();
   CcOptions.AllowSourcesOutsideBaseDir = OptAllowSourcesOutsideBaseDir;
   CcOptions.HandleVARARGS = OptHandleVARARGS;
   CcOptions.DumpStats = OptDumpStats;

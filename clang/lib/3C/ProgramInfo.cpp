@@ -104,8 +104,8 @@ void ProgramInfo::print(raw_ostream &O) const {
   dumpStaticFuncMap(StaticFunctionFVCons, O);
 }
 
-void ProgramInfo::printISTM(raw_ostream &O) const {
-  CS.printISTM(O);
+void ProgramInfo::printISTM(raw_ostream &O, EnvironmentMap Env, std::string python_script) const {
+  CS.printISTM(O, Env, python_script);
   O << "\n";
 }
 
@@ -1419,5 +1419,5 @@ void ProgramInfo::registerTranslationUnits(
 }
 
 void ProgramInfo::dumpISTM() {
-  printISTM(llvm::errs());
+  printISTM(llvm::errs(), this->CS.getVariables(), _3COpts.BaseDir);
 }

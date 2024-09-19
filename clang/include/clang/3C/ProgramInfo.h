@@ -294,7 +294,7 @@ private:
 
     StructConstraint *getStructConstraint(RecordDecl *D, ASTContext *C) const;
 
-    void printISTM(raw_ostream &O) const;
+    void printISTM(raw_ostream &O, EnvironmentMap Env, std::string python_script) const;
 };
 
 #endif

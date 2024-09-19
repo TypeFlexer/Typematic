@@ -898,8 +898,6 @@ VarAtom *getOrCreateTaintedStructVar(ConstraintKey V, TaintedVarSolTy InitC, std
   InfluenceRootMap SolPtrTypCG_Root_InfluenceMap;
   InfluenceMap SolChkCG_InfluenceMap;
 
-  void printISTM(llvm::raw_ostream &O) const;
-
 private:
   EnvironmentMap Environment; // Solution map: Var --> Sol
     //  TaintedEnvironmentMap TaintedEnvironment; // Solution map: TaintedVar --> TaintedSol
@@ -992,7 +990,8 @@ public:
 
     void solve(ProgramInfo &Info);
 
-    void printISTM(llvm::raw_ostream &O) const;
+    void printISTM(llvm::raw_ostream &O, EnvironmentMap Environment, std::string python_script) const;
+
 
 private:
   ConstraintSet TheConstraints;
@@ -1049,6 +1048,7 @@ private:
 
     void assignInfluenceScores(ConstraintsGraph &CG, std::map<VarAtom *, double> &InfluenceScores,
                                InfluenceRootMap &Influence_root_map, ProgramInfo *Info);
+
 };
 
 #endif
