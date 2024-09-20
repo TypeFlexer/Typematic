@@ -533,6 +533,7 @@ void ProgramInfo::linkFunction(FunctionVariableConstraint *FV) {
   // should stay that way. Otherwise, we shouldn't be adding a checked type
   // to an undefined function. DEFAULT_REASON is a sentinel for
   // ConstraintVariable::equateWithItype; see the comment there.
+  return;
   std::string Rsn = (FV->hasBody() ? DEFAULT_REASON : "Unchecked pointer in parameter or "
                                                       "return of undefined function " +
                                                       FV->getName());

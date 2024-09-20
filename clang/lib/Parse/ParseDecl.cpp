@@ -4706,12 +4706,12 @@ void Parser::ParseStructDeclaration(
     if(DS.isTaintedStruct)
     {
 
-      if(DS.getPointerTypeChecked().isValid()) {
+      if(DS.getPointerTypeChecked().isValid() && (!getLangOpts().drymatic)) {
         Diag((DS.getPointerTypeChecked()), diag::err_tainted_struct_member_ptr);
         DS.SetTypeSpecError();
       }
 
-      if(DS.getPointerTypeGeneric().isValid()) {
+      if(DS.getPointerTypeGeneric().isValid() && (!getLangOpts().drymatic)) {
         Diag((DS.getPointerTypeGeneric()), diag::err_tainted_struct_member_ptr);
         DS.SetTypeSpecError();
       }

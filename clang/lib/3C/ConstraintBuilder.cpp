@@ -275,7 +275,10 @@ private:
     Constraints &CS = Info.getConstraints();
     for (const auto &I : Vars)
       if (PVConstraint *PVC = dyn_cast<PVConstraint>(I)) {
-        PVC->constrainOuterTo(CS, CAtom, Rsn);
+        if (PVC->isTaintedPV())
+          PVC->constrainOuterTo(CS, Info.getConstraints().getTaintedPtr(), Rsn);
+        else
+          PVC->constrainOuterTo(CS, CAtom, Rsn);
       }
   }
 

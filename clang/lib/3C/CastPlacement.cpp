@@ -242,7 +242,7 @@ CastPlacementVisitor::CastNeeded CastPlacementVisitor::needCasting(
 std::pair<std::string, std::string>
 CastPlacementVisitor::getCastString(ConstraintVariable *Dst,
                                     ConstraintVariable *TypeVar,
-                                    CastNeeded CastKind) {
+                                    CastNeeded CastKind, Expr* E, Rewriter &Writer) {
   switch (CastKind) {
   case CAST_NT_ARRAY:
     return std::make_pair("((" +
@@ -288,7 +288,9 @@ CastPlacementVisitor::getCastString(ConstraintVariable *Dst,
     if (Type.find("_TPtr<") != std::string::npos ||
         Type.find("_TArray_ptr<") != std::string::npos ||
         Type.find("_TNt_array_ptr<") != std::string::npos) {
-      return std::make_pair("_Tainted_Assume_bounds_cast<" + Type + ">(", Suffix);
+      removeCStyleCastIfPresent(E, Writer);
+      return std::make_pair("(" + Type + ")(", Suffix);
+
     } else {
       return std::make_pair("_Assume_bounds_cast<" + Type + ">(", Suffix);
     }
@@ -338,6 +340,20 @@ void CastPlacementVisitor::TaintedStructureResolution(StructureTypeNeeded Struct
   }
 }
 
+void CastPlacementVisitor::removeCStyleCastIfPresent(Expr *E, Rewriter &Writer) {
+  // Check if E is a CStyleCastExpr
+  if (CStyleCastExpr *Cast = dyn_cast<CStyleCastExpr>(E)) {
+    // Get the sub-expression (the operand of the cast)
+    Expr *SubExpr = Cast->getSubExpr()->IgnoreParenImpCasts(); // Ignore any implicit casts
+
+    // Replace the full cast expression with the sub-expression
+    SourceRange CastRange = Cast->getSourceRange();
+    Writer.ReplaceText(CastRange, Lexer::getSourceText(CharSourceRange::getTokenRange(SubExpr->getSourceRange()),
+                                                       Writer.getSourceMgr(),
+                                                       Writer.getLangOpts()));
+  }
+}
+
 void CastPlacementVisitor::surroundByCast(ConstraintVariable *Dst,
                                           ConstraintVariable *TypeVar,
                                           CastNeeded CastKind, Expr *E) {
@@ -356,7 +372,7 @@ void CastPlacementVisitor::surroundByCast(ConstraintVariable *Dst,
     return;
   }
 
-  auto CastStrs = getCastString(Dst, TypeVar, CastKind);
+  auto CastStrs = getCastString(Dst, TypeVar, CastKind, E, Writer);
 
   // If E is already a cast expression, we will try to rewrite the cast instead
   // of adding a new expression.

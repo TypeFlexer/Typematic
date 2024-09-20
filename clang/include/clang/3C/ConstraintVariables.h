@@ -138,6 +138,7 @@ public:
   virtual bool srcHasItype() const = 0;
   virtual bool srcHasBounds() const = 0;
 
+  virtual bool isTaintedPV() const = 0;
   bool hasBoundsKey() const { return ValidBoundsKey; }
   BoundsKey getBoundsKey() const {
     assert(ValidBoundsKey && "No valid Bkey");
@@ -313,6 +314,7 @@ public:
     virtual bool srcHasItype() const = 0;
     virtual bool srcHasBounds() const = 0;
 
+    virtual bool isTaintedPV() const = 0;
     bool hasBoundsKey() const { return ValidBoundsKey; }
     BoundsKey getBoundsKey() const {
       assert(ValidBoundsKey && "No valid Bkey");
@@ -803,6 +805,7 @@ public:
   std::string getItype() const { return ItypeStr; }
   // Check if this variable has bounds annotation.
   bool srcHasBounds() const override { return !BoundsAnnotationStr.empty(); }
+  bool isTaintedPV() const override {return false;}
   // Get bounds annotation.
   std::string getBoundsStr() const { return BoundsAnnotationStr; }
 
@@ -1178,7 +1181,7 @@ public:
     bool srcHasItype() const override;
 
     bool srcHasBounds() const override;
-
+    bool isTaintedPV() const override {return isTstruct;}
     bool isOriginallyChecked() const override;
 
     bool isSolutionFullyChecked(const EnvironmentMap &E) const override;
@@ -1365,6 +1368,7 @@ public:
     std::string getItype() const { return ItypeStr; }
     // Check if this variable has bounds annotation.
     bool srcHasBounds() const override { return !BoundsAnnotationStr.empty(); }
+    bool isTaintedPV() const override {return true;}
     // Get bounds annotation.
     std::string getBoundsStr() const { return BoundsAnnotationStr; }
 
@@ -1492,6 +1496,7 @@ public:
 
     void equateWithItype(ProgramInfo &CS,
                          const ReasonLoc &ReasonUnchangeable) override;
+
 };
 
 typedef PointerVariableConstraint PVConstraint;
@@ -1691,7 +1696,7 @@ public:
 
   bool srcHasItype() const override;
   bool srcHasBounds() const override;
-
+  bool isTaintedPV() const override {return false;}
   // The number of type variables
   int getGenericParams() const {
     return TypeParams;
@@ -1821,7 +1826,7 @@ public:
 
     bool srcHasItype() const override;
     bool srcHasBounds() const override;
-
+    bool isTaintedPV() const override {return true;}
     // The number of type variables
     int getGenericParams() const {
       return TypeParams;

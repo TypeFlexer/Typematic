@@ -3655,16 +3655,13 @@ void PointerVariableConstraint::constrainIdxTo(Constraints &CS, ConstAtom *C,
                                                unsigned int Idx,
                                                const ReasonLoc &Rsn,
                                                bool DoLB, bool Soft) {
-  assert(C == CS.getPtr() || C == CS.getArr() || C == CS.getNTArr() ||
-  C == CS.getTaintedArr() || C == CS.getTaintedNTArr() || C == CS.getTaintedPtr());
-
   if (Vars.size() > Idx) {
     Atom *A = Vars[Idx];
     if (VarAtom *VA = dyn_cast<VarAtom>(A)) {
       if (DoLB)
         CS.addConstraint(CS.createGeq(VA, C, Rsn, false, Soft));
-//      else
-//        CS.addConstraint(CS.createGeq(C, VA, Rsn, false, Soft));
+      else
+        CS.addConstraint(CS.createGeq(C, VA, Rsn, false, Soft));
     } else if (ConstAtom *CA = dyn_cast<ConstAtom>(A)) {
       if (DoLB) {
         if (*CA < *C) {
@@ -5138,8 +5135,8 @@ void constrainConsVarGeq(ConstraintVariable *LHS, ConstraintVariable *RHS,
         // Only generate constraint if LHS is not a base type.
         if (CLHS.size() != 0) {
           if (CLHS.size() == CRHS.size() ||
-              (CLHS.size() < CRHS.size() && PCLHS->isGeneric()) ||
-              (CLHS.size() > CRHS.size() && PCRHS->isGeneric())) {
+              (CLHS.size() < CRHS.size() && (PCLHS->isGeneric() || PCRHS->isTaintedPV())) ||
+              (CLHS.size() > CRHS.size() && (PCRHS->isGeneric() || PCLHS->isTaintedPV()))) {
             unsigned Min = std::min(CLHS.size(), CRHS.size());
             for (unsigned N = 0; N < Min; N++) {
               Atom *IAtom = PCLHS->getAtom(N, CS);

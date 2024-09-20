@@ -72,7 +72,8 @@ private:
 
   std::pair<std::string, std::string> getCastString(ConstraintVariable *Dst,
                                                     ConstraintVariable *TypeVar,
-                                                    CastNeeded CastKind);
+                                                    CastNeeded CastKind, Expr*,
+                                                    Rewriter &Writer);
 
   void surroundByCast(ConstraintVariable *Dst,
                       ConstraintVariable *TypeVar,
@@ -87,5 +88,7 @@ private:
     void updateRewriteStats(StructureTypeNeeded CastKind);
 
     bool isTstruct(RecordDecl *RD);
+
+    void removeCStyleCastIfPresent(Expr *E, Rewriter &Writer);
 };
 #endif // LLVM_CLANG_3C_CASTPLACEMENT_H
